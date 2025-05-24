@@ -1,0 +1,21 @@
+name: HACS
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+  schedule:
+    - cron: "0 0 * * *"
+    
+jobs:
+  validate-hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: HACS Validation
+        uses: hacs/action@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          category: "integration"
+

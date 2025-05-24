@@ -1,0 +1,16 @@
+{
+  "domain": "dynamic_energy_calculator",
+  "name": "Dynamic Energy Calculator",
+  "codeowners": ["@bvweerd"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.github.com/bvweerd/dynamic_energy_calculator",
+  "homekit": {},
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_calculator/issues",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "ssdp": [],
+  "version": "0.0.1",
+  "zeroconf": []
+}
