@@ -22,9 +22,7 @@ STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SENSOR = "price_sensor"
 
 
-class DynamicEnergyCalculatorConfigFlow(
-    config_entries.ConfigFlow, domain=DOMAIN
-):
+class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Dynamic Energy Calculator."""
 
     VERSION = 1
@@ -140,16 +138,12 @@ class DynamicEnergyCalculatorConfigFlow(
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry
-    ) -> type[config_entries.OptionsFlow]:
+    def async_get_options_flow(config_entry) -> type[config_entries.OptionsFlow]:
         """Allow updating options later."""
         return DynamicEnergyCalculatorOptionsFlowHandler
 
 
-class DynamicEnergyCalculatorOptionsFlowHandler(
-    config_entries.OptionsFlow
-):
+class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle updates to a config entry (options)."""
 
     def __init__(self, config_entry):

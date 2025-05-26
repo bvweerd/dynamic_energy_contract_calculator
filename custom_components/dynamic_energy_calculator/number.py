@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -10,7 +9,6 @@ from homeassistant.components.number import NumberEntity, RestoreNumber
 from homeassistant.helpers.entity import EntityCategory
 
 from .entity import DynamicEnergyEntity
-from .const import DOMAIN
 
 # Four settings with logical defaults
 NUMBER_SETTINGS = [
@@ -96,9 +94,7 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=True)
 
 
-class DynamicEnergyRestoreNumber(
-    DynamicEnergyEntity, RestoreNumber, NumberEntity
-):
+class DynamicEnergyRestoreNumber(DynamicEnergyEntity, RestoreNumber, NumberEntity):
     """Number inputs (markups/taxes) grouped under “General” device."""
 
     _attr_entity_category = EntityCategory.CONFIG
@@ -119,7 +115,9 @@ class DynamicEnergyRestoreNumber(
         mode: str,
         default_value: float,
     ) -> None:
-        super().__init__(hass, entry, setting_id, name, device_id, device_name, device_model)
+        super().__init__(
+            hass, entry, setting_id, name, device_id, device_name, device_model
+        )
 
         # NumberEntity configuration
         self._attr_native_min_value = min_value

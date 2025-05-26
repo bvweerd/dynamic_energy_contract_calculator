@@ -9,6 +9,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 
+
 class DynamicEnergyEntity(Entity):
     """Base entity for Dynamic Energy Calculator."""
 
