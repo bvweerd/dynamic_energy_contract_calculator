@@ -9,22 +9,12 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import (
-    async_track_state_change_event,
-    async_track_state_change,
-    async_track_time_change,
-)
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .entity import DynamicEnergyEntity
-from .const import (
-    DOMAIN,
-    CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
-    CONF_PRICE_SENSOR,
-)
+from .const import DOMAIN, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,9 +24,13 @@ def _read(hass: HomeAssistant, entity_id: str) -> float:
     st = hass.states.get(entity_id)
     if st and st.state not in ("unknown", "unavailable", None):
         try:
-            return float(st.state)
+            val = float(st.state)
+            _LOGGER.debug("Read %s = %s", entity_id, val)
+            return val
         except ValueError:
             _LOGGER.warning("Non-numeric state for %s: %s", entity_id, st.state)
+    else:
+        _LOGGER.debug("State for %s unavailable/unknown: %s", entity_id, st)
     return 0.0
 
 
@@ -46,6 +40,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up all per-source energy & cost sensors plus one total-cost sensor."""
+    _LOGGER.debug("async_setup_entry(%s)", entry.entry_id)
     configs = entry.data.get(CONF_CONFIGS, [])
     entities: list[SensorEntity] = []
     cost_entities: list[HourlyCostSensor] = []
@@ -54,10 +49,11 @@ async def async_setup_entry(
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
         price_sensor = block[CONF_PRICE_SENSOR]
+        _LOGGER.debug("Block %s: sources=%s price=%s", source_type, sources, price_sensor)
 
         for src in sources:
-            base_slug = src.split(".", 1)[1]
-            slug = f"{base_slug}_{source_type}"
+            slug = src.split(".", 1)[1]
+            _LOGGER.debug("Creating sensors for slug=%s", slug)
 
             entities.append(
                 IntegratedEnergySensor(hass, entry, src, source_type, slug)
@@ -72,12 +68,12 @@ async def async_setup_entry(
             cost_entities.append(cost)
 
     entities.append(TotalCostSensor(hass, entry, cost_entities))
-
+    _LOGGER.debug("Adding entities: %s", [e.entity_id for e in entities])
     async_add_entities(entities)
 
 
-class IntegratedEnergySensor(DynamicEnergyEntity, SensorEntity):
-    """Cumulative kWh since setup (never resets)."""
+class IntegratedEnergySensor(DynamicEnergyEntity, RestoreEntity, SensorEntity):
+    """Cumulative kWh since first setup, persisting across restarts."""
 
     _attr_native_unit_of_measurement = "kWh"
     _attr_state_class = SensorStateClass.TOTAL
@@ -90,35 +86,59 @@ class IntegratedEnergySensor(DynamicEnergyEntity, SensorEntity):
         source_type: str,
         slug: str,
     ) -> None:
-        entry_id = entry.entry_id
-        device_id = f"{entry_id}_{slug}"
-        device_name = f"{slug.replace('_', ' ').title()} Source"
+        key = f"{slug}_{source_type}_total"
+        name = f"{slug.replace('_',' ').title()} Total"
+        device_id = slug
+        device_name = slug.replace("_", " ").title()
         device_model = f"{source_type.title()} Source"
-        key = f"{slug}_total"
-        name = f"{slug.replace('_', ' ').title()} Total"
 
+        _LOGGER.debug("Init IntegratedEnergySensor: %s", name)
         super().__init__(hass, entry, key, name, device_id, device_name, device_model)
 
+        self.entity_id = f"sensor.{DOMAIN}_{slug}_{source_type}_total"
         self._source = source_entity_id
         self._initial: float = 0.0
         self._attr_native_value: float | None = None
 
     async def async_added_to_hass(self) -> None:
-        self._initial = _read(self.hass, self._source)
-        async_track_state_change_event(
-            self.hass, [self._source], self._recalculate
-        )
-        await self._recalculate(None)
+        _LOGGER.debug("IntegratedEnergySensor %s added; restoring state", self.entity_id)
+        last = await self.async_get_last_state()
+        current = _read(self.hass, self._source)
+
+        if last and last.state not in ("unknown", None):
+            try:
+                restored = float(last.state)
+                self._initial = current - restored
+                self._attr_native_value = restored
+                _LOGGER.debug(
+                    "%s restored=%s, current=%s, new initial=%s",
+                    self.entity_id, restored, current, self._initial
+                )
+            except ValueError:
+                self._initial = current
+                _LOGGER.warning(
+                    "%s failed to parse restored state, setting baseline to %s",
+                    self.entity_id, self._initial
+                )
+        else:
+            self._initial = current
+            self._attr_native_value = 0.0
+            _LOGGER.debug("%s no restore state, initial baseline=%s", self.entity_id, self._initial)
+
+        async_track_state_change_event(self.hass, [self._source], self._recalc)
+        await self._recalc(None)
 
     @callback
-    async def _recalculate(self, event: Any) -> None:
+    async def _recalc(self, event: Any) -> None:
         current = _read(self.hass, self._source)
-        self._attr_native_value = round(current - self._initial, 5)
+        value = round(current - self._initial, 5)
+        _LOGGER.debug("%s recalc: current=%s initial=%s value=%s", self.entity_id, current, self._initial, value)
+        self._attr_native_value = value
         self.async_write_ha_state()
 
 
 class HourlyEnergySensor(DynamicEnergyEntity, SensorEntity):
-    """kWh per hour (resets at each hour)."""
+    """kWh per hour (resets hourly)."""
 
     _attr_native_unit_of_measurement = "kWh"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -131,43 +151,44 @@ class HourlyEnergySensor(DynamicEnergyEntity, SensorEntity):
         source_type: str,
         slug: str,
     ) -> None:
-        entry_id = entry.entry_id
-        device_id = f"{entry_id}_{slug}"
-        device_name = f"{slug.replace('_', ' ').title()} Source"
+        key = f"{slug}_{source_type}_hourly"
+        name = f"{slug.replace('_',' ').title()} Hourly"
+        device_id = slug
+        device_name = slug.replace("_", " ").title()
         device_model = f"{source_type.title()} Source"
-        key = f"{slug}_hourly"
-        name = f"{slug.replace('_', ' ').title()} Hourly"
 
+        _LOGGER.debug("Init HourlyEnergySensor: %s", name)
         super().__init__(hass, entry, key, name, device_id, device_name, device_model)
 
+        self.entity_id = f"sensor.{DOMAIN}_{slug}_{source_type}_hourly"
         self._source = source_entity_id
-        self._base: float = _read(self.hass, self._source)
+        self._base = _read(self.hass, self._source)
         self._attr_native_value: float | None = None
 
     async def async_added_to_hass(self) -> None:
-        async_track_state_change_event(
-            self.hass, [self._source], self._update_meter
-        )
-        async_track_time_change(
-            self.hass, self._reset_hour, minute=0, second=0
-        )
-        await self._update_meter(None)
+        _LOGGER.debug("%s added; base=%s", self.entity_id, self._base)
+        async_track_state_change_event(self.hass, [self._source], self._update)
+        async_track_time_change(self.hass, self._reset, minute=0, second=0)
+        await self._update(None)
 
     @callback
-    async def _update_meter(self, event: Any) -> None:
+    async def _update(self, event: Any) -> None:
         current = _read(self.hass, self._source)
-        self._attr_native_value = round(current - self._base, 5)
+        value = round(current - self._base, 5)
+        _LOGGER.debug("%s update: %s", self.entity_id, value)
+        self._attr_native_value = value
         self.async_write_ha_state()
 
     @callback
-    async def _reset_hour(self, now: datetime) -> None:
+    async def _reset(self, now: datetime) -> None:
         self._base = _read(self.hass, self._source)
+        _LOGGER.debug("%s reset at %s; new base=%s", self.entity_id, now, self._base)
         self._attr_native_value = 0.0
         self.async_write_ha_state()
 
 
 class HourlyCostSensor(DynamicEnergyEntity, SensorEntity):
-    """€ cost accrued per hour, reacting to energy, price & input changes."""
+    """€ cost per hour, differentiated by consumption vs production."""
 
     _attr_native_unit_of_measurement = "€"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -181,21 +202,28 @@ class HourlyCostSensor(DynamicEnergyEntity, SensorEntity):
         price_entity_id: str,
         slug: str,
     ) -> None:
-        entry_id = entry.entry_id
-        device_id = f"{entry_id}_{slug}"
-        device_name = f"{slug.replace('_', ' ').title()} Source"
+        key = f"{slug}_{source_type}_cost_hourly"
+        name = f"{slug.replace('_',' ').title()} Cost Hourly"
+        device_id = slug
+        device_name = slug.replace("_", " ").title()
         device_model = f"{source_type.title()} Source"
-        key = f"{slug}_cost_hourly"
-        name = f"{slug.replace('_', ' ').title()} Cost Hourly"
 
+        _LOGGER.debug("Init HourlyCostSensor: %s", name)
         super().__init__(hass, entry, key, name, device_id, device_name, device_model)
 
-        self._energy_entity = f"sensor.{DOMAIN}_{entry_id}_{slug}_hourly"
+        self.entity_id = f"sensor.{DOMAIN}_{slug}_{source_type}_cost_hourly"
+
+        # ✓ Use slug only (no entry_id) for hourly-energy reference
+        self._energy_entity = f"sensor.{DOMAIN}_{slug}_{source_type}_hourly"
         self._price = price_entity_id
-        self._num_cons = f"number.{DOMAIN}_{entry_id}_electricity_consumption_markup_per_kwh"
-        self._num_prod = f"number.{DOMAIN}_{entry_id}_electricity_production_markup_per_kwh"
-        self._num_taxkwh = f"number.{DOMAIN}_{entry_id}_electricity_tax_per_kwh"
-        self._num_taxpct = f"number.{DOMAIN}_{entry_id}_tax_percentage"
+
+        # ✓ All markup/tax numbers live under the single “general” device
+        base = f"number.{DOMAIN}_general_"
+        self._num_cons   = base + "electricity_consumption_markup_per_kwh"
+        self._num_prod   = base + "electricity_production_markup_per_kwh"
+        self._num_taxkwh = base + "electricity_tax_per_kwh"
+        self._num_taxpct = base + "tax_percentage"
+
         self._type = source_type
         self._attr_native_value: float | None = None
 
@@ -208,50 +236,51 @@ class HourlyCostSensor(DynamicEnergyEntity, SensorEntity):
             self._num_taxkwh,
             self._num_taxpct,
         ]
-        _LOGGER.debug("HourlyCostSensor %s subscribing to: %s", self.entity_id, deps)
-        async_track_state_change(self.hass, deps, self._on_state_change)
-        await self._recalculate()
+        _LOGGER.debug("%s subscribing to %s", self.entity_id, deps)
+        async_track_state_change_event(self.hass, deps, self._on_event)
+        await self._compute()
 
     @callback
-    async def _on_state_change(self, entity_id: str, old, new) -> None:
-        _LOGGER.debug(
-            "HourlyCostSensor %s triggered by %s: %r -> %r",
-            self.entity_id,
-            entity_id,
-            getattr(old, "state", None),
-            getattr(new, "state", None),
-        )
-        await self._recalculate()
+    async def _on_event(self, event: Any) -> None:
+        ent = event.data.get("entity_id")
+        old = event.data.get("old_state")
+        new = event.data.get("new_state")
+        _LOGGER.debug("%s triggered by %s: %r -> %r", self.entity_id, ent, old and old.state, new and new.state)
+        await self._compute()
 
-    async def _recalculate(self) -> None:
-        e = _read(self.hass, self._energy_entity)
-        p = _read(self.hass, self._price)
+    async def _compute(self) -> None:
+        """Compute cost differently for consumption vs production."""
+        e  = _read(self.hass, self._energy_entity)
+        p  = _read(self.hass, self._price)
         cm = _read(self.hass, self._num_cons)
         pm = _read(self.hass, self._num_prod)
         tk = _read(self.hass, self._num_taxkwh)
         tp = _read(self.hass, self._num_taxpct)
 
         _LOGGER.debug(
-            "HourlyCostSensor %s values: energy=%s price=%s cm=%s pm=%s tk=%s tp=%s",
+            "%s inputs: e=%s p=%s cm=%s pm=%s tk=%s tp=%s",
             self.entity_id, e, p, cm, pm, tk, tp,
         )
 
         if self._type == "consumption":
-            rate = p + cm + tk
+            # consumption: pay price + consumption_markup + tax, then apply tax_pct
+            rate   = p + cm + tk
             factor = 1 + tp / 100
+            cost   = e * rate * factor
         else:
-            rate = p - pm - tk
-            factor = max(1 - tp / 100, 0)
+            # production: receive price + (production_markup * tax_pct)
+            rate   = p
+            factor = 1 + tp / 100
+            cost   = - (e * rate + e * pm * factor)
 
-        new_cost = round(e * rate * factor, 5)
-        _LOGGER.debug("HourlyCostSensor %s new_cost=%s", self.entity_id, new_cost)
-
+        new_cost = round(cost, 5)
+        _LOGGER.info("%s computed new_cost=%s", self.entity_id, new_cost)
         self._attr_native_value = new_cost
         self.async_write_ha_state()
 
 
 class TotalCostSensor(DynamicEnergyEntity, RestoreEntity, SensorEntity):
-    """Cumulative total-cost sensor (never resets)."""
+    """Cumulative total-cost sensor (persists across restart)."""
 
     _attr_native_unit_of_measurement = "€"
     _attr_state_class = SensorStateClass.TOTAL
@@ -262,30 +291,37 @@ class TotalCostSensor(DynamicEnergyEntity, RestoreEntity, SensorEntity):
         entry: ConfigEntry,
         cost_entities: list[HourlyCostSensor],
     ) -> None:
-        entry_id = entry.entry_id
-        device_id = f"{entry_id}_general"
-        device_name = "Dynamic Energy Calculator General"
-        device_model = "General"
         key = "total_cost_cumulative"
         name = "Total Cost Cumulative"
+        device_id = "general"
+        device_name = "Dynamic Energy Calculator General"
+        device_model = "General"
 
+        _LOGGER.debug("Init TotalCostSensor: %s", name)
         super().__init__(hass, entry, key, name, device_id, device_name, device_model)
+
+        self.entity_id = f"sensor.{DOMAIN}_total_cost_cumulative"
         self._cost_entities = cost_entities
+        self._attr_native_value = None
 
     async def async_added_to_hass(self) -> None:
+        _LOGGER.debug("%s added; restoring state", self.entity_id)
         last = await self.async_get_last_state()
         if last and last.state not in ("unknown", None):
             try:
                 self._attr_native_value = float(last.state)
             except ValueError:
                 self._attr_native_value = 0.0
+        _LOGGER.debug("%s restored state=%s", self.entity_id, self._attr_native_value)
 
         ids = [ent.entity_id for ent in self._cost_entities]
-        async_track_state_change_event(self.hass, ids, self._recalculate)
-        await self._recalculate(None)
+        _LOGGER.debug("%s subscribing to %s", self.entity_id, ids)
+        async_track_state_change_event(self.hass, ids, self._recalc)
+        await self._recalc(None)
 
     @callback
-    async def _recalculate(self, event: Any) -> None:
-        total = sum(_read(self.hass, ent.entity_id) for ent in self._cost_entities)
+    async def _recalc(self, event: Any) -> None:
+        total = sum(_read(self.hass, e.entity_id) for e in self._cost_entities)
+        _LOGGER.info("%s new total=%s", self.entity_id, total)
         self._attr_native_value = round(total, 5)
         self.async_write_ha_state()

@@ -7,6 +7,10 @@ from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN, PLATFORMS
 
+import logging
+
+_LOGGER = logging.getLogger(__name__)
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the base integration (no YAML)."""
     hass.data.setdefault(DOMAIN, {})
