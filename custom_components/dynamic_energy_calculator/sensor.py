@@ -1,193 +1,291 @@
-"""
-Platform for Dynamic Energy Calculator sensors, including calculations using selected price sensor and number inputs.
-"""
+# custom_components/dynamic_energy_calculator/sensor.py
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.template import Template
-from homeassistant.components.template.template_entity import TemplateSensorEntity
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_state_change,
+    async_track_time_change,
+)
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import DOMAIN, CONF_SOURCES, CONF_SOURCE_TYPE, CONF_PRICE_SENSOR
+from .entity import DynamicEnergyEntity
+from .const import (
+    DOMAIN,
+    CONF_CONFIGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
+    CONF_PRICE_SENSOR,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _read(hass: HomeAssistant, entity_id: str) -> float:
+    """Read an entity’s state and convert to float, or return 0.0."""
+    st = hass.states.get(entity_id)
+    if st and st.state not in ("unknown", "unavailable", None):
+        try:
+            return float(st.state)
+        except ValueError:
+            _LOGGER.warning("Non-numeric state for %s: %s", entity_id, st.state)
+    return 0.0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Dynamic Energy sensors based on config entry."""
-    source_type = entry.data[CONF_SOURCE_TYPE]
-    sources = entry.data[CONF_SOURCES]
-    price_entity = entry.data[CONF_PRICE_SENSOR]
+    """Set up all per-source energy & cost sensors plus one total-cost sensor."""
+    configs = entry.data.get(CONF_CONFIGS, [])
     entities: list[SensorEntity] = []
-    entry_id = entry.entry_id
+    cost_entities: list[HourlyCostSensor] = []
 
-    # Create one sensor per selected source (kWh total_increasing)
-    for source_entity_id in sources:
-        entities.append(
-            DynamicEnergySensor(
-                entry_id=entry_id,
-                source_entity_id=source_entity_id,
-                source_type=source_type,
-            )
-        )
-        # Template cost sensor per source
-        domain, object_id = source_entity_id.split('.', 1)
-        obj_name = object_id.replace('_', ' ').title()
-        # Consumption: cost calculation
-        if source_type == "consumption":
-            state_tpl = (
-                f"{{% set m = states('{source_entity_id}') | float(0) %}}"
-                f"{{% set p = states('{price_entity}') | float(0) %}}"
-                f"{{% set mc = states('number.{DOMAIN}_electricity_consumption_markup_per_kwh') | float(0) %}}"
-                f"{{% set tp = states('number.{DOMAIN}_electricity_tax_per_kwh') | float(0) %}}"
-                f"{{% set pct = states('number.{DOMAIN}_tax_percentage') | float(0) %}}"
-                "{{ (m * (p + mc + tp) * (1 + pct/100)) | round(2) }}"
+    for block in configs:
+        source_type = block[CONF_SOURCE_TYPE]
+        sources = block[CONF_SOURCES]
+        price_sensor = block[CONF_PRICE_SENSOR]
+
+        for src in sources:
+            base_slug = src.split(".", 1)[1]
+            slug = f"{base_slug}_{source_type}"
+
+            entities.append(
+                IntegratedEnergySensor(hass, entry, src, source_type, slug)
             )
             entities.append(
-                TemplateSensor(
-                    hass,
-                    entry_id,
-                    name=f"{obj_name} Cost",
-                    unique_id=f"{entry_id}_{object_id}_cost",
-                    unit="€",
-                    state_template=state_tpl,
-                    depends_on=[
-                        source_entity_id,
-                        price_entity,
-                        f"number.{DOMAIN}_electricity_consumption_markup_per_kwh",
-                        f"number.{DOMAIN}_electricity_tax_per_kwh",
-                        f"number.{DOMAIN}_tax_percentage",
-                    ],
-                )
+                HourlyEnergySensor(hass, entry, src, source_type, slug)
             )
-        # Production: profit calculation
-        else:
-            state_tpl = (
-                f"{{% set m = states('{source_entity_id}') | float(0) %}}"
-                f"{{% set p = states('{price_entity}') | float(0) %}}"
-                f"{{% set mp = states('number.{DOMAIN}_electricity_production_markup_per_kwh') | float(0) %}}"
-                f"{{% set tp = states('number.{DOMAIN}_electricity_tax_per_kwh') | float(0) %}}"
-                f"{{% set pct = states('number.{DOMAIN}_tax_percentage') | float(0) %}}"
-                "{{ (m * (p - mp - tp) * (1 - pct/100)) | round(2) }}"
+            cost = HourlyCostSensor(
+                hass, entry, src, source_type, price_sensor, slug
             )
-            entities.append(
-                TemplateSensor(
-                    hass,
-                    entry_id,
-                    name=f"{obj_name} Profit",
-                    unique_id=f"{entry_id}_{object_id}_profit",
-                    unit="€",
-                    state_template=state_tpl,
-                    depends_on=[
-                        source_entity_id,
-                        price_entity,
-                        f"number.{DOMAIN}_electricity_production_markup_per_kwh",
-                        f"number.{DOMAIN}_electricity_tax_per_kwh",
-                        f"number.{DOMAIN}_tax_percentage",
-                    ],
-                )
-            )
+            entities.append(cost)
+            cost_entities.append(cost)
 
-    async_add_entities(entities, True)
+    entities.append(TotalCostSensor(hass, entry, cost_entities))
 
-class DynamicEnergySensor(SensorEntity):  # pylint: disable=too-many-instance-attributes
-    """Sensor representing a configured energy source."""
+    async_add_entities(entities)
 
-    _attr_state_class = "total_increasing"
+
+class IntegratedEnergySensor(DynamicEnergyEntity, SensorEntity):
+    """Cumulative kWh since setup (never resets)."""
+
     _attr_native_unit_of_measurement = "kWh"
-
-    def __init__(
-        self,
-        entry_id: str,
-        source_entity_id: str,
-        source_type: str,
-    ) -> None:
-        """Initialize the sensor."""
-        self._entry_id = entry_id
-        self._source_entity_id = source_entity_id
-        self._source_type = source_type
-
-        domain, object_id = source_entity_id.split('.', 1)
-        self._attr_unique_id = f"{entry_id}_{source_type}_{object_id}"
-        obj_name = object_id.replace('_', ' ').title()
-        self._attr_name = f"{source_type.title()} {obj_name}"
-        self._state: float | None = None
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current state (kWh) of the source sensor."""
-        return self._state
-
-    @callback
-    def _async_state_updated(self, event) -> None:
-        new_state = event.data.get('new_state')
-        if new_state and new_state.state not in (None, 'unknown', 'unavailable'):
-            try:
-                self._state = float(new_state.state)
-            except ValueError:
-                _LOGGER.warning(
-                    "Received non-numeric state for %s: %s",
-                    self._source_entity_id,
-                    new_state.state,
-                )
-                self._state = None
-        else:
-            self._state = None
-        self.async_write_ha_state()
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(
-            async_track_state_change_event(
-                self.hass,
-                [self._source_entity_id],
-                self._async_state_updated,
-            )
-        )
-
-class TemplateSensor(TemplateSensorEntity):
-    """Generic template sensor wrapper."""
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(
         self,
         hass: HomeAssistant,
-        entry_id: str,
-        name: str,
-        unique_id: str,
-        unit: str,
-        state_template: str,
-        depends_on: list[str],
+        entry: ConfigEntry,
+        source_entity_id: str,
+        source_type: str,
+        slug: str,
     ) -> None:
-        self._template = Template(state_template, hass)
-        self._attr_name = name
-        self._attr_unique_id = unique_id
-        self._attr_native_unit_of_measurement = unit
-        self._depends = depends_on
+        entry_id = entry.entry_id
+        device_id = f"{entry_id}_{slug}"
+        device_name = f"{slug.replace('_', ' ').title()} Source"
+        device_model = f"{source_type.title()} Source"
+        key = f"{slug}_total"
+        name = f"{slug.replace('_', ' ').title()} Total"
+
+        super().__init__(hass, entry, key, name, device_id, device_name, device_model)
+
+        self._source = source_entity_id
+        self._initial: float = 0.0
         self._attr_native_value: float | None = None
 
     async def async_added_to_hass(self) -> None:
-        for dep in self._depends:
-            self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass, [dep], self._update_from_template
-                )
-            )
-        await self._update_from_template(None)
+        self._initial = _read(self.hass, self._source)
+        async_track_state_change_event(
+            self.hass, [self._source], self._recalculate
+        )
+        await self._recalculate(None)
 
     @callback
-    async def _update_from_template(self, event) -> None:
-        try:
-            result = self._template.async_render()
-            self._attr_native_value = float(result)
-        except Exception as err:
-            _LOGGER.warning("Error rendering template for %s: %s", self.name, err)
-            self._attr_native_value = None
+    async def _recalculate(self, event: Any) -> None:
+        current = _read(self.hass, self._source)
+        self._attr_native_value = round(current - self._initial, 5)
+        self.async_write_ha_state()
+
+
+class HourlyEnergySensor(DynamicEnergyEntity, SensorEntity):
+    """kWh per hour (resets at each hour)."""
+
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        source_entity_id: str,
+        source_type: str,
+        slug: str,
+    ) -> None:
+        entry_id = entry.entry_id
+        device_id = f"{entry_id}_{slug}"
+        device_name = f"{slug.replace('_', ' ').title()} Source"
+        device_model = f"{source_type.title()} Source"
+        key = f"{slug}_hourly"
+        name = f"{slug.replace('_', ' ').title()} Hourly"
+
+        super().__init__(hass, entry, key, name, device_id, device_name, device_model)
+
+        self._source = source_entity_id
+        self._base: float = _read(self.hass, self._source)
+        self._attr_native_value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        async_track_state_change_event(
+            self.hass, [self._source], self._update_meter
+        )
+        async_track_time_change(
+            self.hass, self._reset_hour, minute=0, second=0
+        )
+        await self._update_meter(None)
+
+    @callback
+    async def _update_meter(self, event: Any) -> None:
+        current = _read(self.hass, self._source)
+        self._attr_native_value = round(current - self._base, 5)
+        self.async_write_ha_state()
+
+    @callback
+    async def _reset_hour(self, now: datetime) -> None:
+        self._base = _read(self.hass, self._source)
+        self._attr_native_value = 0.0
+        self.async_write_ha_state()
+
+
+class HourlyCostSensor(DynamicEnergyEntity, SensorEntity):
+    """€ cost accrued per hour, reacting to energy, price & input changes."""
+
+    _attr_native_unit_of_measurement = "€"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        source_entity_id: str,
+        source_type: str,
+        price_entity_id: str,
+        slug: str,
+    ) -> None:
+        entry_id = entry.entry_id
+        device_id = f"{entry_id}_{slug}"
+        device_name = f"{slug.replace('_', ' ').title()} Source"
+        device_model = f"{source_type.title()} Source"
+        key = f"{slug}_cost_hourly"
+        name = f"{slug.replace('_', ' ').title()} Cost Hourly"
+
+        super().__init__(hass, entry, key, name, device_id, device_name, device_model)
+
+        self._energy_entity = f"sensor.{DOMAIN}_{entry_id}_{slug}_hourly"
+        self._price = price_entity_id
+        self._num_cons = f"number.{DOMAIN}_{entry_id}_electricity_consumption_markup_per_kwh"
+        self._num_prod = f"number.{DOMAIN}_{entry_id}_electricity_production_markup_per_kwh"
+        self._num_taxkwh = f"number.{DOMAIN}_{entry_id}_electricity_tax_per_kwh"
+        self._num_taxpct = f"number.{DOMAIN}_{entry_id}_tax_percentage"
+        self._type = source_type
+        self._attr_native_value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        deps = [
+            self._energy_entity,
+            self._price,
+            self._num_cons,
+            self._num_prod,
+            self._num_taxkwh,
+            self._num_taxpct,
+        ]
+        _LOGGER.debug("HourlyCostSensor %s subscribing to: %s", self.entity_id, deps)
+        async_track_state_change(self.hass, deps, self._on_state_change)
+        await self._recalculate()
+
+    @callback
+    async def _on_state_change(self, entity_id: str, old, new) -> None:
+        _LOGGER.debug(
+            "HourlyCostSensor %s triggered by %s: %r -> %r",
+            self.entity_id,
+            entity_id,
+            getattr(old, "state", None),
+            getattr(new, "state", None),
+        )
+        await self._recalculate()
+
+    async def _recalculate(self) -> None:
+        e = _read(self.hass, self._energy_entity)
+        p = _read(self.hass, self._price)
+        cm = _read(self.hass, self._num_cons)
+        pm = _read(self.hass, self._num_prod)
+        tk = _read(self.hass, self._num_taxkwh)
+        tp = _read(self.hass, self._num_taxpct)
+
+        _LOGGER.debug(
+            "HourlyCostSensor %s values: energy=%s price=%s cm=%s pm=%s tk=%s tp=%s",
+            self.entity_id, e, p, cm, pm, tk, tp,
+        )
+
+        if self._type == "consumption":
+            rate = p + cm + tk
+            factor = 1 + tp / 100
+        else:
+            rate = p - pm - tk
+            factor = max(1 - tp / 100, 0)
+
+        new_cost = round(e * rate * factor, 5)
+        _LOGGER.debug("HourlyCostSensor %s new_cost=%s", self.entity_id, new_cost)
+
+        self._attr_native_value = new_cost
+        self.async_write_ha_state()
+
+
+class TotalCostSensor(DynamicEnergyEntity, RestoreEntity, SensorEntity):
+    """Cumulative total-cost sensor (never resets)."""
+
+    _attr_native_unit_of_measurement = "€"
+    _attr_state_class = SensorStateClass.TOTAL
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        cost_entities: list[HourlyCostSensor],
+    ) -> None:
+        entry_id = entry.entry_id
+        device_id = f"{entry_id}_general"
+        device_name = "Dynamic Energy Calculator General"
+        device_model = "General"
+        key = "total_cost_cumulative"
+        name = "Total Cost Cumulative"
+
+        super().__init__(hass, entry, key, name, device_id, device_name, device_model)
+        self._cost_entities = cost_entities
+
+    async def async_added_to_hass(self) -> None:
+        last = await self.async_get_last_state()
+        if last and last.state not in ("unknown", None):
+            try:
+                self._attr_native_value = float(last.state)
+            except ValueError:
+                self._attr_native_value = 0.0
+
+        ids = [ent.entity_id for ent in self._cost_entities]
+        async_track_state_change_event(self.hass, ids, self._recalculate)
+        await self._recalculate(None)
+
+    @callback
+    async def _recalculate(self, event: Any) -> None:
+        total = sum(_read(self.hass, ent.entity_id) for ent in self._cost_entities)
+        self._attr_native_value = round(total, 5)
         self.async_write_ha_state()
