@@ -1,0 +1,28 @@
+reset_all_meters:
+  name: Reset all meters
+  description: Reset alle dynamic energy meters naar 0.
+
+reset_selected_meters:
+  name: Reset geselecteerde meters
+  description: Reset alleen de opgegeven entity_ids naar 0.
+  fields:
+    entity_ids:
+      name: Entity IDs
+      description: Lijst van sensor entity_ids om te resetten.
+      required: true
+      example: ["sensor.dynamic_energy_calculator_kwh_total"]
+
+set_meter_value:
+  name: Zet meterwaarde
+  description: Zet de waarde van één meter handmatig.
+  fields:
+    entity_id:
+      name: Entity ID
+      description: De entity_id van de sensor.
+      required: true
+      example: "sensor.dynamic_energy_calculator_kwh_total"
+    value:
+      name: Waarde
+      description: De nieuwe waarde voor de sensor.
+      required: true
+      example: 123.45
