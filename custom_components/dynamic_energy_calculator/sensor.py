@@ -17,17 +17,82 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+SENSOR_MODES = [
+    {
+        "key": "kwh_total",
+        "name": "Total kWh",
+        "unit": UnitOfEnergy.KILO_WATT_HOUR,
+        "icon": "mdi:counter",
+        "visible": True,
+    },
+    {
+        "key": "kwh_hourly",
+        "name": "Hourly kWh",
+        "unit": UnitOfEnergy.KILO_WATT_HOUR,
+        "icon": "mdi:clock-outline",
+        "visible": False,
+    },
+    {
+        "key": "cost_total",
+        "name": "Total Cost",
+        "unit": "€",
+        "icon": "mdi:cash",
+        "visible": True,
+    },
+    {
+        "key": "cost_hourly",
+        "name": "Hourly Cost",
+        "unit": "€",
+        "icon": "mdi:cash-clock",
+        "visible": False,
+    },
+    {
+        "key": "profit_total",
+        "name": "Total Profit",
+        "unit": "€",
+        "icon": "mdi:cash-plus",
+        "visible": True,
+    },
+    {
+        "key": "profit_hourly",
+        "name": "Hourly Profit",
+        "unit": "€",
+        "icon": "mdi:clock-plus-outline",
+        "visible": False,
+    },
+    {
+        "key": "kwh_during_cost_total",
+        "name": "kWh During Cost",
+        "unit": UnitOfEnergy.KILO_WATT_HOUR,
+        "icon": "mdi:transmission-tower-export",
+        "visible": True,
+    },
+    {
+        "key": "kwh_during_profit_total",
+        "name": "kWh During Profit",
+        "unit": UnitOfEnergy.KILO_WATT_HOUR,
+        "icon": "mdi:transmission-tower-import",
+        "visible": True,
+    },
+]
+
 UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 
 class BaseUtilitySensor(SensorEntity, RestoreEntity):
-    def __init__(self, name: str, unique_id: str, unit: str = UnitOfEnergy.KILO_WATT_HOUR, device: DeviceInfo | None = None):
+    def __init__(self, name: str, unique_id: str, unit: str, icon: str, visible: bool, device: DeviceInfo | None = None):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = "energy"
         self._attr_state_class = "total"
         self._attr_native_value = 0.0
+        self._attr_icon = icon
+        self._attr_entity_registry_enabled_default = visible
         self._attr_device_info = device
+
+    @property
+    def native_value(self) -> float:
+        return round(self._attr_native_value, 5)
 
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
@@ -42,7 +107,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
 
     def set_value(self, value: float):
-        self._attr_native_value = round(value, 3)
+        self._attr_native_value = round(value, 5)
         self.async_write_ha_state()
 
 
@@ -55,9 +120,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         energy_sensor: str,
         price_sensor: str | None = None,
         mode: str = "kwh_total",
+        unit: str = UnitOfEnergy.KILO_WATT_HOUR,
+        icon: str = "mdi:flash",
+        visible: bool = True,
         device: DeviceInfo | None = None,
     ):
-        super().__init__(name, unique_id, device=device)
+        super().__init__(name, unique_id, unit=unit, icon=icon, visible=visible, device=device)
         self.hass = hass
         self.energy_sensor = energy_sensor
         self.price_sensor = price_sensor
@@ -120,6 +188,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             elif self.mode == "kwh_during_cost_total" and price >= 0:
                 self._attr_native_value += delta
 
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -143,28 +212,24 @@ async def async_setup_entry(
                 model=source_type,
             )
 
-            for mode in [
-                "kwh_total",
-                "kwh_hourly",
-                "cost_total",
-                "cost_hourly",
-                "profit_total",
-                "profit_hourly",
-                "kwh_during_cost_total",
-                "kwh_during_profit_total",
-            ]:
-                name = f"{base_id}_{mode}"
+            for mode_def in SENSOR_MODES:
+                mode = mode_def["key"]
+                name = mode_def["name"]
                 uid = f"{DOMAIN}_{base_id}_{mode}"
-                sensor_entity = DynamicEnergySensor(
-                    hass,
-                    name,
-                    uid,
-                    energy_sensor=sensor,
-                    price_sensor=price_sensor,
-                    mode=mode,
-                    device=device_info,
+                entities.append(
+                    DynamicEnergySensor(
+                        hass=hass,
+                        name=name,
+                        unique_id=uid,
+                        energy_sensor=sensor,
+                        price_sensor=price_sensor,
+                        mode=mode,
+                        unit=mode_def["unit"],
+                        icon=mode_def["icon"],
+                        visible=mode_def["visible"],
+                        device=device_info,
+                    )
                 )
-                entities.append(sensor_entity)
 
     UTILITY_ENTITIES.extend(entities)
     async_add_entities(entities, True)

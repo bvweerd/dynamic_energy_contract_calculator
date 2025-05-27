@@ -1,16 +1,12 @@
-# custom_components/dynamic_energy_calculator/number.py
-
-from __future__ import annotations
-
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.components.number import NumberEntity, RestoreNumber
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.entity import EntityCategory
 
-from .entity import DynamicEnergyEntity
+from .const import DOMAIN
 
-# Four settings with logical defaults
 NUMBER_SETTINGS = [
     {
         "key": "electricity_consumption_markup_per_kwh",
@@ -54,91 +50,49 @@ NUMBER_SETTINGS = [
     },
 ]
 
+from homeassistant.helpers.entity import DeviceInfo
+
+class DynamicNumber(NumberEntity, RestoreEntity):
+    def __init__(self, setting: dict):
+        device_info = DeviceInfo(
+            identifiers={(DOMAIN, "config")},
+            name="Dynamic Energy Configuration",
+            entry_type="service",
+            manufacturer="DynamicEnergyCalc",
+            model="configuration",
+        )
+        self._attr_name = setting["name"]
+        self._attr_unique_id = f"{DOMAIN}_{setting['key']}"
+        self._attr_native_unit_of_measurement = setting["unit"]
+        self._attr_mode = setting["mode"]
+        self._attr_min_value = setting["min"]
+        self._attr_max_value = setting["max"]
+        self._attr_step = setting["step"]
+        self._attr_entity_category = EntityCategory.CONFIG
+        self._attr_native_value = setting["default"]
+        self._attr_device_info = device_info
+        self._key = setting["key"]
+
+    async def async_added_to_hass(self):
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in ("unknown", "unavailable"):
+            try:
+                self._attr_native_value = float(last_state.state)
+            except ValueError:
+                pass
+
+    @property
+    def native_value(self) -> float:
+        return round(self._attr_native_value, 5)
+
+    async def async_set_native_value(self, value: float) -> None:
+        self._attr_native_value = value
+        self.async_write_ha_state()
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up one RestoreNumber per setting under the single “general” device."""
-    entities: list[NumberEntity] = []
-
-    for setting in NUMBER_SETTINGS:
-        key = setting["key"]
-        name = setting["name"]
-        min_v = setting["min"]
-        max_v = setting["max"]
-        step = setting["step"]
-        unit = setting["unit"]
-        mode = setting["mode"]
-        default = setting["default"]
-
-        entities.append(
-            DynamicEnergyRestoreNumber(
-                hass,
-                entry,
-                key,
-                name,
-                f"{entry.entry_id}_general",
-                "Dynamic Energy Calculator General",
-                "Settings",
-                min_v,
-                max_v,
-                step,
-                unit,
-                mode,
-                default,
-            )
-        )
-
-    async_add_entities(entities, update_before_add=True)
-
-
-class DynamicEnergyRestoreNumber(DynamicEnergyEntity, RestoreNumber, NumberEntity):
-    """Number inputs (markups/taxes) grouped under “General” device."""
-
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        setting_id: str,
-        name: str,
-        device_id: str,
-        device_name: str,
-        device_model: str,
-        min_value: float,
-        max_value: float,
-        step: float,
-        unit: str,
-        mode: str,
-        default_value: float,
-    ) -> None:
-        super().__init__(
-            hass, entry, setting_id, name, device_id, device_name, device_model
-        )
-
-        # NumberEntity configuration
-        self._attr_native_min_value = min_value
-        self._attr_native_max_value = max_value
-        self._attr_native_step = step
-        self._attr_native_unit_of_measurement = unit
-        self._attr_mode = mode
-
-        # Show default immediately
-        self._default = default_value
-        self._attr_native_value = default_value
-
-    async def async_added_to_hass(self) -> None:
-        """Restore last saved value, or keep the default."""
-        await super().async_added_to_hass()  # runs RestoreNumber logic
-        last = await self.async_get_last_number_data()
-        if last and last.native_value is not None:
-            self._attr_native_value = last.native_value
-
-    @callback
-    async def async_set_native_value(self, value: float) -> None:
-        """Save new user-set value."""
-        self._attr_native_value = value
-        self.async_write_ha_state()
+    entities = [DynamicNumber(setting) for setting in NUMBER_SETTINGS]
+    async_add_entities(entities, True)
