@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, RestoreSensor
-from homeassistant.const import ENERGY_KILO_WATT_HOUR
-from homeassistant.core import HomeAssistant
+from homeassistant.components.sensor import SensorEntity, RestoreEntity
+from homeassistant.const import UnitOfEnergy
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR
 
@@ -15,8 +16,10 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-class BaseUtilitySensor(SensorEntity, RestoreSensor):
-    def __init__(self, name: str, unique_id: str, unit: str = ENERGY_KILO_WATT_HOUR):
+UTILITY_ENTITIES: list[BaseUtilitySensor] = []
+
+class BaseUtilitySensor(SensorEntity, RestoreEntity):
+    def __init__(self, name: str, unique_id: str, unit: str = UnitOfEnergy.KILO_WATT_HOUR):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
@@ -25,9 +28,12 @@ class BaseUtilitySensor(SensorEntity, RestoreSensor):
         self._attr_native_value = 0.0
 
     async def async_added_to_hass(self):
-        last_state = await self.async_get_last_sensor_data()
-        if last_state is not None:
-            self._attr_native_value = last_state.native_value or 0.0
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in ("unknown", "unavailable"):
+            try:
+                self._attr_native_value = float(last_state.state)
+            except ValueError:
+                self._attr_native_value = 0.0
 
     def reset(self):
         self._attr_native_value = 0.0
@@ -124,7 +130,7 @@ async def async_setup_platform(
         return
 
     configs = entry.data.get(CONF_CONFIGS, [])
-    entities = []
+    entities: list[BaseUtilitySensor] = []
 
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
@@ -146,18 +152,50 @@ async def async_setup_platform(
             ]:
                 name = f"{base_id}_{mode}"
                 uid = f"{DOMAIN}_{base_id}_{mode}"
-                entities.append(
-                    DynamicEnergySensor(
-                        hass,
-                        name,
-                        uid,
-                        energy_sensor=sensor,
-                        price_sensor=price_sensor,
-                        mode=mode,
-                    )
+                sensor_entity = DynamicEnergySensor(
+                    hass,
+                    name,
+                    uid,
+                    energy_sensor=sensor,
+                    price_sensor=price_sensor,
+                    mode=mode,
                 )
+                entities.append(sensor_entity)
 
+    UTILITY_ENTITIES.extend(entities)
     async_add_entities(entities, True)
+
+    # Register services
+    async def handle_reset_all(call: ServiceCall):
+        for ent in UTILITY_ENTITIES:
+            ent.reset()
+
+    async def handle_reset_selected(call: ServiceCall):
+        ids = call.data.get("entity_ids", [])
+        for ent in UTILITY_ENTITIES:
+            if ent.entity_id in ids:
+                ent.reset()
+
+    async def handle_set_value(call: ServiceCall):
+        entity_id = call.data.get("entity_id")
+        value = call.data.get("value", 0.0)
+        for ent in UTILITY_ENTITIES:
+            if ent.entity_id == entity_id:
+                ent.set_value(value)
+
+    hass.services.async_register(DOMAIN, "reset_all_meters", handle_reset_all)
+    hass.services.async_register(DOMAIN, "reset_selected_meters", handle_reset_selected)
+    hass.services.async_register(DOMAIN, "set_meter_value", handle_set_value)
 
     # Register the entry so sensors can access config
     hass.data[DOMAIN]["entities"] = entities
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback
+) -> None:
+    """Set up sensor entities from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN]["config_entry"] = entry
+    await async_setup_platform(hass, {}, async_add_entities, None)
