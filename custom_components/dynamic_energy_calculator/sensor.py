@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR
 
@@ -19,13 +20,14 @@ _LOGGER = logging.getLogger(__name__)
 UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 
 class BaseUtilitySensor(SensorEntity, RestoreEntity):
-    def __init__(self, name: str, unique_id: str, unit: str = UnitOfEnergy.KILO_WATT_HOUR):
+    def __init__(self, name: str, unique_id: str, unit: str = UnitOfEnergy.KILO_WATT_HOUR, device: DeviceInfo | None = None):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = "energy"
         self._attr_state_class = "total"
         self._attr_native_value = 0.0
+        self._attr_device_info = device
 
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
@@ -52,9 +54,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
         unique_id: str,
         energy_sensor: str,
         price_sensor: str | None = None,
-        mode: str = "kwh_total"
+        mode: str = "kwh_total",
+        device: DeviceInfo | None = None,
     ):
-        super().__init__(name, unique_id)
+        super().__init__(name, unique_id, device=device)
         self.hass = hass
         self.energy_sensor = energy_sensor
         self.price_sensor = price_sensor
@@ -117,18 +120,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
             elif self.mode == "kwh_during_cost_total" and price >= 0:
                 self._attr_native_value += delta
 
-
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback
 ) -> None:
-    entry = hass.data[DOMAIN].get("config_entry")
-    if entry is None:
-        _LOGGER.warning("No config entry found for dynamic_energy_calculator")
-        return
-
     configs = entry.data.get(CONF_CONFIGS, [])
     entities: list[BaseUtilitySensor] = []
 
@@ -139,6 +135,13 @@ async def async_setup_platform(
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
+            device_info = DeviceInfo(
+                identifiers={(DOMAIN, base_id)},
+                name=f"Dynamic Energy Meter: {sensor}",
+                entry_type="service",
+                manufacturer="DynamicEnergyCalc",
+                model=source_type,
+            )
 
             for mode in [
                 "kwh_total",
@@ -159,13 +162,13 @@ async def async_setup_platform(
                     energy_sensor=sensor,
                     price_sensor=price_sensor,
                     mode=mode,
+                    device=device_info,
                 )
                 entities.append(sensor_entity)
 
     UTILITY_ENTITIES.extend(entities)
     async_add_entities(entities, True)
 
-    # Register services
     async def handle_reset_all(call: ServiceCall):
         for ent in UTILITY_ENTITIES:
             ent.reset()
@@ -187,15 +190,4 @@ async def async_setup_platform(
     hass.services.async_register(DOMAIN, "reset_selected_meters", handle_reset_selected)
     hass.services.async_register(DOMAIN, "set_meter_value", handle_set_value)
 
-    # Register the entry so sensors can access config
     hass.data[DOMAIN]["entities"] = entities
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback
-) -> None:
-    """Set up sensor entities from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["config_entry"] = entry
-    await async_setup_platform(hass, {}, async_add_entities, None)
