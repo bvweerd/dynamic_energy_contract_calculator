@@ -11,7 +11,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR
+from .const import DOMAIN, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR, SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION
 
 import logging
 
@@ -120,6 +120,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         energy_sensor: str,
         price_sensor: str | None = None,
         mode: str = "kwh_total",
+        source_type: str,
         unit: str = UnitOfEnergy.KILO_WATT_HOUR,
         icon: str = "mdi:flash",
         visible: bool = True,
@@ -130,10 +131,22 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.energy_sensor = energy_sensor
         self.price_sensor = price_sensor
         self.mode = mode
+        self.source_type = source_type
         self._last_energy = None
         self._last_updated = datetime.now()
 
+    def _get_number(self, key: str) -> float:
+        """Helper for reading number-entity."""
+        entity_id = f"number.{key}"
+        state = self.hass.states.get(entity_id)
+        return float(state.state) if state and state.state not in (None, "unknown") else 0.0
+
     async def async_update(self):
+        markup_cons  = self._get_number("electricity_consumption_markup_per_kwh")
+        markup_inj   = self._get_number("electricity_production_markup_per_kwh")
+        tax_kwh      = self._get_number("electricity_tax_per_kwh")
+        vat_factor   = self._get_number("tax_percentage") / 100.0 + 1.0
+
         energy_state = self.hass.states.get(self.energy_sensor)
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
             return
@@ -157,6 +170,32 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 self._last_updated = datetime.now()
             self._attr_native_value += delta
 
+        """
+        Variabelen
+
+            S = spot-marktprijs (€/kWh)
+
+            F₍cons₎ = vaste fee-component voor consumptie (€/kWh)
+
+            F₍inj₎ = vaste fee-component voor injectie (€/kWh)
+
+            E = energiebelasting (€/kWh)
+
+            M₍inj₎ = injectiemarkup (€/kWh)
+
+            V = BTW-factor = 1 + (BTW% / 100) (bv. 1,21 voor 21 %)
+
+        Algemene formules
+
+            Prijs voor consumptie (afname)
+            Pcons  =  (S  +  F(cons)  +  E)  ×  V
+            Pcons​=(S+F(cons)​+E)×V
+
+            Prijs voor injectie (teruglevering)
+            Pinj  =  (S  +  F(inj)  +  M(inj))  ×  V
+            Pinj​=(S+F(inj)​+M(inj)​)×V        
+        """
+        
         elif self.price_sensor:
             price_state = self.hass.states.get(self.price_sensor)
             if price_state is None or price_state.state in ("unknown", "unavailable"):
@@ -166,6 +205,18 @@ class DynamicEnergySensor(BaseUtilitySensor):
             except ValueError:
                 return
 
+            # consumption meter
+            if self._source_type == SOURCE_TYPE_CONSUMPTION:
+                adjusted_price_cons = (price + markup_cons + tax_kwh) * vat_factor
+                price = delta * adjusted_price_cons
+            elif self._source_type == SOURCE_TYPE_PRODUCTION:
+                # production meter
+                adjusted_price_inj = (price + markup_inj + tax_kwh) * vat_factor
+                price = delta * adjusted_price_inj
+            else:
+                _LOGGER.error("Unknown source_type: %s", self._source_type)
+                return
+                
             value = delta * price
 
             if self.mode == "cost_total" or self.mode == "cost_hourly":
@@ -224,6 +275,7 @@ async def async_setup_entry(
                         energy_sensor=sensor,
                         price_sensor=price_sensor,
                         mode=mode,
+                        source_type=source_type,
                         unit=mode_def["unit"],
                         icon=mode_def["icon"],
                         visible=mode_def["visible"],
