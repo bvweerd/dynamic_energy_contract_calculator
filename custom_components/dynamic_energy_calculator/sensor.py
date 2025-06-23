@@ -118,9 +118,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
         name: str,
         unique_id: str,
         energy_sensor: str,
+        source_type: str,
         price_sensor: str | None = None,
         mode: str = "kwh_total",
-        source_type: str,
         unit: str = UnitOfEnergy.KILO_WATT_HOUR,
         icon: str = "mdi:flash",
         visible: bool = True,
@@ -169,33 +169,6 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 self._attr_native_value = 0.0
                 self._last_updated = datetime.now()
             self._attr_native_value += delta
-
-        """
-        Variabelen
-
-            S = spot-marktprijs (€/kWh)
-
-            F₍cons₎ = vaste fee-component voor consumptie (€/kWh)
-
-            F₍inj₎ = vaste fee-component voor injectie (€/kWh)
-
-            E = energiebelasting (€/kWh)
-
-            M₍inj₎ = injectiemarkup (€/kWh)
-
-            V = BTW-factor = 1 + (BTW% / 100) (bv. 1,21 voor 21 %)
-
-        Algemene formules
-
-            Prijs voor consumptie (afname)
-            Pcons  =  (S  +  F(cons)  +  E)  ×  V
-            Pcons​=(S+F(cons)​+E)×V
-
-            Prijs voor injectie (teruglevering)
-            Pinj  =  (S  +  F(inj)  +  M(inj))  ×  V
-            Pinj​=(S+F(inj)​+M(inj)​)×V        
-        """
-        
         elif self.price_sensor:
             price_state = self.hass.states.get(self.price_sensor)
             if price_state is None or price_state.state in ("unknown", "unavailable"):
@@ -206,28 +179,26 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 return
 
             # consumption meter
-            if self._source_type == SOURCE_TYPE_CONSUMPTION:
+            if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 adjusted_price_cons = (price + markup_cons + tax_kwh) * vat_factor
                 price = delta * adjusted_price_cons
-            elif self._source_type == SOURCE_TYPE_PRODUCTION:
-                # production meter
-                adjusted_price_inj = (price + markup_inj + tax_kwh) * vat_factor
+            # production meter
+            elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                adjusted_price_inj = ((price + markup_inj) * vat_factor) * -1
                 price = delta * adjusted_price_inj
             else:
-                _LOGGER.error("Unknown source_type: %s", self._source_type)
+                _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
-                
+
             value = delta * price
 
-            if self.mode == "cost_total" or self.mode == "cost_hourly":
+            if (self.mode == "cost_total" or self.mode == "cost_hourly") and price >= 0:
                 if self.mode == "cost_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
                     self._attr_native_value = 0.0
                     self._last_updated = datetime.now()
                 self._attr_native_value += value
 
-            elif self.mode == "profit_total" or self.mode == "profit_hourly":
-                if price >= 0:
-                    return
+            elif (self.mode == "profit_total" or self.mode == "profit_hourly") and price < 0:
                 if self.mode == "profit_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
                     self._attr_native_value = 0.0
                     self._last_updated = datetime.now()
