@@ -4,6 +4,7 @@ Constants for the Dynamic Energy Calculator integration.
 
 # Domain of the integration
 DOMAIN = "dynamic_energy_calculator"
+DOMAIN_ABBREVIATION = "DEC"
 
 PLATFORMS = ["sensor", "number"]
 
