@@ -14,13 +14,13 @@ CONF_SOURCES = "sources"
 CONF_PRICE_SENSOR = "price_sensor"
 
 # Possible source types
-SOURCE_TYPE_CONSUMPTION = "consumption"
-SOURCE_TYPE_PRODUCTION = "production"
+SOURCE_TYPE_CONSUMPTION = "Electricity consumption"
+SOURCE_TYPE_PRODUCTION = "Electricity production"
 
 # allowed values for source_type
 SOURCE_TYPES = [
-    "consumption",
-    "production",
+    "Electricity consumption",
+    "Electricity production",
 ]
 
 CONF_CONFIGS = "configurations"

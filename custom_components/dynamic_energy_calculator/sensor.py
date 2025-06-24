@@ -27,14 +27,14 @@ SENSOR_MODES = [
         "icon": "mdi:counter",
         "visible": True,
     },
-    {
-        "key": "kwh_hourly",
-        "name": "Hourly kWh",
-        "unit": UnitOfEnergy.KILO_WATT_HOUR,
-        "device_class": "energy",
-        "icon": "mdi:clock-outline",
-        "visible": False,
-    },
+#    {
+#        "key": "kwh_hourly",
+#        "name": "Hourly kWh",
+#        "unit": UnitOfEnergy.KILO_WATT_HOUR,
+#        "device_class": "energy",
+#        "icon": "mdi:clock-outline",
+#        "visible": False,
+#    },
     {
         "key": "cost_total",
         "name": "Total Cost",
@@ -43,14 +43,14 @@ SENSOR_MODES = [
         "icon": "mdi:cash",
         "visible": True,
     },
-    {
-        "key": "cost_hourly",
-        "name": "Hourly Cost",
-        "unit": "€",
-        "device_class": None,
-        "icon": "mdi:cash-clock",
-        "visible": False,
-    },
+#    {
+#        "key": "cost_hourly",
+#        "name": "Hourly Cost",
+#        "unit": "€",
+#        "device_class": None,
+#        "icon": "mdi:cash-clock",
+#        "visible": False,
+#    },
     {
         "key": "profit_total",
         "name": "Total Profit",
@@ -59,14 +59,14 @@ SENSOR_MODES = [
         "icon": "mdi:cash-plus",
         "visible": True,
     },
-    {
-        "key": "profit_hourly",
-        "name": "Hourly Profit",
-        "unit": "€",
-        "device_class": None,
-        "icon": "mdi:clock-plus-outline",
-        "visible": False,
-    },
+#    {
+#        "key": "profit_hourly",
+#        "name": "Hourly Profit",
+#        "unit": "€",
+#        "device_class": None,
+#        "icon": "mdi:clock-plus-outline",
+#        "visible": False,
+#    },
     {
         "key": "kwh_during_cost_total",
         "name": "kWh During Cost",
@@ -192,34 +192,36 @@ class DynamicEnergySensor(BaseUtilitySensor):
             # consumption meter
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 adjusted_price_cons = (price + markup_consumption + tax_kwh) * vat_factor
-                price = delta * adjusted_price_cons
+                price = adjusted_price_cons
             # production meter
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 adjusted_price_inj = (price + markup_production) * vat_factor
-                price = delta * adjusted_price_inj
+                price = adjusted_price_inj
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
 
             value = delta * price
-
-            if (self.mode == "cost_total" or self.mode == "cost_hourly") and price >= 0:
+            _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value) 
+            
+            if (self.mode == "cost_total" or self.mode == "cost_hourly") and value >= 0:
                 if self.mode == "cost_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
                     self._attr_native_value = 0.0
                     self._last_updated = datetime.now()
                 self._attr_native_value += value
 
-            elif (self.mode == "profit_total" or self.mode == "profit_hourly") and price < 0:
+            elif (self.mode == "profit_total" or self.mode == "profit_hourly") and value < 0:
                 if self.mode == "profit_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
                     self._attr_native_value = 0.0
                     self._last_updated = datetime.now()
                 self._attr_native_value += abs(value)
 
-            elif self.mode == "kwh_during_profit_total" and price < 0:
+            elif self.mode == "kwh_during_cost_total" and value >= 0:
+                self._attr_native_value += delta
+            
+            elif self.mode == "kwh_during_profit_total" and value < 0:
                 self._attr_native_value += delta
 
-            elif self.mode == "kwh_during_cost_total" and price >= 0:
-                self._attr_native_value += delta
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -381,7 +383,7 @@ async def async_setup_entry(
 
     UTILITY_ENTITIES.extend(entities)
 
-    # Daily cost sensor op basis van vaste kosten
+    # Daily cost sensor
     base_id = "daily_electricity_cost"
     unique_id = f"{DOMAIN}_{base_id}"
     device_info = DeviceInfo(
