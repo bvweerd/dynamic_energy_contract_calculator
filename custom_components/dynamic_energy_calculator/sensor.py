@@ -8,11 +8,11 @@ from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, DOMAIN_ABBREVIATION, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR, SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION
+from .const import DOMAIN, DOMAIN_ABBREVIATION, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR, CONF_PRICE_SETTINGS, SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION
 
 import logging
 
@@ -27,14 +27,6 @@ SENSOR_MODES = [
         "icon": "mdi:counter",
         "visible": True,
     },
-#    {
-#        "key": "kwh_hourly",
-#        "name": "Hourly kWh",
-#        "unit": UnitOfEnergy.KILO_WATT_HOUR,
-#        "device_class": "energy",
-#        "icon": "mdi:clock-outline",
-#        "visible": False,
-#    },
     {
         "key": "cost_total",
         "name": "Total Cost",
@@ -43,14 +35,6 @@ SENSOR_MODES = [
         "icon": "mdi:cash",
         "visible": True,
     },
-#    {
-#        "key": "cost_hourly",
-#        "name": "Hourly Cost",
-#        "unit": "€",
-#        "device_class": None,
-#        "icon": "mdi:cash-clock",
-#        "visible": False,
-#    },
     {
         "key": "profit_total",
         "name": "Total Profit",
@@ -59,14 +43,6 @@ SENSOR_MODES = [
         "icon": "mdi:cash-plus",
         "visible": True,
     },
-#    {
-#        "key": "profit_hourly",
-#        "name": "Hourly Profit",
-#        "unit": "€",
-#        "device_class": None,
-#        "icon": "mdi:clock-plus-outline",
-#        "visible": False,
-#    },
     {
         "key": "kwh_during_cost_total",
         "name": "kWh During Cost",
@@ -101,7 +77,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     @property
     def native_value(self) -> float:
-        return round(self._attr_native_value, 5)
+        return round(self._attr_native_value, 8)
 
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
@@ -116,7 +92,55 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self.async_write_ha_state()
 
     def set_value(self, value: float):
-        self._attr_native_value = round(value, 5)
+        self._attr_native_value = round(value, 8)
+        self.async_write_ha_state()
+
+
+class TotalCostSensor(BaseUtilitySensor):
+    def __init__(self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:scale-balance",
+            visible=True,
+            device=device,
+        )
+        self.hass = hass
+
+    async def async_update(self):
+        cost_total = 0.0
+        profit_total = 0.0
+
+        for entity in UTILITY_ENTITIES:
+            if isinstance(entity, DynamicEnergySensor):
+                if entity.mode == "cost_total":
+                    try:
+                        cost_total += float(entity.native_value or 0.0)
+                    except ValueError:
+                        continue
+                elif entity.mode == "profit_total":
+                    try:
+                        profit_total += float(entity.native_value or 0.0)
+                    except ValueError:
+                        continue
+
+        self._attr_native_value = round(cost_total - profit_total, 8)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        for entity in UTILITY_ENTITIES:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    entity.entity_id,
+                    self._handle_input_event,
+                )
+            )
+
+    async def _handle_input_event(self, event):
+        await self.async_update()
         self.async_write_ha_state()
 
 
@@ -128,6 +152,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         unique_id: str,
         energy_sensor: str,
         source_type: str,
+        price_settings: dict[str, float],
         price_sensor: str | None = None,
         mode: str = "kwh_total",
         unit: str = UnitOfEnergy.KILO_WATT_HOUR,
@@ -143,20 +168,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.price_sensor = price_sensor
         self.mode = mode
         self.source_type = source_type
+        self.price_settings = price_settings
         self._last_energy = None
         self._last_updated = datetime.now()
 
-    def _get_number(self, key: str) -> float:
-        """Helper for reading number-entity."""
-        entity_id = f"number.{key}"
-        state = self.hass.states.get(entity_id)
-        return float(state.state) if state and state.state not in (None, "unknown") else 0.0
-
     async def async_update(self):
-        markup_consumption  = self._get_number("electricity_consumption_markup_per_kwh")
-        markup_production   = self._get_number("electricity_production_markup_per_kwh")
-        tax_kwh      = self._get_number("electricity_surcharge_per_kwh")
-        vat_factor   = self._get_number("vat_percentage") / 100.0 + 1.0
+        markup_consumption  = self.price_settings.get("electricity_consumption_markup_per_kwh", 0.0)
+        markup_production   = self.price_settings.get("electricity_production_markup_per_kwh", 0.0)
+        tax_kwh             = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+        vat_factor          = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
         energy_state = self.hass.states.get(self.energy_sensor)
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
@@ -175,10 +195,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         self._last_energy = current_energy
 
-        if self.mode in ("kwh_total", "kwh_hourly"):
-            if self.mode == "kwh_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
-                self._attr_native_value = 0.0
-                self._last_updated = datetime.now()
+        if self.mode == "kwh_total":
             self._attr_native_value += delta
         elif self.price_sensor:
             price_state = self.hass.states.get(self.price_sensor)
@@ -189,39 +206,25 @@ class DynamicEnergySensor(BaseUtilitySensor):
             except ValueError:
                 return
 
-            # consumption meter
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
-                adjusted_price_cons = (price + markup_consumption + tax_kwh) * vat_factor
-                price = adjusted_price_cons
-            # production meter
+                price = (price + markup_consumption + tax_kwh) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                adjusted_price_inj = (price + markup_production) * vat_factor
-                price = adjusted_price_inj
+                price = (price + markup_production) * vat_factor
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
 
             value = delta * price
-            _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value) 
-            
-            if (self.mode == "cost_total" or self.mode == "cost_hourly") and value >= 0:
-                if self.mode == "cost_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
-                    self._attr_native_value = 0.0
-                    self._last_updated = datetime.now()
+            _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value)
+
+            if self.mode == "cost_total" and value >= 0:
                 self._attr_native_value += value
-
-            elif (self.mode == "profit_total" or self.mode == "profit_hourly") and value < 0:
-                if self.mode == "profit_hourly" and datetime.now() - self._last_updated >= timedelta(hours=1):
-                    self._attr_native_value = 0.0
-                    self._last_updated = datetime.now()
+            elif self.mode == "profit_total" and value < 0:
                 self._attr_native_value += abs(value)
-
             elif self.mode == "kwh_during_cost_total" and value >= 0:
                 self._attr_native_value += delta
-            
             elif self.mode == "kwh_during_profit_total" and value < 0:
                 self._attr_native_value += delta
-
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -236,17 +239,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
             )
 
     async def _handle_input_event(self, event):
-        entity_id = event.data.get("entity_id")
         new_state = event.data.get("new_state")
-
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             return
-
         await self.async_update()
         self.async_write_ha_state()
 
-from homeassistant.helpers.event import async_track_time_change
-from datetime import time
 
 class DailyElectricityCostSensor(BaseUtilitySensor):
     def __init__(
@@ -254,10 +252,7 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         hass: HomeAssistant,
         name: str,
         unique_id: str,
-        vat_entity: str,
-        surcharge_entity: str,
-        standing_entity: str,
-        rebate_entity: str,
+        price_settings: dict[str, float],
         device: DeviceInfo,
     ):
         super().__init__(
@@ -270,51 +265,23 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             device=device,
         )
         self.hass = hass
-        self.input_sensors = [
-            vat_entity,
-            surcharge_entity,
-            standing_entity,
-            rebate_entity,
-        ]
-        self.vat_entity = vat_entity
-        self.surcharge_entity = surcharge_entity
-        self.standing_entity = standing_entity
-        self.rebate_entity = rebate_entity
-
-    def _get_number(self, entity_id: str) -> float:
-        state = self.hass.states.get(entity_id)
-        try:
-            return float(state.state) if state and state.state not in ("unknown", "unavailable") else 0.0
-        except (ValueError, TypeError):
-            return 0.0
+        self.price_settings = price_settings
 
     def _calculate_daily_cost(self) -> float:
-        vat = self._get_number(self.vat_entity)
-        surcharge = self._get_number(self.surcharge_entity)
-        standing = self._get_number(self.standing_entity)
-        rebate = self._get_number(self.rebate_entity)
+        vat = self.price_settings.get("vat_percentage", 21.0)
+        surcharge = self.price_settings.get("electricity_surcharge_per_day", 0.0)
+        standing = self.price_settings.get("electricity_standing_charge_per_day", 0.0)
+        rebate = self.price_settings.get("electricity_tax_rebate_per_day", 0.0)
 
         subtotal = surcharge + standing - rebate
         total = subtotal * (1 + vat / 100)
-        return round(total, 5)
+        return round(total, 8)
 
     async def async_update(self):
-        # Niet nodig: deze sensor telt dagelijks op via _handle_daily_addition
         pass
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-
-        for entity_id in self.input_sensors:
-            self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass,
-                    entity_id,
-                    self._handle_input_event,
-                )
-            )
-
-        # Plan dagelijks optellen om middernacht
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -325,34 +292,141 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             )
         )
 
-    async def _handle_input_event(self, event):
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            return
-        self.async_write_ha_state()
-
     async def _handle_daily_addition(self, now):
         self._attr_native_value += self._calculate_daily_cost()
         self.async_write_ha_state()
 
-            
+class TotalEnergyCostSensor(BaseUtilitySensor):
+    def __init__(self, hass: HomeAssistant, name: str, unique_id: str, net_cost_entity_id: str, fixed_cost_entity_id: str, device: DeviceInfo):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:currency-eur",
+            visible=True,
+            device=device,
+        )
+        self.hass = hass
+        self.net_cost_entity_id = net_cost_entity_id
+        self.fixed_cost_entity_id = fixed_cost_entity_id
+
+    async def async_update(self):
+        net_cost = 0.0
+        fixed_cost = 0.0
+
+        net_state = self.hass.states.get(self.net_cost_entity_id)
+        if net_state and net_state.state not in ("unknown", "unavailable"):
+            try:
+                net_cost = float(net_state.state)
+            except ValueError:
+                pass
+
+        fixed_state = self.hass.states.get(self.fixed_cost_entity_id)
+        if fixed_state and fixed_state.state not in ("unknown", "unavailable"):
+            try:
+                fixed_cost = float(fixed_state.state)
+            except ValueError:
+                pass
+
+        self._attr_native_value = round(net_cost + fixed_cost, 8)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        for entity_id in [self.net_cost_entity_id, self.fixed_cost_entity_id]:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    entity_id,
+                    self._handle_input_event,
+                )
+            )
+
+    async def _handle_input_event(self, event):
+        await self.async_update()
+        self.async_write_ha_state()
+
+class CurrentPriceSensor(BaseUtilitySensor):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        price_sensor: str,
+        source_type: str,
+        price_settings: dict[str, float],
+        icon: str,
+        device: DeviceInfo,
+    ):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€/kWh",
+            device_class=None,
+            icon=icon,
+            visible=True,
+            device=device,
+        )
+        self.hass = hass
+        self.price_sensor = price_sensor
+        self.source_type = source_type
+        self.price_settings = price_settings
+
+    async def async_update(self):
+        state = self.hass.states.get(self.price_sensor)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return
+        try:
+            base_price = float(state.state)
+        except ValueError:
+            return
+
+        markup_consumption = self.price_settings.get("electricity_consumption_markup_per_kwh", 0.0)
+        markup_production  = self.price_settings.get("electricity_production_markup_per_kwh", 0.0)
+        tax_kwh            = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+        vat_factor         = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+
+        if self.source_type == SOURCE_TYPE_CONSUMPTION:
+            price = (base_price + markup_consumption + tax_kwh) * vat_factor
+        elif self.source_type == SOURCE_TYPE_PRODUCTION:
+            price = (base_price + markup_production) * vat_factor
+        else:
+            return
+
+        self._attr_native_value = round(price, 8)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass,
+                self.price_sensor,
+                self._handle_price_change,
+            )
+        )
+
+    async def _handle_price_change(self, event):
+        await self.async_update()
+        self.async_write_ha_state()
+        
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback
 ) -> None:
     configs = entry.data.get(CONF_CONFIGS, [])
+    price_settings = entry.options.get(CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {}))
     entities: list[BaseUtilitySensor] = []
 
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
-        price_sensor = block.get(CONF_PRICE_SENSOR)
+        price_sensor = entry.data.get(CONF_PRICE_SENSOR)
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
             state = hass.states.get(sensor)
-            friendly_name = state.attributes.get("friendly_name") if state else sensor_entity_id
+            friendly_name = state.attributes.get("friendly_name") if state else sensor
             device_info = DeviceInfo(
                 identifiers={(DOMAIN, base_id)},
                 name=f"{DOMAIN_ABBREVIATION}: {friendly_name}",
@@ -372,6 +446,7 @@ async def async_setup_entry(
                         unique_id=uid,
                         energy_sensor=sensor,
                         price_sensor=price_sensor,
+                        price_settings=price_settings,
                         mode=mode,
                         source_type=source_type,
                         unit=mode_def["unit"],
@@ -383,47 +458,89 @@ async def async_setup_entry(
 
     UTILITY_ENTITIES.extend(entities)
 
-    # Daily cost sensor
     base_id = "daily_electricity_cost"
     unique_id = f"{DOMAIN}_{base_id}"
     device_info = DeviceInfo(
         identifiers={(DOMAIN, base_id)},
-        name=f"{DOMAIN_ABBREVIATION}: Fixed Daily Electricity Cost (Total)",
+        name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
         entry_type="service",
         manufacturer="DynamicEnergyCalc",
-        model="daily_cost",
+        model="summary",
     )
 
     entities.append(
         DailyElectricityCostSensor(
             hass=hass,
-            name="Daily Electricity Cost",
+            name="Electricity Contract Fixed Costs (Total)",
             unique_id=unique_id,
-            vat_entity="number.dynamic_energy_calculator_vat_percentage",
-            surcharge_entity="number.dynamic_energy_calculator_electricity_surcharge_per_day",
-            standing_entity="number.dynamic_energy_calculator_electricity_standing_charge_per_day",
-            rebate_entity="number.dynamic_energy_calculator_electricity_tax_rebate_per_day",
+            price_settings=price_settings,
             device=device_info,
         )
     )
 
+    entities.append(
+        TotalCostSensor(
+            hass=hass,
+            name="Net Energy Cost (Total)",
+            unique_id=f"{DOMAIN}_net_total_cost",
+            device=device_info,
+        )
+    )
 
+    entities.append(
+        TotalEnergyCostSensor(
+            hass=hass,
+            name="Energy Contract Cost (Total)",
+            unique_id=f"{DOMAIN}_total_energy_cost",
+            net_cost_entity_id="sensor.total_net_energy_cost",
+            fixed_cost_entity_id="sensor.daily_electricity_cost",
+            device=device_info,
+        )
+    )
+
+    price_sensor = entry.data.get(CONF_PRICE_SENSOR)
+    if price_sensor:
+        entities.append(
+            CurrentPriceSensor(
+                hass=hass,
+                name="Current Consumption Price",
+                unique_id=f"{DOMAIN}_current_consumption_price",
+                price_sensor=price_sensor,
+                source_type=SOURCE_TYPE_CONSUMPTION,
+                price_settings=price_settings,
+                icon="mdi:transmission-tower-import",
+                device=device_info,
+            )
+        )
+        entities.append(
+            CurrentPriceSensor(
+                hass=hass,
+                name="Current Production Price",
+                unique_id=f"{DOMAIN}_current_production_price",
+                price_sensor=price_sensor,
+                source_type=SOURCE_TYPE_PRODUCTION,
+                price_settings=price_settings,
+                icon="mdi:transmission-tower-export",
+                device=device_info,
+            )
+        )
+        
     async_add_entities(entities, True)
 
     async def handle_reset_all(call: ServiceCall):
-        for ent in UTILITY_ENTITIES:
+        for ent in entities:
             ent.reset()
 
     async def handle_reset_selected(call: ServiceCall):
         ids = call.data.get("entity_ids", [])
-        for ent in UTILITY_ENTITIES:
+        for ent in entities:
             if ent.entity_id in ids:
                 ent.reset()
 
     async def handle_set_value(call: ServiceCall):
         entity_id = call.data.get("entity_id")
         value = call.data.get("value", 0.0)
-        for ent in UTILITY_ENTITIES:
+        for ent in entities:
             if ent.entity_id == entity_id:
                 ent.set_value(value)
 
