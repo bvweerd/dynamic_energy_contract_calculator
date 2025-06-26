@@ -18,7 +18,7 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSOR_MODES = [
+SENSOR_MODES_ELECTRICITY = [
     {
         "key": "kwh_total",
         "name": "Total kWh",
@@ -346,7 +346,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         await self.async_update()
         self.async_write_ha_state()
 
-class CurrentPriceSensor(BaseUtilitySensor):
+class CurrentElectricityPriceSensor(BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -435,7 +435,7 @@ async def async_setup_entry(
                 model=source_type,
             )
 
-            for mode_def in SENSOR_MODES:
+            for mode_def in SENSOR_MODES_ELECTRICITY:
                 mode = mode_def["key"]
                 name = mode_def["name"]
                 uid = f"{DOMAIN}_{base_id}_{mode}"
@@ -501,7 +501,7 @@ async def async_setup_entry(
     price_sensor = entry.data.get(CONF_PRICE_SENSOR)
     if price_sensor:
         entities.append(
-            CurrentPriceSensor(
+            CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Consumption Price",
                 unique_id=f"{DOMAIN}_current_consumption_price",
@@ -513,7 +513,7 @@ async def async_setup_entry(
             )
         )
         entities.append(
-            CurrentPriceSensor(
+            CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Production Price",
                 unique_id=f"{DOMAIN}_current_production_price",
