@@ -492,8 +492,8 @@ async def async_setup_entry(
             hass=hass,
             name="Energy Contract Cost (Total)",
             unique_id=f"{DOMAIN}_total_energy_cost",
-            net_cost_entity_id="sensor.total_net_energy_cost",
-            fixed_cost_entity_id="sensor.daily_electricity_cost",
+            net_cost_entity_id="sensor.net_energy_cost_total",
+            fixed_cost_entity_id="sensor.electricity_contract_fixed_costs_total",
             device=device_info,
         )
     )
