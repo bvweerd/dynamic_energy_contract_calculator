@@ -1,17 +1,17 @@
 name: Release Versioning
 
 on:
-  # Trigger bij push van een tag vX.Y.Z
+  # Trigger on push of a tag vX.Y.Z
   push:
     tags:
       - 'v*.*.*'
-  # Trigger zodra je in de GitHub UI een Release publiceert
+  # Trigger when a Release is published via the GitHub UI
   release:
     types: [published]
 
 jobs:
   bump-release:
-    # Zorg dat we alleen in deze job de tag-push afhandelen
+    # Ensure that only this job handles the tag push
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +29,7 @@ jobs:
         run: pip install bump2version
 
       - name: Bump version in manifest.json
-        # Gebruik --no-tag zodat we alleen het bestand bumpen voor de release
+        # Use --no-tag so we only bump the file for the release
         run: bump2version patch --allow-dirty --no-tag
 
       - name: Commit & Push bumped files
@@ -41,7 +41,7 @@ jobs:
           git push origin HEAD:main
 
   publish-release:
-    # Deze job draait na het aanmaken van de GitHub Release (event ‘published’)
+    # This job runs after creating the GitHub Release (event 'published')
     if: github.event_name == 'release'
     needs: bump-release
     runs-on: ubuntu-latest

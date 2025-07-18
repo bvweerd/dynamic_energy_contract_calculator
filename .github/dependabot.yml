@@ -1,15 +1,15 @@
 version: 2
 updates:
-  # Update Python dependencies uit requirements.txt of setup.py
+  # Update Python dependencies from requirements.txt or setup.py
   - package-ecosystem: "pip"
-    directory: "/"              # root van je repo
+    directory: "/"              # root of your repo
     schedule:
-      interval: "weekly"        # controleer wekelijks
-    open-pull-requests-limit: 5 # max aantal open PR’s tegelijk
+      interval: "weekly"        # check weekly
+    open-pull-requests-limit: 5 # maximum number of open PRs at once
     commit-message:
       prefix: "deps"
 
-  # Update ook GitHub Actions workflows
+  # Update GitHub Actions workflows as well
   - package-ecosystem: "github-actions"
     directory: "/"              
     schedule:
