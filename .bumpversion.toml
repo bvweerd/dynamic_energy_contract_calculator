@@ -7,6 +7,6 @@ replace = "{new_version}"
 regex   = false
 
 [[tool.bumpversion.files]]
-filename = "custom_components/simple_pid_controller/manifest.json"
+filename = "custom_components/dynamic_energy_calculator/manifest.json"
 search = '"version": "{current_version}"'
 replace = '"version": "{new_version}"'
