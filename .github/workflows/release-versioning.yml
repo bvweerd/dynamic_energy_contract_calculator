@@ -36,7 +36,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/simple_pid_controller/manifest.json
+          git add custom_components/dynamic_energy_calculator/manifest.json
           git commit -m "chore: bump to next version after release ${{ github.ref_name }}"
           git push origin HEAD:main
 
