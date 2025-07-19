@@ -1,18 +1,29 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity, RestoreEntity
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, DOMAIN_ABBREVIATION, CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, CONF_PRICE_SENSOR, CONF_PRICE_SETTINGS, SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION
+from .const import (
+    DOMAIN,
+    DOMAIN_ABBREVIATION,
+    CONF_CONFIGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
+    CONF_PRICE_SENSOR,
+    CONF_PRICE_SETTINGS,
+    SOURCE_TYPE_CONSUMPTION,
+    SOURCE_TYPE_PRODUCTION,
+)
 
 import logging
 
@@ -63,8 +74,18 @@ SENSOR_MODES_ELECTRICITY = [
 
 UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 
+
 class BaseUtilitySensor(SensorEntity, RestoreEntity):
-    def __init__(self, name: str, unique_id: str, unit: str, device_class: str, icon: str, visible: bool, device: DeviceInfo | None = None):
+    def __init__(
+        self,
+        name: str,
+        unique_id: str,
+        unit: str,
+        device_class: str,
+        icon: str,
+        visible: bool,
+        device: DeviceInfo | None = None,
+    ):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
@@ -81,7 +102,10 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
-        if last_state is not None and last_state.state not in ("unknown", "unavailable"):
+        if last_state is not None and last_state.state not in (
+            "unknown",
+            "unavailable",
+        ):
             try:
                 self._attr_native_value = float(last_state.state)
             except ValueError:
@@ -97,7 +121,9 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
 
 class TotalCostSensor(BaseUtilitySensor):
-    def __init__(self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo):
+    def __init__(
+        self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo
+    ):
         super().__init__(
             name=name,
             unique_id=unique_id,
@@ -161,7 +187,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
         visible: bool = True,
         device: DeviceInfo | None = None,
     ):
-        super().__init__(name, unique_id, unit=unit, device_class=device_class, icon=icon, visible=visible, device=device)
+        super().__init__(
+            name,
+            unique_id,
+            unit=unit,
+            device_class=device_class,
+            icon=icon,
+            visible=visible,
+            device=device,
+        )
         self.hass = hass
         self.energy_sensor = energy_sensor
         self.input_sensors = [energy_sensor]
@@ -173,10 +207,14 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._last_updated = datetime.now()
 
     async def async_update(self):
-        markup_consumption  = self.price_settings.get("electricity_consumption_markup_per_kwh", 0.0)
-        markup_production   = self.price_settings.get("electricity_production_markup_per_kwh", 0.0)
-        tax_kwh             = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
-        vat_factor          = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+        markup_consumption = self.price_settings.get(
+            "electricity_consumption_markup_per_kwh", 0.0
+        )
+        markup_production = self.price_settings.get(
+            "electricity_production_markup_per_kwh", 0.0
+        )
+        tax_kwh = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+        vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
         energy_state = self.hass.states.get(self.energy_sensor)
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
@@ -296,8 +334,17 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         self._attr_native_value += self._calculate_daily_cost()
         self.async_write_ha_state()
 
+
 class TotalEnergyCostSensor(BaseUtilitySensor):
-    def __init__(self, hass: HomeAssistant, name: str, unique_id: str, net_cost_entity_id: str, fixed_cost_entity_id: str, device: DeviceInfo):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        net_cost_entity_id: str,
+        fixed_cost_entity_id: str,
+        device: DeviceInfo,
+    ):
         super().__init__(
             name=name,
             unique_id=unique_id,
@@ -346,6 +393,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         await self.async_update()
         self.async_write_ha_state()
 
+
 class CurrentElectricityPriceSensor(BaseUtilitySensor):
     def __init__(
         self,
@@ -381,10 +429,14 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         except ValueError:
             return
 
-        markup_consumption = self.price_settings.get("electricity_consumption_markup_per_kwh", 0.0)
-        markup_production  = self.price_settings.get("electricity_production_markup_per_kwh", 0.0)
-        tax_kwh            = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
-        vat_factor         = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+        markup_consumption = self.price_settings.get(
+            "electricity_consumption_markup_per_kwh", 0.0
+        )
+        markup_production = self.price_settings.get(
+            "electricity_production_markup_per_kwh", 0.0
+        )
+        tax_kwh = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+        vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
         if self.source_type == SOURCE_TYPE_CONSUMPTION:
             price = (base_price + markup_consumption + tax_kwh) * vat_factor
@@ -408,14 +460,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
     async def _handle_price_change(self, event):
         await self.async_update()
         self.async_write_ha_state()
-        
+
+
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     configs = entry.data.get(CONF_CONFIGS, [])
-    price_settings = entry.options.get(CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {}))
+    price_settings = entry.options.get(
+        CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
+    )
     entities: list[BaseUtilitySensor] = []
 
     for block in configs:
@@ -524,7 +577,7 @@ async def async_setup_entry(
                 device=device_info,
             )
         )
-        
+
     async_add_entities(entities, True)
 
     async def handle_reset_all(call: ServiceCall):

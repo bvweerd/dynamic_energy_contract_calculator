@@ -1,4 +1,3 @@
-import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -9,7 +8,6 @@ from custom_components.dynamic_energy_calculator.const import (
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
-    DOMAIN,
     SOURCE_TYPE_CONSUMPTION,
 )
 
