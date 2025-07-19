@@ -2,11 +2,15 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
+from homeassistant.helpers.entity import DeviceInfo
 
 from custom_components.dynamic_energy_calculator.sensor import (
     BaseUtilitySensor,
     DynamicEnergySensor,
     TotalCostSensor,
+    TotalEnergyCostSensor,
+    DailyGasCostSensor,
+    CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
 from custom_components.dynamic_energy_calculator.const import (
@@ -106,3 +110,45 @@ async def test_total_cost_sensor(hass: HomeAssistant):
     total = TotalCostSensor(hass, "Total", "t1", None)
     await total.async_update()
     assert total.native_value == pytest.approx(3)
+
+
+async def test_daily_gas_cost_sensor(hass: HomeAssistant):
+    sensor = DailyGasCostSensor(
+        hass,
+        "Gas Fixed",
+        "gid",
+        {"gas_standing_charge_per_day": 0.5, "vat_percentage": 0.0},
+        DeviceInfo(identifiers={("dec", "test")}),
+    )
+    assert sensor._calculate_daily_cost() == pytest.approx(0.5)
+
+
+async def test_current_gas_consumption_price(hass: HomeAssistant):
+    price_settings = {"gas_markup_per_m3": 0.0, "gas_surcharge_per_m3": 0.0, "vat_percentage": 0.0}
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Gas Price",
+        "gid",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_GAS,
+        price_settings=price_settings,
+        icon="mdi:gas-burner",
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+    assert sensor.native_unit_of_measurement == "€/m³"
+
+
+async def test_total_energy_cost_multiple(hass: HomeAssistant):
+    hass.states.async_set("sensor.net", 5)
+    hass.states.async_set("sensor.fixed1", 1)
+    hass.states.async_set("sensor.fixed2", 2)
+    sensor = TotalEnergyCostSensor(
+        hass,
+        "Total", 
+        "uid",
+        net_cost_entity_id="sensor.net",
+        fixed_cost_entity_ids=["sensor.fixed1", "sensor.fixed2"],
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+    await sensor.async_update()
+    assert sensor.native_value == pytest.approx(8)
