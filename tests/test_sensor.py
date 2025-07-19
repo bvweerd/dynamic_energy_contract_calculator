@@ -16,6 +16,7 @@ from custom_components.dynamic_energy_calculator.sensor import (
 from custom_components.dynamic_energy_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
+    SOURCE_TYPE_PRODUCTION,
 )
 
 
@@ -124,7 +125,11 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
 
 
 async def test_current_gas_consumption_price(hass: HomeAssistant):
-    price_settings = {"gas_markup_per_m3": 0.0, "gas_surcharge_per_m3": 0.0, "vat_percentage": 0.0}
+    price_settings = {
+        "gas_markup_per_m3": 0.0,
+        "gas_surcharge_per_m3": 0.0,
+        "vat_percentage": 0.0,
+    }
     sensor = CurrentElectricityPriceSensor(
         hass,
         "Gas Price",
@@ -144,7 +149,7 @@ async def test_total_energy_cost_multiple(hass: HomeAssistant):
     hass.states.async_set("sensor.fixed2", 2)
     sensor = TotalEnergyCostSensor(
         hass,
-        "Total", 
+        "Total",
         "uid",
         net_cost_entity_id="sensor.net",
         fixed_cost_entity_ids=["sensor.fixed1", "sensor.fixed2"],
@@ -152,3 +157,74 @@ async def test_total_energy_cost_multiple(hass: HomeAssistant):
     )
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(8)
+
+
+async def test_production_sensor_cost_and_profit(hass: HomeAssistant):
+    price_settings = {
+        "electricity_production_markup_per_kwh": 0.0,
+        "vat_percentage": 0.0,
+    }
+
+    cost_sensor = DynamicEnergySensor(
+        hass,
+        "Production Cost",
+        "pc1",
+        "sensor.prod_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+    )
+
+    profit_sensor = DynamicEnergySensor(
+        hass,
+        "Production Profit",
+        "pp1",
+        "sensor.prod_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="profit_total",
+    )
+
+    # Positive price should contribute to profit
+    cost_sensor._last_energy = 0
+    profit_sensor._last_energy = 0
+    hass.states.async_set("sensor.prod_energy", 1)
+    hass.states.async_set("sensor.price", 0.5)
+    await cost_sensor.async_update()
+    await profit_sensor.async_update()
+    assert cost_sensor.native_value == pytest.approx(0.0)
+    assert profit_sensor.native_value == pytest.approx(0.5)
+
+    # Negative price should contribute to cost
+    cost_sensor_neg = DynamicEnergySensor(
+        hass,
+        "Production Cost Neg",
+        "pc2",
+        "sensor.prod_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+    )
+
+    profit_sensor_neg = DynamicEnergySensor(
+        hass,
+        "Production Profit Neg",
+        "pp2",
+        "sensor.prod_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="profit_total",
+    )
+
+    cost_sensor_neg._last_energy = 0
+    profit_sensor_neg._last_energy = 0
+    hass.states.async_set("sensor.prod_energy", 1)
+    hass.states.async_set("sensor.price", -0.2)
+    await cost_sensor_neg.async_update()
+    await profit_sensor_neg.async_update()
+    assert cost_sensor_neg.native_value == pytest.approx(0.2)
+    assert profit_sensor_neg.native_value == pytest.approx(0.0)

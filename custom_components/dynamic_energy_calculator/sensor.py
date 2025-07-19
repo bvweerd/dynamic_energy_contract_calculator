@@ -271,7 +271,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
             except ValueError:
                 return
 
-            if self.source_type == SOURCE_TYPE_CONSUMPTION or self.source_type == SOURCE_TYPE_GAS:
+            if (
+                self.source_type == SOURCE_TYPE_CONSUMPTION
+                or self.source_type == SOURCE_TYPE_GAS
+            ):
                 price = (price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 price = (price + markup_production) * vat_factor
@@ -282,14 +285,34 @@ class DynamicEnergySensor(BaseUtilitySensor):
             value = delta * price
             _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value)
 
-            if self.mode == "cost_total" and value >= 0:
-                self._attr_native_value += value
-            elif self.mode == "profit_total" and value < 0:
-                self._attr_native_value += abs(value)
-            elif self.mode == "kwh_during_cost_total" and value >= 0:
-                self._attr_native_value += delta
-            elif self.mode == "kwh_during_profit_total" and value < 0:
-                self._attr_native_value += delta
+            if self.mode == "cost_total":
+                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
+                    if value >= 0:
+                        self._attr_native_value += value
+                elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                    if value < 0:
+                        self._attr_native_value += abs(value)
+            elif self.mode == "profit_total":
+                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
+                    if value < 0:
+                        self._attr_native_value += abs(value)
+                elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                    if value >= 0:
+                        self._attr_native_value += value
+            elif self.mode == "kwh_during_cost_total":
+                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
+                    if value >= 0:
+                        self._attr_native_value += delta
+                elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                    if value < 0:
+                        self._attr_native_value += delta
+            elif self.mode == "kwh_during_profit_total":
+                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
+                    if value < 0:
+                        self._attr_native_value += delta
+                elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                    if value >= 0:
+                        self._attr_native_value += delta
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
