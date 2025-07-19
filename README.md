@@ -35,10 +35,12 @@ For each configured source the integration creates the following sensors:
 In addition a few summary sensors are created:
 
 - `sensor.electricity_contract_fixed_costs_total`
+- `sensor.gas_contract_fixed_costs_total`
 - `sensor.net_energy_cost_total`
 - `sensor.energy_contract_cost_total`
 - `sensor.current_consumption_price`
 - `sensor.current_production_price`
+- `sensor.current_gas_consumption_price`
 
 These sensors can be used in the [Energy dashboard](https://www.home-assistant.io/docs/energy/) or in your own automations.
 

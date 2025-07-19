@@ -362,6 +362,53 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         self.async_write_ha_state()
 
 
+class DailyGasCostSensor(BaseUtilitySensor):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        price_settings: dict[str, float],
+        device: DeviceInfo,
+    ):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:calendar-currency",
+            visible=True,
+            device=device,
+        )
+        self.hass = hass
+        self.price_settings = price_settings
+
+    def _calculate_daily_cost(self) -> float:
+        vat = self.price_settings.get("vat_percentage", 21.0)
+        standing = self.price_settings.get("gas_standing_charge_per_day", 0.0)
+        total = standing * (1 + vat / 100)
+        return round(total, 8)
+
+    async def async_update(self):
+        pass
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_time_change(
+                self.hass,
+                self._handle_daily_addition,
+                hour=0,
+                minute=0,
+                second=0,
+            )
+        )
+
+    async def _handle_daily_addition(self, now):
+        self._attr_native_value += self._calculate_daily_cost()
+        self.async_write_ha_state()
+
+
 class TotalEnergyCostSensor(BaseUtilitySensor):
     def __init__(
         self,
@@ -369,7 +416,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         name: str,
         unique_id: str,
         net_cost_entity_id: str,
-        fixed_cost_entity_id: str,
+        fixed_cost_entity_ids: list[str],
         device: DeviceInfo,
     ):
         super().__init__(
@@ -383,7 +430,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         )
         self.hass = hass
         self.net_cost_entity_id = net_cost_entity_id
-        self.fixed_cost_entity_id = fixed_cost_entity_id
+        self.fixed_cost_entity_ids = fixed_cost_entity_ids
 
     async def async_update(self):
         net_cost = 0.0
@@ -396,18 +443,19 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             except ValueError:
                 pass
 
-        fixed_state = self.hass.states.get(self.fixed_cost_entity_id)
-        if fixed_state and fixed_state.state not in ("unknown", "unavailable"):
-            try:
-                fixed_cost = float(fixed_state.state)
-            except ValueError:
-                pass
+        for fid in self.fixed_cost_entity_ids:
+            fixed_state = self.hass.states.get(fid)
+            if fixed_state and fixed_state.state not in ("unknown", "unavailable"):
+                try:
+                    fixed_cost += float(fixed_state.state)
+                except ValueError:
+                    continue
 
         self._attr_native_value = round(net_cost + fixed_cost, 8)
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        for entity_id in [self.net_cost_entity_id, self.fixed_cost_entity_id]:
+        for entity_id in [self.net_cost_entity_id, *self.fixed_cost_entity_ids]:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
@@ -433,10 +481,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         icon: str,
         device: DeviceInfo,
     ):
+        unit = "€/m³" if source_type == SOURCE_TYPE_GAS else "€/kWh"
         super().__init__(
             name=name,
             unique_id=unique_id,
-            unit="€/kWh",
+            unit=unit,
             device_class=None,
             icon=icon,
             visible=True,
@@ -572,6 +621,16 @@ async def async_setup_entry(
     )
 
     entities.append(
+        DailyGasCostSensor(
+            hass=hass,
+            name="Gas Contract Fixed Costs (Total)",
+            unique_id=f"{DOMAIN}_daily_gas_cost",
+            price_settings=price_settings,
+            device=device_info,
+        )
+    )
+
+    entities.append(
         TotalCostSensor(
             hass=hass,
             name="Net Energy Cost (Total)",
@@ -586,7 +645,10 @@ async def async_setup_entry(
             name="Energy Contract Cost (Total)",
             unique_id=f"{DOMAIN}_total_energy_cost",
             net_cost_entity_id="sensor.net_energy_cost_total",
-            fixed_cost_entity_id="sensor.electricity_contract_fixed_costs_total",
+            fixed_cost_entity_ids=[
+                "sensor.electricity_contract_fixed_costs_total",
+                "sensor.gas_contract_fixed_costs_total",
+            ],
             device=device_info,
         )
     )
@@ -614,6 +676,21 @@ async def async_setup_entry(
                 source_type=SOURCE_TYPE_PRODUCTION,
                 price_settings=price_settings,
                 icon="mdi:transmission-tower-export",
+                device=device_info,
+            )
+        )
+
+    price_sensor_gas = entry.data.get(CONF_PRICE_SENSOR_GAS)
+    if price_sensor_gas:
+        entities.append(
+            CurrentElectricityPriceSensor(
+                hass=hass,
+                name="Current Gas Consumption Price",
+                unique_id=f"{DOMAIN}_current_gas_consumption_price",
+                price_sensor=price_sensor_gas,
+                source_type=SOURCE_TYPE_GAS,
+                price_settings=price_settings,
+                icon="mdi:gas-burner",
                 device=device_info,
             )
         )
