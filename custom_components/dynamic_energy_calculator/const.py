@@ -18,13 +18,13 @@ CONF_PRICE_SETTINGS = "price_settings"
 # Possible source types
 SOURCE_TYPE_CONSUMPTION = "Electricity consumption"
 SOURCE_TYPE_PRODUCTION = "Electricity production"
-SOURCE_TYPE_GAS = "gas"
+SOURCE_TYPE_GAS = "Gas consumption"
 
 # allowed values for source_type
 SOURCE_TYPES = [
-    "Electricity consumption",
-    "Electricity production",
-    "Gas consumption",
+    SOURCE_TYPE_CONSUMPTION,
+    SOURCE_TYPE_PRODUCTION,
+    SOURCE_TYPE_GAS,
 ]
 
 CONF_CONFIGS = "configurations"

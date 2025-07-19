@@ -1,7 +1,7 @@
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorDeviceClass
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import UnitOfEnergy, UnitOfVolume
 
 from custom_components.dynamic_energy_calculator.sensor import (
     BaseUtilitySensor,
@@ -11,6 +11,7 @@ from custom_components.dynamic_energy_calculator.sensor import (
 )
 from custom_components.dynamic_energy_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
+    SOURCE_TYPE_GAS,
 )
 
 
@@ -53,6 +54,30 @@ async def test_dynamic_energy_sensor_cost(hass: HomeAssistant):
     hass.states.async_set("sensor.price", 0.5)
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(0.5)
+
+
+async def test_dynamic_gas_sensor_cost(hass: HomeAssistant):
+    price_settings = {
+        "gas_markup_per_m3": 0.0,
+        "gas_surcharge_per_m3": 0.0,
+        "vat_percentage": 0.0,
+    }
+    sensor = DynamicEnergySensor(
+        hass,
+        "Gas",
+        "gid",
+        "sensor.gas",
+        SOURCE_TYPE_GAS,
+        price_settings,
+        price_sensor="sensor.gas_price",
+        mode="cost_total",
+        unit=UnitOfVolume.CUBIC_METERS,
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.gas", 2)
+    hass.states.async_set("sensor.gas_price", 1.2)
+    await sensor.async_update()
+    assert sensor.native_value == pytest.approx(2.4)
 
 
 async def test_total_cost_sensor(hass: HomeAssistant):

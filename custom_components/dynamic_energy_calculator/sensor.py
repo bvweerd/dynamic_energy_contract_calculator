@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from homeassistant.components.sensor import SensorEntity, RestoreEntity
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -20,9 +20,11 @@ from .const import (
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
     CONF_PRICE_SENSOR,
+    CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_PRODUCTION,
+    SOURCE_TYPE_GAS,
 )
 
 import logging
@@ -68,6 +70,25 @@ SENSOR_MODES_ELECTRICITY = [
         "unit": UnitOfEnergy.KILO_WATT_HOUR,
         "device_class": "energy",
         "icon": "mdi:transmission-tower-import",
+        "visible": True,
+    },
+]
+
+SENSOR_MODES_GAS = [
+    {
+        "key": "m3_total",
+        "name": "Total m³",
+        "unit": UnitOfVolume.CUBIC_METERS,
+        "device_class": "gas",
+        "icon": "mdi:counter",
+        "visible": True,
+    },
+    {
+        "key": "cost_total",
+        "name": "Total Cost",
+        "unit": "€",
+        "device_class": None,
+        "icon": "mdi:cash",
         "visible": True,
     },
 ]
@@ -207,13 +228,19 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._last_updated = datetime.now()
 
     async def async_update(self):
-        markup_consumption = self.price_settings.get(
-            "electricity_consumption_markup_per_kwh", 0.0
-        )
-        markup_production = self.price_settings.get(
-            "electricity_production_markup_per_kwh", 0.0
-        )
-        tax_kwh = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+        if self.source_type == SOURCE_TYPE_GAS:
+            markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
+            markup_production = 0.0
+            tax = self.price_settings.get("gas_surcharge_per_m3", 0.0)
+        else:
+            markup_consumption = self.price_settings.get(
+                "electricity_consumption_markup_per_kwh", 0.0
+            )
+            markup_production = self.price_settings.get(
+                "electricity_production_markup_per_kwh", 0.0
+            )
+            tax = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+
         vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
         energy_state = self.hass.states.get(self.energy_sensor)
@@ -233,7 +260,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         self._last_energy = current_energy
 
-        if self.mode == "kwh_total":
+        if self.mode in ("kwh_total", "m3_total"):
             self._attr_native_value += delta
         elif self.price_sensor:
             price_state = self.hass.states.get(self.price_sensor)
@@ -244,8 +271,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
             except ValueError:
                 return
 
-            if self.source_type == SOURCE_TYPE_CONSUMPTION:
-                price = (price + markup_consumption + tax_kwh) * vat_factor
+            if self.source_type == SOURCE_TYPE_CONSUMPTION or self.source_type == SOURCE_TYPE_GAS:
+                price = (price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 price = (price + markup_production) * vat_factor
             else:
@@ -429,21 +456,28 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         except ValueError:
             return
 
-        markup_consumption = self.price_settings.get(
-            "electricity_consumption_markup_per_kwh", 0.0
-        )
-        markup_production = self.price_settings.get(
-            "electricity_production_markup_per_kwh", 0.0
-        )
-        tax_kwh = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
-        vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
-
-        if self.source_type == SOURCE_TYPE_CONSUMPTION:
-            price = (base_price + markup_consumption + tax_kwh) * vat_factor
-        elif self.source_type == SOURCE_TYPE_PRODUCTION:
-            price = (base_price + markup_production) * vat_factor
+        if self.source_type == SOURCE_TYPE_GAS:
+            markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
+            tax = self.price_settings.get("gas_surcharge_per_m3", 0.0)
+            price = (base_price + markup_consumption + tax) * (
+                self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+            )
         else:
-            return
+            markup_consumption = self.price_settings.get(
+                "electricity_consumption_markup_per_kwh", 0.0
+            )
+            markup_production = self.price_settings.get(
+                "electricity_production_markup_per_kwh", 0.0
+            )
+            tax = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+            vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+
+            if self.source_type == SOURCE_TYPE_CONSUMPTION:
+                price = (base_price + markup_consumption + tax) * vat_factor
+            elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                price = (base_price + markup_production) * vat_factor
+            else:
+                return
 
         self._attr_native_value = round(price, 8)
 
@@ -474,7 +508,13 @@ async def async_setup_entry(
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
-        price_sensor = entry.data.get(CONF_PRICE_SENSOR)
+
+        if source_type == SOURCE_TYPE_GAS:
+            price_sensor = entry.data.get(CONF_PRICE_SENSOR_GAS)
+            mode_defs = SENSOR_MODES_GAS
+        else:
+            price_sensor = entry.data.get(CONF_PRICE_SENSOR)
+            mode_defs = SENSOR_MODES_ELECTRICITY
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
@@ -488,7 +528,7 @@ async def async_setup_entry(
                 model=source_type,
             )
 
-            for mode_def in SENSOR_MODES_ELECTRICITY:
+            for mode_def in mode_defs:
                 mode = mode_def["key"]
                 name = mode_def["name"]
                 uid = f"{DOMAIN}_{base_id}_{mode}"
