@@ -1,5 +1,4 @@
 import pytest
-from datetime import datetime
 from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import UnitOfEnergy

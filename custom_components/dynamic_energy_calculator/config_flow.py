@@ -34,7 +34,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         self.sources: list[str] | None = None
         self.price_settings: dict = DEFAULT_PRICE_SETTINGS.copy()
 
-    async def async_step_user(self, user_input: dict[str, str] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, str] | None = None
+    ) -> FlowResult:
         if user_input is not None:
             choice = user_input[CONF_SOURCE_TYPE]
             if choice == "finish":
@@ -49,7 +51,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                     data={
                         CONF_CONFIGS: self.configs,
                         CONF_PRICE_SENSOR: self.price_settings.get(CONF_PRICE_SENSOR),
-                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(CONF_PRICE_SENSOR_GAS),
+                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(
+                            CONF_PRICE_SENSOR_GAS
+                        ),
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
@@ -66,48 +70,68 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         options.append({"value": "price_settings", "label": "Price Settings"})
         options.append({"value": "finish", "label": "Finish"})
 
-        return vol.Schema({
-            vol.Required(CONF_SOURCE_TYPE): selector({
-                "select": {
-                    "options": options,
-                    "mode": "dropdown",
-                    "custom_value": False,
-                }
-            })
-        })
+        return vol.Schema(
+            {
+                vol.Required(CONF_SOURCE_TYPE): selector(
+                    {
+                        "select": {
+                            "options": options,
+                            "mode": "dropdown",
+                            "custom_value": False,
+                        }
+                    }
+                )
+            }
+        )
 
     async def _get_energy_sensors(self) -> list[str]:
-        return sorted([
-            state.entity_id for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "energy" or state.attributes.get("device_class") == "gas"
-        ])
+        return sorted(
+            [
+                state.entity_id
+                for state in self.hass.states.async_all("sensor")
+                if state.attributes.get("device_class") == "energy"
+                or state.attributes.get("device_class") == "gas"
+            ]
+        )
 
     async def async_step_select_sources(self, user_input=None) -> FlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
-            self.configs.append({
-                CONF_SOURCE_TYPE: self.source_type,
-                CONF_SOURCES: self.sources,
-            })
+            self.configs.append(
+                {
+                    CONF_SOURCE_TYPE: self.source_type,
+                    CONF_SOURCES: self.sources,
+                }
+            )
             return await self.async_step_user()
 
         all_sensors = await self._get_energy_sensors()
 
-        last = next((block for block in reversed(self.configs)
-                     if block[CONF_SOURCE_TYPE] == self.source_type), None)
+        last = next(
+            (
+                block
+                for block in reversed(self.configs)
+                if block[CONF_SOURCE_TYPE] == self.source_type
+            ),
+            None,
+        )
         default_sources = last[CONF_SOURCES] if last else []
 
         return self.async_show_form(
             step_id=STEP_SELECT_SOURCES,
-            data_schema=vol.Schema({
-                vol.Required(CONF_SOURCES, default=default_sources): selector({
-                    "select": {
-                        "options": all_sensors,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                })
-            })
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SOURCES, default=default_sources): selector(
+                        {
+                            "select": {
+                                "options": all_sensors,
+                                "multiple": True,
+                                "mode": "dropdown",
+                            }
+                        }
+                    )
+                }
+            ),
         )
 
     async def async_step_price_settings(self, user_input=None) -> FlowResult:
@@ -116,27 +140,36 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             return await self.async_step_user()
 
         all_prices = [
-            state.entity_id for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "monetary" or state.attributes.get("unit_of_measurement") == "€/m³" or state.attributes.get("unit_of_measurement") == "€/kWh"
+            state.entity_id
+            for state in self.hass.states.async_all("sensor")
+            if state.attributes.get("device_class") == "monetary"
+            or state.attributes.get("unit_of_measurement") == "€/m³"
+            or state.attributes.get("unit_of_measurement") == "€/kWh"
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
         schema_fields = {
-            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector({
-                "select": {
-                    "options": all_prices,
-                    "multiple": False,
-                    "mode": "dropdown",
+            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
+                {
+                    "select": {
+                        "options": all_prices,
+                        "multiple": False,
+                        "mode": "dropdown",
+                    }
                 }
-            }),
-            vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas): selector({
-                "select": {
-                    "options": all_prices,
-                    "multiple": False,
-                    "mode": "dropdown",
+            ),
+            vol.Required(
+                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
+            ): selector(
+                {
+                    "select": {
+                        "options": all_prices,
+                        "multiple": False,
+                        "mode": "dropdown",
+                    }
                 }
-            }),
+            ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
@@ -165,7 +198,8 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         )
         self.price_settings = dict(
             config_entry.options.get(
-                CONF_PRICE_SETTINGS, config_entry.data.get(CONF_PRICE_SETTINGS, DEFAULT_PRICE_SETTINGS)
+                CONF_PRICE_SETTINGS,
+                config_entry.data.get(CONF_PRICE_SETTINGS, DEFAULT_PRICE_SETTINGS),
             )
         )
         self.source_type: str | None = None
@@ -189,7 +223,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                     data={
                         CONF_CONFIGS: self.configs,
                         CONF_PRICE_SENSOR: self.price_settings.get(CONF_PRICE_SENSOR),
-                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(CONF_PRICE_SENSOR_GAS),
+                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(
+                            CONF_PRICE_SENSOR_GAS
+                        ),
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
@@ -205,48 +241,63 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         options.append({"value": "price_settings", "label": "Price Settings"})
         options.append({"value": "finish", "label": "Finish"})
 
-        return vol.Schema({
-            vol.Required(CONF_SOURCE_TYPE): selector({
-                "select": {
-                    "options": options,
-                    "mode": "dropdown",
-                    "custom_value": False,
-                }
-            })
-        })
+        return vol.Schema(
+            {
+                vol.Required(CONF_SOURCE_TYPE): selector(
+                    {
+                        "select": {
+                            "options": options,
+                            "mode": "dropdown",
+                            "custom_value": False,
+                        }
+                    }
+                )
+            }
+        )
 
     async def async_step_select_sources(self, user_input=None):
         if user_input and CONF_SOURCES in user_input:
             self.sources = user_input[CONF_SOURCES]
-            self.configs.append({
-                CONF_SOURCE_TYPE: self.source_type,
-                CONF_SOURCES: self.sources,
-            })
+            self.configs.append(
+                {
+                    CONF_SOURCE_TYPE: self.source_type,
+                    CONF_SOURCES: self.sources,
+                }
+            )
             return await self.async_step_user()
 
         all_sensors = [
-            state.entity_id for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "energy" or state.attributes.get("device_class") == "gas"
+            state.entity_id
+            for state in self.hass.states.async_all("sensor")
+            if state.attributes.get("device_class") == "energy"
+            or state.attributes.get("device_class") == "gas"
         ]
 
         last = next(
-            (block for block in reversed(self.configs)
-             if block[CONF_SOURCE_TYPE] == self.source_type),
+            (
+                block
+                for block in reversed(self.configs)
+                if block[CONF_SOURCE_TYPE] == self.source_type
+            ),
             None,
         )
         default_sources = last[CONF_SOURCES] if last else []
 
         return self.async_show_form(
             step_id=STEP_SELECT_SOURCES,
-            data_schema=vol.Schema({
-                vol.Required(CONF_SOURCES, default=default_sources): selector({
-                    "select": {
-                        "options": all_sensors,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                })
-            })
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SOURCES, default=default_sources): selector(
+                        {
+                            "select": {
+                                "options": all_sensors,
+                                "multiple": True,
+                                "mode": "dropdown",
+                            }
+                        }
+                    )
+                }
+            ),
         )
 
     async def async_step_price_settings(self, user_input=None):
@@ -255,27 +306,36 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             return await self.async_step_user()
 
         all_prices = [
-            state.entity_id for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "monetary" or state.attributes.get("unit_of_measurement") == "€/m³" or state.attributes.get("unit_of_measurement") == "€/kWh"
+            state.entity_id
+            for state in self.hass.states.async_all("sensor")
+            if state.attributes.get("device_class") == "monetary"
+            or state.attributes.get("unit_of_measurement") == "€/m³"
+            or state.attributes.get("unit_of_measurement") == "€/kWh"
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
         schema_fields = {
-            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector({
-                "select": {
-                    "options": all_prices,
-                    "multiple": False,
-                    "mode": "dropdown",
+            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
+                {
+                    "select": {
+                        "options": all_prices,
+                        "multiple": False,
+                        "mode": "dropdown",
+                    }
                 }
-            }),
-            vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas): selector({
-                "select": {
-                    "options": all_prices,
-                    "multiple": False,
-                    "mode": "dropdown",
+            ),
+            vol.Required(
+                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
+            ): selector(
+                {
+                    "select": {
+                        "options": all_prices,
+                        "multiple": False,
+                        "mode": "dropdown",
+                    }
                 }
-            }),
+            ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):

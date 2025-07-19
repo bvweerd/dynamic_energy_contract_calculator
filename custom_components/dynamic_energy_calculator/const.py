@@ -54,4 +54,3 @@ DEFAULT_PRICE_SETTINGS = {
     "gas_surcharge_per_m3": 0.0,
     "gas_standing_charge_per_day": 0.0,
 }
-
