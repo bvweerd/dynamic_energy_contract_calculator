@@ -174,7 +174,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
                 current = self.price_settings.get(key, default)
-                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
+                if isinstance(default, bool):
+                    schema_fields[vol.Required(key, default=current)] = bool
+                else:
+                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
@@ -340,7 +343,10 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
                 current = self.price_settings.get(key, default)
-                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
+                if isinstance(default, bool):
+                    schema_fields[vol.Required(key, default=current)] = bool
+                else:
+                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,

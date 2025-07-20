@@ -20,6 +20,7 @@
           "price_sensor_gas": "Gas price sensor",
           "electricity_consumption_markup_per_kwh": "Electricity consumption markup per kWh",
           "electricity_production_markup_per_kwh": "Electricity production markup per kWh",
+          "production_price_include_vat": "BTW toepassen op terugleverprijs",
           "electricity_surcharge_per_kwh": "Electricity surcharge per kWh",
           "vat_percentage": "VAT percentage",
           "electricity_surcharge_per_day": "Electricity surcharge per day",
