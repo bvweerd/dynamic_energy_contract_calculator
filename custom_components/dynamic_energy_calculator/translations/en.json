@@ -105,29 +105,22 @@
   },
   "entity": {
     "sensor": {
-      "kwh_total": {"name": "Total kWh", "icon": "mdi:counter"},
-      "cost_total": {"name": "Total Cost", "icon": "mdi:cash"},
-      "profit_total": {"name": "Total Profit", "icon": "mdi:cash-plus"},
-      "kwh_during_cost_total": {"name": "kWh During Cost", "icon": "mdi:transmission-tower-export"},
-      "kwh_during_profit_total": {"name": "kWh During Profit", "icon": "mdi:transmission-tower-import"},
-      "m3_total": {"name": "Total m³", "icon": "mdi:counter"},
-      "daily_electricity_cost_total": {"name": "Electricity Contract Fixed Costs (Total)", "icon": "mdi:calendar-currency"},
-      "daily_gas_cost_total": {"name": "Gas Contract Fixed Costs (Total)", "icon": "mdi:calendar-currency"},
-      "net_total_cost": {"name": "Net Energy Cost (Total)", "icon": "mdi:scale-balance"},
-      "total_energy_cost": {"name": "Energy Contract Cost (Total)", "icon": "mdi:currency-eur"},
-      "current_consumption_price": {"name": "Current Consumption Price", "icon": "mdi:transmission-tower-import"},
-      "current_production_price": {"name": "Current Production Price", "icon": "mdi:transmission-tower-export"},
-      "current_gas_consumption_price": {"name": "Current Gas Consumption Price", "icon": "mdi:gas-burner"}
+      "kwh_total": {"name": "Total kWh"},
+      "cost_total": {"name": "Total Cost"},
+      "profit_total": {"name": "Total Profit"},
+      "kwh_during_cost_total": {"name": "kWh During Cost"},
+      "kwh_during_profit_total": {"name": "kWh During Profit"},
+      "m3_total": {"name": "Total m³"},
+      "daily_electricity_cost_total": {"name": "Electricity Contract Fixed Costs (Total)"},
+      "daily_gas_cost_total": {"name": "Gas Contract Fixed Costs (Total)"},
+      "net_total_cost": {"name": "Net Energy Cost (Total)"},
+      "total_energy_cost": {"name": "Energy Contract Cost (Total)"},
+      "current_consumption_price": {"name": "Current Consumption Price"},
+      "current_production_price": {"name": "Current Production Price"},
+      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
     }
-  },
-  "exception": {
-    "energy_source_unavailable": "Energy source %s is unavailable",
-    "energy_source_invalid": "Energy source %s has invalid state",
-    "price_sensor_unavailable": "Price sensor %s is unavailable",
-    "price_sensor_invalid": "Price sensor %s has invalid state",
-    "unknown_source_type": "Unknown source_type: %s"
-  }
-  ,"issues": {
+    },
+    "issues": {
     "missing_price_sensor": {
       "title": "Missing price sensor",
       "description": "A price sensor is required for calculating energy costs."
