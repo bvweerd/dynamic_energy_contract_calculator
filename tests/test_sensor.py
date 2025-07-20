@@ -5,11 +5,11 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo
 
-from custom_components.dynamic_energy_calculator.entity import (
+from custom_components.dynamic_energy_contract_calculator.entity import (
     BaseUtilitySensor,
     DynamicEnergySensor,
 )
-from custom_components.dynamic_energy_calculator.sensor import (
+from custom_components.dynamic_energy_contract_calculator.sensor import (
     TotalCostSensor,
     TotalEnergyCostSensor,
     DailyGasCostSensor,
@@ -17,7 +17,7 @@ from custom_components.dynamic_energy_calculator.sensor import (
     CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
@@ -337,7 +337,7 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
             called["key"] = translation_key
 
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             fake_issue,
         )
         await sensor.async_update()
@@ -455,7 +455,7 @@ async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant
 
 
 async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
-    from custom_components.dynamic_energy_calculator.sensor import (
+    from custom_components.dynamic_energy_contract_calculator.sensor import (
         TotalCostSensor,
         UTILITY_ENTITIES,
     )

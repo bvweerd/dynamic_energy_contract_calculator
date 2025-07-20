@@ -1,7 +1,9 @@
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from custom_components.dynamic_energy_calculator.sensor import async_setup_entry
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.sensor import (
+    async_setup_entry,
+)
+from custom_components.dynamic_energy_contract_calculator.const import (
     DOMAIN,
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
@@ -13,7 +15,7 @@ from custom_components.dynamic_energy_calculator.const import (
 
 
 async def test_async_setup_entry(hass: HomeAssistant):
-    from custom_components.dynamic_energy_calculator import async_setup
+    from custom_components.dynamic_energy_contract_calculator import async_setup
 
     await async_setup(hass, {})
     assert hass.services.has_service(DOMAIN, "reset_all_meters")

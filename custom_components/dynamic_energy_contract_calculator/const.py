@@ -3,7 +3,7 @@ Constants for the Dynamic Energy Contract Calculator integration.
 """
 
 # Domain of the integration
-DOMAIN = "dynamic_energy_calculator"
+DOMAIN = "dynamic_energy_contract_calculator"
 DOMAIN_ABBREVIATION = "DECC"
 
 PLATFORMS = ["sensor"]

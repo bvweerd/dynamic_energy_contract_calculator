@@ -2,10 +2,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dynamic_energy_calculator.config_flow import (
+from custom_components.dynamic_energy_contract_calculator.config_flow import (
     DynamicEnergyCalculatorOptionsFlowHandler,
 )
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
@@ -14,7 +14,9 @@ from custom_components.dynamic_energy_calculator.const import (
 
 
 async def test_options_flow_no_blocks(hass: HomeAssistant):
-    entry = MockConfigEntry(domain="dynamic_energy_calculator", data={}, entry_id="1")
+    entry = MockConfigEntry(
+        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
+    )
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
@@ -24,7 +26,9 @@ async def test_options_flow_no_blocks(hass: HomeAssistant):
 
 
 async def test_options_flow_full_flow(hass: HomeAssistant):
-    entry = MockConfigEntry(domain="dynamic_energy_calculator", data={}, entry_id="1")
+    entry = MockConfigEntry(
+        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
+    )
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
@@ -42,7 +46,9 @@ async def test_options_flow_full_flow(hass: HomeAssistant):
 
 
 async def test_options_flow_price_settings(hass: HomeAssistant):
-    entry = MockConfigEntry(domain="dynamic_energy_calculator", data={}, entry_id="1")
+    entry = MockConfigEntry(
+        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
+    )
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
@@ -55,7 +61,9 @@ async def test_options_flow_price_settings(hass: HomeAssistant):
 
 
 async def test_options_flow_init_delegates(hass: HomeAssistant):
-    entry = MockConfigEntry(domain="dynamic_energy_calculator", data={}, entry_id="1")
+    entry = MockConfigEntry(
+        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
+    )
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
     result = await flow.async_step_init()

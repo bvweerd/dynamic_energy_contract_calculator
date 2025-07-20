@@ -20,13 +20,13 @@ jobs:
 
       - name: Patch manifest and zip
         run: |
-          sed -i 's/v0.0.0/${{ steps.version.outputs.version }}/' custom_components/dynamic_energy_calculator/manifest.json
-          cd custom_components/dynamic_energy_calculator/
-          zip ../../dynamic_energy_calculator.zip -r ./
+          sed -i 's/v0.0.0/${{ steps.version.outputs.version }}/' custom_components/dynamic_energy_contract_calculator/manifest.json
+          cd custom_components/dynamic_energy_contract_calculator/
+          zip ../../dynamic_energy_contract_calculator.zip -r ./
       - uses: svenstaro/upload-release-action@master
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./dynamic_energy_calculator.zip
-          asset_name: dynamic_energy_calculator.zip
+          file: ./dynamic_energy_contract_calculator.zip
+          asset_name: dynamic_energy_contract_calculator.zip
           tag: ${{ github.ref }}
           overwrite: true

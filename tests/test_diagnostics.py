@@ -2,7 +2,7 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
@@ -35,10 +35,10 @@ async def test_diagnostics_redaction_and_structure(hass: HomeAssistant):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.diagnostics.async_redact_data",
+            "custom_components.dynamic_energy_contract_calculator.diagnostics.async_redact_data",
             _redact,
         )
-        from custom_components.dynamic_energy_calculator import diagnostics
+        from custom_components.dynamic_energy_contract_calculator import diagnostics
 
         result = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
 

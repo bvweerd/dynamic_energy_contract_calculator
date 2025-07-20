@@ -2,14 +2,16 @@ import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dynamic_energy_calculator import (
+from custom_components.dynamic_energy_contract_calculator import (
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.dynamic_energy_calculator.const import DOMAIN, PLATFORMS
-from custom_components.dynamic_energy_calculator.entity import BaseUtilitySensor
-from custom_components.dynamic_energy_calculator.sensor import UTILITY_ENTITIES
+from custom_components.dynamic_energy_contract_calculator.const import DOMAIN, PLATFORMS
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    BaseUtilitySensor,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import UTILITY_ENTITIES
 
 
 async def test_async_setup(hass: HomeAssistant):
@@ -64,7 +66,7 @@ async def test_async_setup_entry_registers_services_when_missing(hass: HomeAssis
             return True
 
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.services.async_register_services",
+            "custom_components.dynamic_energy_contract_calculator.services.async_register_services",
             register_services,
         )
         mp.setattr(hass.config_entries, "async_forward_entry_setups", forward)
@@ -102,7 +104,7 @@ async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
     hass.data[DOMAIN] = {
         entry.entry_id: {},
         "services_registered": True,
-        "entities": {"dynamic_energy_calculator.test": dummy},
+        "entities": {"dynamic_energy_contract_calculator.test": dummy},
     }
     UTILITY_ENTITIES.append(dummy)
 
