@@ -2,7 +2,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
 from custom_components.dynamic_energy_calculator.sensor import (
     BaseUtilitySensor,
@@ -122,6 +122,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
         {"gas_standing_charge_per_day": 0.5, "vat_percentage": 0.0},
         DeviceInfo(identifiers={("dec", "test")}),
     )
+    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
 
 
@@ -138,6 +139,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
         },
         DeviceInfo(identifiers={("dec", "test")}),
     )
+    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
 
 
