@@ -453,9 +453,15 @@ async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant
     assert not called
     assert not sensor.available
 
+
 async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
-    from custom_components.dynamic_energy_calculator.sensor import TotalCostSensor, UTILITY_ENTITIES
+    from custom_components.dynamic_energy_calculator.sensor import (
+        TotalCostSensor,
+        UTILITY_ENTITIES,
+    )
+
     UTILITY_ENTITIES.clear()
+
     class BadValueSensor(DynamicEnergySensor):
         @property
         def native_value(self):

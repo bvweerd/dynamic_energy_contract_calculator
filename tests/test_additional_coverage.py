@@ -18,7 +18,6 @@ from custom_components.dynamic_energy_calculator.const import (
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
-    CONF_PRICE_SENSOR,
     CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
     DOMAIN,
@@ -208,8 +207,10 @@ async def test_total_energy_cost_sensor_branches(hass: HomeAssistant):
 
     called_event = {}
     sensor.async_write_ha_state = lambda *a, **k: called_event.setdefault("write", True)
+
     async def fake_update():
         called_event.setdefault("update", True)
+
     sensor.async_update = fake_update
     event = type("E", (), {"data": {"entity_id": "sensor.net"}})()
     await sensor._handle_input_event(event)
@@ -244,7 +245,11 @@ async def test_current_price_sensor_update_branches(hass: HomeAssistant):
         "cp2",
         price_sensor="sensor.gp",
         source_type=SOURCE_TYPE_GAS,
-        price_settings={"gas_markup_per_m3": 0.1, "gas_surcharge_per_m3": 0.1, "vat_percentage": 0.0},
+        price_settings={
+            "gas_markup_per_m3": 0.1,
+            "gas_surcharge_per_m3": 0.1,
+            "vat_percentage": 0.0,
+        },
         icon="mdi:gas-burner",
         device=DeviceInfo(identifiers={("d", "5")}),
     )

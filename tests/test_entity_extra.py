@@ -1,12 +1,9 @@
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 
 from custom_components.dynamic_energy_calculator.entity import DynamicEnergySensor
 from custom_components.dynamic_energy_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
-    SOURCE_TYPE_PRODUCTION,
-    SOURCE_TYPE_GAS,
 )
 
 
@@ -29,14 +26,16 @@ async def test_energy_unavailable(hass: HomeAssistant):
     sensor = await _make_sensor(hass)
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+
         def issue(hass_arg, issue_id, translation_key, placeholders=None):
-            called['key'] = translation_key
+            called["key"] = translation_key
+
         mp.setattr(
             "custom_components.dynamic_energy_calculator.entity.async_report_issue",
             issue,
         )
         await sensor.async_update()
-    assert called['key'] == "energy_source_unavailable"
+    assert called["key"] == "energy_source_unavailable"
     assert not sensor.available
 
 
@@ -128,20 +127,25 @@ async def test_handle_input_event(hass: HomeAssistant):
     # valid state triggers update
     hass.states.async_set("sensor.energy", 1)
     updated = {}
+
     async def fake_update():
-        updated['u'] = True
+        updated["u"] = True
+
     sensor.async_update = fake_update
     event = type("E", (), {"data": {"new_state": hass.states.get("sensor.energy")}})()
     await sensor._handle_input_event(event)
-    assert updated.get('u')
+    assert updated.get("u")
 
 
 async def test_update_listener(hass: HomeAssistant):
     from custom_components.dynamic_energy_calculator import _update_listener
+
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+
         async def reload(entry_id):
-            called['reloaded'] = entry_id
+            called["reloaded"] = entry_id
+
         mp.setattr(hass.config_entries, "async_reload", reload)
         entry = type("Entry", (), {"entry_id": "1"})()
         await _update_listener(hass, entry)

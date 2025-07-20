@@ -1,4 +1,3 @@
-import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dynamic_energy_calculator.sensor import async_setup_entry

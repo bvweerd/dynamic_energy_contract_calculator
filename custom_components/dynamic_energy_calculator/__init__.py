@@ -56,9 +56,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
         remaining = [
-            k
-            for k in hass.data[DOMAIN]
-            if k not in ("services_registered", "entities")
+            k for k in hass.data[DOMAIN] if k not in ("services_registered", "entities")
         ]
         if not remaining and hass.data[DOMAIN].get("services_registered"):
             await async_unregister_services(hass)

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from homeassistant.components.sensor import SensorEntity, RestoreEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    RestoreEntity,
+    SensorStateClass,
+)
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
