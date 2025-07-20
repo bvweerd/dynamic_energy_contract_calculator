@@ -126,30 +126,29 @@ at midnight.
 - **Resetting values:** use the `reset_all_meters` or `reset_selected_meters`
   services if the readings get out of sync.
 
-## BTW (VAT) en teruglevering
+## VAT and feed‑in
 
-De meeste energieleveranciers tonen prijzen inclusief 21&nbsp;% BTW. De
-integratie gaat standaard uit van prijzen *exclusief* BTW en telt het
-opgegeven BTW-percentage er nog bij op. Wanneer jouw prijs-sensor al een
-bedrag inclusief BTW doorgeeft, zet je `vat_percentage` dus op `0`.
+Most energy suppliers display prices including 21&nbsp;% VAT. By default the
+integration assumes prices *excluding* VAT and adds the configured VAT
+percentage. If your price sensor already provides a price that includes VAT,
+set `vat_percentage` to `0`.
 
-Particuliere zonnepaneelbezitters hoeven zelf geen BTW af te dragen over de
-teruggeleverde stroom. De leverancier verwerkt de BTW in de vergoeding die je
-ontvangt. Voor het bijhouden van je opbrengst kun je daarom dezelfde instellingen
-gebruiken zoals bij verbruik: zorg ervoor dat het ingevoerde tarief overeenkomt
-met het bedrag dat je van de leverancier krijgt (al dan niet inclusief BTW) en
-pas `vat_percentage` eventueel aan.
+Private solar panel owners do not need to pay VAT on electricity fed back to the
+grid. The supplier includes VAT in the compensation you receive. To track your
+income you can therefore use the same settings as for consumption: make sure the
+entered tariff matches the amount you receive from the supplier (with or without
+VAT) and adjust `vat_percentage` accordingly.
 
-## Geen salderingsregeling
+## No net metering scheme
 
-Deze integratie is bedoeld voor situaties **zonder** de Nederlandse
-salderingsregeling. Teruggeleverde energie wordt direct vergoed tegen het
-actuele tarief en niet verrekend met eerder verbruik. Jaarlijkse saldering of
-een eigen energieadministratie wordt dus niet ondersteund.
+This integration is intended for situations **without** the Dutch net metering
+scheme. Feed‑in energy is compensated at the current rate and is not offset
+against earlier consumption. Annual settlement or your own energy administration
+is therefore not supported.
 
-## Voorbeeldconfiguratie
+## Example configuration
 
-Onderstaande screenshots laten zien hoe de integratie kan worden ingesteld in
-Home Assistant. Omdat deze bestanden niet in de repository staan, vind je ze
-in de bijgevoegde download `integration_setup.png` en `options_flow.png`.
+The screenshots below show how the integration can be configured in Home
+Assistant. Because these files are not stored in the repository, you can find
+them in the accompanying download `integration_setup.png` and `options_flow.png`.
 
