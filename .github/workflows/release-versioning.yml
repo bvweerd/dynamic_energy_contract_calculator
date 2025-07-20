@@ -1,17 +1,20 @@
 name: Release Versioning
 
 on:
-  # Trigger on push of a tag vX.Y.Z
+  # Trigger bij push van een tag vX.Y.Z
   push:
     tags:
       - 'v*.*.*'
-  # Trigger when a Release is published via the GitHub UI
+  # Trigger zodra je in de GitHub UI een Release publiceert
   release:
     types: [published]
 
+permissions:
+  contents: write
+  
 jobs:
   bump-release:
-    # Ensure that only this job handles the tag push
+    # Zorg dat we alleen in deze job de tag-push afhandelen
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -19,6 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -29,19 +33,19 @@ jobs:
         run: pip install bump2version
 
       - name: Bump version in manifest.json
-        # Use --no-tag so we only bump the file for the release
+        # Gebruik --no-tag zodat we alleen het bestand bumpen voor de release
         run: bump2version patch --allow-dirty --no-tag
 
       - name: Commit & Push bumped files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add custom_components/dynamic_energy_calculator/manifest.json
+          git add custom_components/simple_pid_controller/manifest.json setup.cfg
           git commit -m "chore: bump to next version after release ${{ github.ref_name }}"
           git push origin HEAD:main
 
   publish-release:
-    # This job runs after creating the GitHub Release (event 'published')
+    # Deze job draait na het aanmaken van de GitHub Release (event ‘published’)
     if: github.event_name == 'release'
     needs: bump-release
     runs-on: ubuntu-latest
