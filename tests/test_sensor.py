@@ -17,7 +17,9 @@ from custom_components.dynamic_energy_contract_calculator.sensor import (
     CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
+from homeassistant.helpers import entity_registry as er
 from custom_components.dynamic_energy_contract_calculator.const import (
+    DOMAIN,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
@@ -206,6 +208,10 @@ async def test_dynamic_energy_sensor_state_class(hass: HomeAssistant):
 
 
 async def test_total_energy_cost_multiple(hass: HomeAssistant):
+    er_reg = er.async_get(hass)
+    er_reg.async_get_or_create("sensor", DOMAIN, "net_uid", suggested_object_id="net")
+    er_reg.async_get_or_create("sensor", DOMAIN, "fixed1_uid", suggested_object_id="fixed1")
+    er_reg.async_get_or_create("sensor", DOMAIN, "fixed2_uid", suggested_object_id="fixed2")
     hass.states.async_set("sensor.net", 5)
     hass.states.async_set("sensor.fixed1", 1)
     hass.states.async_set("sensor.fixed2", 2)
@@ -213,10 +219,11 @@ async def test_total_energy_cost_multiple(hass: HomeAssistant):
         hass,
         "Total",
         "uid",
-        net_cost_entity_id="sensor.net",
-        fixed_cost_entity_ids=["sensor.fixed1", "sensor.fixed2"],
+        net_cost_unique_id="net_uid",
+        fixed_cost_unique_ids=["fixed1_uid", "fixed2_uid"],
         device=DeviceInfo(identifiers={("dec", "test")}),
     )
+    await sensor.async_added_to_hass()
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(8)
 
