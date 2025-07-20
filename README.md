@@ -68,7 +68,16 @@ The integration exposes several services under the `dynamic_energy_calculator` d
 - `reset_selected_meters` – reset only the specified sensors
 - `set_meter_value` – manually set the value of a sensor
 
+
 Each service is documented in Home Assistant once the integration is installed. See the [service documentation](https://www.home-assistant.io/docs/scripts/service-calls/) for details on calling services.
+
+## Supported Devices / Functions
+
+The integration works with any energy or gas sensor that provides cumulative kWh or m³ readings. A price sensor is optional but allows for true dynamic pricing. Available services are:
+
+- `reset_all_meters`
+- `reset_selected_meters`
+- `set_meter_value`
 
 ## Usage
 
@@ -77,7 +86,15 @@ track of real-time energy costs. The integration provides several services (see
 the *Services* section below) that can be called from automations or scripts to
 reset meters or manually set a value.
 
-### Example: notify when daily cost exceeds €5
+## Use Cases
+
+- Monitor day-to-day electricity and gas costs in the Energy dashboard.
+- Compare consumption and production prices to determine when selling back to the grid is profitable.
+- Combine the summary sensors in automations to keep track of monthly spending or trigger notifications when costs rise above a threshold.
+
+## Examples
+
+### Notify when daily cost exceeds €5
 
 ```yaml
 alias: "Notify high daily cost"
@@ -89,6 +106,20 @@ action:
   - service: notify.mobile_app_phone
     data:
       message: "Your energy usage exceeded €5 today."
+```
+
+### Reset all meters on the first day of the month
+
+```yaml
+alias: "Monthly meter reset"
+trigger:
+  - platform: time
+    at: "00:00:00"
+condition:
+  - condition: template
+    value_template: "{{ now().day == 1 }}"
+action:
+  - service: dynamic_energy_calculator.reset_all_meters
 ```
 
 ## Price Settings
@@ -142,6 +173,10 @@ The delta in energy (kWh or m³) is multiplied by this price and added to the
 appropriate cost or profit sensor. Daily sensors add their values once per day
 at midnight.
 
+## Data Update
+
+Dynamic sensors update whenever the linked energy sensor or price sensor changes. The integration listens for state changes, so updates happen immediately without polling. Daily cost sensors add their values at midnight using Home Assistant's scheduler.
+
 ## Troubleshooting
 
 - **No sensors created:** check the Home Assistant logs for setup errors and
@@ -150,6 +185,8 @@ at midnight.
   set one in the options flow.
 - **Resetting values:** use the `reset_all_meters` or `reset_selected_meters`
   services if the readings get out of sync.
+- **Sensors unavailable:** if a sensor shows `unavailable`, verify the source and price sensors still report valid numeric values.
+- **Negative totals:** make sure production sensors are configured with the correct source type so that profits and costs are calculated properly.
 
 ## VAT and feed‑in
 
@@ -164,12 +201,11 @@ income you can therefore use the same settings as for consumption: make sure the
 entered tariff matches the amount you receive from the supplier (with or without
 VAT) and adjust `vat_percentage` accordingly.
 
-## No net metering scheme
+## Known Limitations
 
-This integration is intended for situations **without** the Dutch net metering
-scheme. Feed‑in energy is compensated at the current rate and is not offset
-against earlier consumption. Annual settlement or your own energy administration
-is therefore not supported.
+- No support for the Dutch net metering (saldering) scheme. Feed‑in energy is compensated at the current rate and not offset against prior consumption.
+- The integration relies on cumulative energy sensors. If a sensor resets unexpectedly the calculated totals may become inaccurate.
+- Prices are taken from your own sensor; the integration does not fetch tariffs from suppliers.
 
 ## Example configuration
 
