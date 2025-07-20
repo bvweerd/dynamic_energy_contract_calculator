@@ -58,3 +58,56 @@ Each service is documented in Home Assistant once the integration is installed. 
 
 Add the created sensors to your dashboards or use them in automations to keep track of real-time energy costs. You can use the provided services to correct meter values or start new measurements when needed.
 
+## Price Settings
+
+During configuration you can adjust several price related options. These values
+are added on top of the base price from your price sensor and are applied before
+VAT is calculated.
+
+| Setting | Description |
+| ------- | ----------- |
+| `electricity_consumption_markup_per_kwh` | Additional cost per kWh for electricity consumption. |
+| `electricity_production_markup_per_kwh` | Additional revenue per kWh for produced electricity. |
+| `electricity_surcharge_per_kwh` | Taxes or surcharges per kWh for consumption. |
+| `electricity_surcharge_per_day` | Daily electricity surcharges. |
+| `electricity_standing_charge_per_day` | Fixed daily cost charged by your supplier. |
+| `electricity_tax_rebate_per_day` | Daily rebate applied to reduce fixed costs. |
+| `gas_markup_per_m3` | Additional cost per cubic meter of gas. |
+| `gas_surcharge_per_m3` | Taxes or surcharges per cubic meter of gas. |
+| `gas_standing_charge_per_day` | Fixed daily gas contract cost. |
+| `vat_percentage` | VAT rate that should be applied to all calculated prices. |
+
+If your price sensors already provide prices **including** VAT, set
+`vat_percentage` to `0` to avoid double counting.
+
+## How Calculations Work
+
+For every update of an energy sensor the integration calculates the consumed or
+produced amount since the last update. The formula below is used to determine
+the price per unit:
+
+```
+price = (base_price + markup + surcharge) * (1 + vat_percentage / 100)
+```
+
+- For production sensors the surcharge is not used.
+- For gas sensors the per‑m³ values are used instead of per‑kWh.
+
+The delta in energy (kWh or m³) is multiplied by this price and added to the
+appropriate cost or profit sensor. Daily sensors add their values once per day
+at midnight.
+
+## BTW (VAT) en teruglevering
+
+De meeste energieleveranciers tonen prijzen inclusief 21&nbsp;% BTW. De
+integratie gaat standaard uit van prijzen *exclusief* BTW en telt het
+opgegeven BTW-percentage er nog bij op. Wanneer jouw prijs-sensor al een
+bedrag inclusief BTW doorgeeft, zet je `vat_percentage` dus op `0`.
+
+Particuliere zonnepaneelbezitters hoeven zelf geen BTW af te dragen over de
+teruggeleverde stroom. De leverancier verwerkt de BTW in de vergoeding die je
+ontvangt. Voor het bijhouden van je opbrengst kun je daarom dezelfde instellingen
+gebruiken zoals bij verbruik: zorg ervoor dat het ingevoerde tarief overeenkomt
+met het bedrag dat je van de leverancier krijgt (al dan niet inclusief BTW) en
+pas `vat_percentage` eventueel aan.
+
