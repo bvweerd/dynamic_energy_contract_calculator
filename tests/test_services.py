@@ -13,7 +13,7 @@ from custom_components.dynamic_energy_calculator import (
     async_unload_entry,
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from custom_components.dynamic_energy_calculator.sensor import BaseUtilitySensor
+from custom_components.dynamic_energy_calculator.entity import BaseUtilitySensor
 
 
 async def test_service_registration(hass: HomeAssistant):

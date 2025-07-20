@@ -5,9 +5,11 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo
 
-from custom_components.dynamic_energy_calculator.sensor import (
+from custom_components.dynamic_energy_calculator.entity import (
     BaseUtilitySensor,
     DynamicEnergySensor,
+)
+from custom_components.dynamic_energy_calculator.sensor import (
     TotalCostSensor,
     TotalEnergyCostSensor,
     DailyGasCostSensor,
@@ -335,7 +337,7 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
             called["key"] = translation_key
 
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.sensor.async_report_issue",
+            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
             fake_issue,
         )
         await sensor.async_update()
