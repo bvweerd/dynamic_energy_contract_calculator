@@ -47,7 +47,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             if choice == "finish":
                 if not self.configs:
                     return self.async_show_form(
-                        step_id="init",
+                        step_id="user",
                         data_schema=self._schema_user(),
                         errors={"base": "no_blocks"},
                     )
@@ -68,7 +68,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             self.source_type = choice
             return await self.async_step_select_sources()
 
-        return self.async_show_form(step_id="init", data_schema=self._schema_user())
+        return self.async_show_form(step_id="user", data_schema=self._schema_user())
 
     def _schema_user(self) -> vol.Schema:
         options = [{"value": t, "label": t.title()} for t in SOURCE_TYPES]
@@ -224,7 +224,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             if choice == "finish":
                 if not self.configs:
                     return self.async_show_form(
-                        step_id="init",
+                        step_id="user",
                         data_schema=self._schema_user(),
                         errors={"base": "no_blocks"},
                     )
@@ -244,7 +244,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             self.source_type = choice
             return await self.async_step_select_sources()
 
-        return self.async_show_form(step_id="init", data_schema=self._schema_user())
+        return self.async_show_form(step_id="user", data_schema=self._schema_user())
 
     def _schema_user(self) -> vol.Schema:
         options = [{"value": t, "label": t.title()} for t in SOURCE_TYPES]
