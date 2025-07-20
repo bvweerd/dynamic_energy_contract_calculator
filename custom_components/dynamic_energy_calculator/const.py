@@ -40,6 +40,7 @@ PRICE_SETTINGS_KEYS = [
     "gas_markup_per_m3",
     "gas_surcharge_per_m3",
     "gas_standing_charge_per_day",
+    "production_price_include_vat",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -53,4 +54,5 @@ DEFAULT_PRICE_SETTINGS = {
     "gas_markup_per_m3": 0.0,
     "gas_surcharge_per_m3": 0.0,
     "gas_standing_charge_per_day": 0.0,
+    "production_price_include_vat": True,
 }

@@ -259,3 +259,26 @@ async def test_production_sensor_cost_and_profit(hass: HomeAssistant):
     await profit_sensor_neg.async_update()
     assert cost_sensor_neg.native_value == pytest.approx(0.2)
     assert profit_sensor_neg.native_value == pytest.approx(0.0)
+
+
+async def test_production_price_no_vat(hass: HomeAssistant):
+    price_settings = {
+        "electricity_production_markup_per_kwh": 0.0,
+        "vat_percentage": 21.0,
+        "production_price_include_vat": False,
+    }
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Prod Price",
+        "pp3",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings=price_settings,
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+
+    hass.states.async_set("sensor.price", 1.0)
+    await sensor.async_update()
+    assert sensor.native_value == pytest.approx(1.0)
