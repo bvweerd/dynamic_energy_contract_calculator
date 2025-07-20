@@ -181,7 +181,9 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
 async def test_total_energy_cost_sensor_branches(hass: HomeAssistant):
     er_reg = er.async_get(hass)
     er_reg.async_get_or_create("sensor", DOMAIN, "net_uid", suggested_object_id="net")
-    er_reg.async_get_or_create("sensor", DOMAIN, "fixed_uid", suggested_object_id="fixed")
+    er_reg.async_get_or_create(
+        "sensor", DOMAIN, "fixed_uid", suggested_object_id="fixed"
+    )
     hass.states.async_set("sensor.net", "bad")
     hass.states.async_set("sensor.fixed", "bad")
     sensor = TotalEnergyCostSensor(

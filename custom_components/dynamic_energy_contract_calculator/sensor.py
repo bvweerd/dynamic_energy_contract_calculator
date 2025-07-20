@@ -531,29 +531,29 @@ async def async_setup_entry(
     )
 
     daily_electricity = DailyElectricityCostSensor(
-            hass=hass,
-            name="Electricity Contract Fixed Costs (Total)",
-            unique_id=unique_id,
-            price_settings=price_settings,
-            device=device_info,
-        )
+        hass=hass,
+        name="Electricity Contract Fixed Costs (Total)",
+        unique_id=unique_id,
+        price_settings=price_settings,
+        device=device_info,
+    )
     entities.append(daily_electricity)
 
     daily_gas = DailyGasCostSensor(
-            hass=hass,
-            name="Gas Contract Fixed Costs (Total)",
-            unique_id=f"{DOMAIN}_daily_gas_cost",
-            price_settings=price_settings,
-            device=device_info,
-        )
+        hass=hass,
+        name="Gas Contract Fixed Costs (Total)",
+        unique_id=f"{DOMAIN}_daily_gas_cost",
+        price_settings=price_settings,
+        device=device_info,
+    )
     entities.append(daily_gas)
 
     net_cost = TotalCostSensor(
-            hass=hass,
-            name="Net Energy Cost (Total)",
-            unique_id=f"{DOMAIN}_net_total_cost",
-            device=device_info,
-        )
+        hass=hass,
+        name="Net Energy Cost (Total)",
+        unique_id=f"{DOMAIN}_net_total_cost",
+        device=device_info,
+    )
     entities.append(net_cost)
 
     energy_cost = TotalEnergyCostSensor(

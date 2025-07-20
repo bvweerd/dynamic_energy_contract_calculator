@@ -210,8 +210,12 @@ async def test_dynamic_energy_sensor_state_class(hass: HomeAssistant):
 async def test_total_energy_cost_multiple(hass: HomeAssistant):
     er_reg = er.async_get(hass)
     er_reg.async_get_or_create("sensor", DOMAIN, "net_uid", suggested_object_id="net")
-    er_reg.async_get_or_create("sensor", DOMAIN, "fixed1_uid", suggested_object_id="fixed1")
-    er_reg.async_get_or_create("sensor", DOMAIN, "fixed2_uid", suggested_object_id="fixed2")
+    er_reg.async_get_or_create(
+        "sensor", DOMAIN, "fixed1_uid", suggested_object_id="fixed1"
+    )
+    er_reg.async_get_or_create(
+        "sensor", DOMAIN, "fixed2_uid", suggested_object_id="fixed2"
+    )
     hass.states.async_set("sensor.net", 5)
     hass.states.async_set("sensor.fixed1", 1)
     hass.states.async_set("sensor.fixed2", 2)
