@@ -1,8 +1,9 @@
 import pytest
+from datetime import datetime
 from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.helpers.entity import DeviceInfo, EntityCategory
+from homeassistant.helpers.entity import DeviceInfo
 
 from custom_components.dynamic_energy_calculator.sensor import (
     BaseUtilitySensor,
@@ -339,3 +340,113 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
         )
         await sensor.async_update()
     assert called.get("key") == "missing_price_sensor"
+
+
+async def test_base_sensor_restore_state(hass: HomeAssistant):
+    sensor = BaseUtilitySensor("Restore", "uid1", "€", None, "mdi:flash", True)
+    sensor.hass = hass
+    sensor.async_write_ha_state = lambda *a, **k: None
+
+    class LastState:
+        state = "5.5"
+
+    async def get_last_state():
+        return LastState()
+
+    sensor.async_get_last_state = get_last_state
+    await sensor.async_added_to_hass()
+    assert sensor.native_value == pytest.approx(5.5)
+
+
+async def test_base_sensor_restore_invalid_state(hass: HomeAssistant):
+    sensor = BaseUtilitySensor("Restore Bad", "uid2", "€", None, "mdi:flash", True)
+    sensor.hass = hass
+    sensor.async_write_ha_state = lambda *a, **k: None
+
+    class LastState:
+        state = "bad"
+
+    async def get_last_state():
+        return LastState()
+
+    sensor.async_get_last_state = get_last_state
+    await sensor.async_added_to_hass()
+    assert sensor.native_value == 0
+
+
+async def test_total_cost_sensor_handle_event(hass: HomeAssistant):
+    sensor = TotalCostSensor(hass, "Total", "uid", None)
+    sensor.hass = hass
+    sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
+
+    called = {}
+
+    async def fake_update():
+        sensor._attr_native_value = 42
+
+    sensor.async_update = fake_update
+
+    event = type("Event", (), {"data": {"entity_id": "dummy"}})()
+    await sensor._handle_input_event(event)
+    assert sensor.native_value == pytest.approx(42)
+    assert called.get("write")
+
+
+async def test_daily_electricity_cost_handle_addition(hass: HomeAssistant):
+    sensor = DailyElectricityCostSensor(
+        hass,
+        "Elec Fixed",
+        "eid2",
+        {"electricity_surcharge_per_day": 0.5, "vat_percentage": 0.0},
+        DeviceInfo(identifiers={("dec", "test")}),
+    )
+    sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
+    called = {}
+    await sensor._handle_daily_addition(datetime.now())
+    assert sensor.native_value == pytest.approx(sensor._calculate_daily_cost())
+    assert called.get("write")
+
+
+async def test_current_price_handle_price_change(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Current Price",
+        "cid",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+    called = {}
+
+    async def fake_update():
+        sensor._attr_native_value = 1.23
+
+    sensor.async_update = fake_update
+    sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
+    event = type(
+        "Event", (), {"data": {"new_state": type("S", (), {"state": "0.5"})()}}
+    )()
+    await sensor._handle_price_change(event)
+    assert sensor.native_value == pytest.approx(1.23)
+    assert called.get("write")
+
+
+async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Current Price",
+        "cid2",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+    called = {}
+    sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
+    event = type("Event", (), {"data": {"new_state": None}})()
+    await sensor._handle_price_change(event)
+    assert not called
+    assert not sensor.available
