@@ -1,10 +1,10 @@
 """
-Constants for the Dynamic Energy Calculator integration.
+Constants for the Dynamic Energy Contract Calculator integration.
 """
 
 # Domain of the integration
 DOMAIN = "dynamic_energy_calculator"
-DOMAIN_ABBREVIATION = "DEC"
+DOMAIN_ABBREVIATION = "DECC"
 
 PLATFORMS = ["sensor"]
 

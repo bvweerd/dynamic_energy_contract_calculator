@@ -24,7 +24,7 @@ STEP_PRICE_SETTINGS = "price_settings"
 
 
 class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Dynamic Energy Calculator."""
+    """Handle a config flow for Dynamic Energy Contract Calculator."""
 
     VERSION = 1
 
@@ -47,7 +47,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                         errors={"base": "no_blocks"},
                     )
                 return self.async_create_entry(
-                    title="Dynamic Energy Calculator",
+                    title="Dynamic Energy Contract Calculator",
                     data={
                         CONF_CONFIGS: self.configs,
                         CONF_PRICE_SENSOR: self.price_settings.get(CONF_PRICE_SENSOR),

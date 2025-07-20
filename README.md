@@ -1,4 +1,4 @@
-# Dynamic Energy Calculator
+# Dynamic Energy Contract Calculator
 
 This Home Assistant custom integration adds utility sensors that calculate electricity or gas costs using current pricing information. It can track consumption or production and provides several helpers to manage the sensors.
 
@@ -6,7 +6,7 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 
 1. **Via [HACS](https://hacs.xyz/):**
    - Add this repository as a custom integration in HACS.
-   - Install **Dynamic Energy Calculator** from the HACS list of integrations.
+   - Install **Dynamic Energy Contract Calculator** from the HACS list of integrations.
    - Restart Home Assistant to load the integration.
 
 2. **Manual installation:**
@@ -16,7 +16,7 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 ## Configuration
 
 1. In Home Assistant navigate to **Settings → Devices & Services** and use **Add Integration**.
-2. Search for **Dynamic Energy Calculator** and follow the setup flow.
+2. Search for **Dynamic Energy Contract Calculator** and follow the setup flow.
 3. Select the energy sensors you want to track and provide an optional price sensor for live pricing.
 4. Optionally configure price settings such as markup and tax values.
 
