@@ -140,3 +140,16 @@ gebruiken zoals bij verbruik: zorg ervoor dat het ingevoerde tarief overeenkomt
 met het bedrag dat je van de leverancier krijgt (al dan niet inclusief BTW) en
 pas `vat_percentage` eventueel aan.
 
+## Geen salderingsregeling
+
+Deze integratie is bedoeld voor situaties **zonder** de Nederlandse
+salderingsregeling. Teruggeleverde energie wordt direct vergoed tegen het
+actuele tarief en niet verrekend met eerder verbruik. Jaarlijkse saldering of
+een eigen energieadministratie wordt dus niet ondersteund.
+
+## Voorbeeldconfiguratie
+
+Onderstaande screenshots laten zien hoe de integratie kan worden ingesteld in
+Home Assistant. Omdat deze bestanden niet in de repository staan, vind je ze
+in de bijgevoegde download `integration_setup.png` en `options_flow.png`.
+
