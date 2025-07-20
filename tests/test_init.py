@@ -45,3 +45,46 @@ async def test_async_setup_and_unload_entry(hass: HomeAssistant):
 
     assert result
     assert entry.entry_id not in hass.data[DOMAIN]
+
+
+async def test_async_setup_entry_registers_services_when_missing(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+
+    hass.data[DOMAIN] = {}
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def register_services(hass_arg):
+            return None
+
+        async def forward(entry_to_forward, platforms):
+            return True
+
+        mp.setattr(
+            "custom_components.dynamic_energy_calculator.services.async_register_services",
+            register_services,
+        )
+        mp.setattr(hass.config_entries, "async_forward_entry_setups", forward)
+        assert await async_setup_entry(hass, entry)
+
+    assert hass.data[DOMAIN]["services_registered"]
+
+
+async def test_async_unload_entry_failure_keeps_data(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+
+    hass.data[DOMAIN] = {entry.entry_id: {}, "services_registered": True}
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return False
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        result = await async_unload_entry(hass, entry)
+
+    assert not result
+    assert entry.entry_id in hass.data[DOMAIN]
+    assert hass.data[DOMAIN]["services_registered"]
