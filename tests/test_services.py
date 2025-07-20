@@ -8,6 +8,7 @@ from custom_components.dynamic_energy_calculator.services import (
     _handle_set_value,
 )
 from custom_components.dynamic_energy_calculator.const import DOMAIN
+from custom_components.dynamic_energy_calculator.sensor import BaseUtilitySensor
 
 
 async def test_service_registration(hass: HomeAssistant):
@@ -23,11 +24,16 @@ async def test_service_handlers(hass: HomeAssistant):
         "set": False,
     }
 
-    class Dummy:
-        async def async_reset(self):
+    class Dummy(BaseUtilitySensor):
+        def __init__(self):
+            super().__init__("Test", "uid", "€", None, "mdi:flash", True)
+            self.hass = hass
+            self.async_write_ha_state = lambda *a, **k: None
+
+        def reset(self):
             called["reset"] = True
 
-        async def async_set_value(self, value):
+        def set_value(self, value):
             called["set"] = value
 
     hass.data[DOMAIN] = {"entities": {"dynamic_energy_calculator.test": Dummy()}}
