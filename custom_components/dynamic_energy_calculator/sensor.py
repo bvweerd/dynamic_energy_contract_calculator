@@ -175,7 +175,6 @@ class TotalCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="net_total_cost",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
 
     async def async_update(self):
@@ -455,7 +454,6 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="daily_electricity_cost_total",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -523,7 +521,6 @@ class DailyGasCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="daily_gas_cost_total",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -586,7 +583,6 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="total_energy_cost",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.net_cost_entity_id = net_cost_entity_id
         self.fixed_cost_entity_ids = fixed_cost_entity_ids
@@ -661,7 +657,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             translation_key=name.lower().replace(" ", "_"),
         )
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_sensor = price_sensor
         self.source_type = source_type

@@ -122,7 +122,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
         {"gas_standing_charge_per_day": 0.5, "vat_percentage": 0.0},
         DeviceInfo(identifiers={("dec", "test")}),
     )
-    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
 
 
@@ -139,7 +139,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
         },
         DeviceInfo(identifiers={("dec", "test")}),
     )
-    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
 
 
