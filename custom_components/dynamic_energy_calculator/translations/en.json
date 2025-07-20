@@ -90,4 +90,18 @@
     "price_sensor_invalid": "Price sensor %s has invalid state",
     "unknown_source_type": "Unknown source_type: %s"
   }
+  ,"issues": {
+    "missing_price_sensor": {
+      "title": "Missing price sensor",
+      "description": "A price sensor is required for calculating energy costs."
+    },
+    "energy_source_unavailable": {
+      "title": "Energy source unavailable",
+      "description": "Energy sensor {sensor} is unavailable or has invalid data."
+    },
+    "price_sensor_unavailable": {
+      "title": "Price sensor unavailable",
+      "description": "Price sensor {sensor} is unavailable or has invalid data."
+    }
+  }
 }
