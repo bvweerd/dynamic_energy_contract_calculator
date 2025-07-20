@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_CONFIGS, CONF_SOURCES
 
-REDACT_CONFIG = set()
+REDACT_CONFIG: set[str] = set()
 REDACT_STATE = {"context"}
 
 
@@ -19,12 +19,13 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
 
-    data = {
+    sources: list[dict[str, Any]] = []
+    data: dict[str, Any] = {
         "entry": {
             "data": async_redact_data(dict(entry.data), REDACT_CONFIG),
             "options": async_redact_data(dict(entry.options), REDACT_CONFIG),
         },
-        "sources": [],
+        "sources": sources,
     }
 
     for block in entry.data.get(CONF_CONFIGS, []):
@@ -33,7 +34,7 @@ async def async_get_config_entry_diagnostics(
             state_dict = None
             if state:
                 state_dict = async_redact_data(state.as_dict(), REDACT_STATE)
-            data["sources"].append(
+            sources.append(
                 {
                     "entity_id": source,
                     "state": state_dict,
