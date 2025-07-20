@@ -1,7 +1,7 @@
 {
   "config": {
     "step": {
-      "user": {
+      "init": {
         "title": "Dynamic Energy Contract Calculator",
         "data": {
           "source_type": "Source type"
@@ -38,7 +38,7 @@
   },
   "options": {
     "step": {
-      "user": {
+      "init": {
         "title": "Dynamic Energy Contract Calculator",
         "data": {
           "source_type": "Source type"
