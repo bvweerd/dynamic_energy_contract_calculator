@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from homeassistant.components.sensor import SensorEntity, RestoreEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    RestoreEntity,
+    SensorStateClass,
+)
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -118,7 +122,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
-        self._attr_state_class = "total"
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_value = 0.0
         self._attr_available = True
         self._attr_icon = icon
@@ -239,6 +243,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
             device=device,
             translation_key=mode,
         )
+        if mode in ("kwh_total", "m3_total"):
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
         self.input_sensors = [energy_sensor]
@@ -654,6 +660,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             device=device,
             translation_key=name.lower().replace(" ", "_"),
         )
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_sensor = price_sensor
