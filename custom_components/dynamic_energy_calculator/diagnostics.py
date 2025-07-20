@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONF_CONFIGS, CONF_SOURCES
 
-
 REDACT_CONFIG = set()
+REDACT_STATE = {"context"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -30,11 +30,13 @@ async def async_get_config_entry_diagnostics(
     for block in entry.data.get(CONF_CONFIGS, []):
         for source in block.get(CONF_SOURCES, []):
             state = hass.states.get(source)
+            state_dict = None
+            if state:
+                state_dict = async_redact_data(state.as_dict(), REDACT_STATE)
             data["sources"].append(
                 {
                     "entity_id": source,
-                    "state": state.state if state else None,
-                    "attributes": dict(state.attributes) if state else {},
+                    "state": state_dict,
                 }
             )
 
