@@ -5,6 +5,7 @@ from typing import Any, cast
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -291,8 +292,8 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         hass: HomeAssistant,
         name: str,
         unique_id: str,
-        net_cost_entity_id: str,
-        fixed_cost_entity_ids: list[str],
+        net_cost_unique_id: str,
+        fixed_cost_unique_ids: list[str],
         device: DeviceInfo,
     ):
         super().__init__(
@@ -306,14 +307,19 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             translation_key="total_energy_cost",
         )
         self.hass = hass
-        self.net_cost_entity_id = net_cost_entity_id
-        self.fixed_cost_entity_ids = fixed_cost_entity_ids
+        self.net_cost_unique_id = net_cost_unique_id
+        self.fixed_cost_unique_ids = fixed_cost_unique_ids
+        self.net_cost_entity_id: str | None = None
+        self.fixed_cost_entity_ids: list[str] = []
 
     async def async_update(self):
         net_cost = 0.0
         fixed_cost = 0.0
 
-        net_state = self.hass.states.get(self.net_cost_entity_id)
+        if self.net_cost_entity_id:
+            net_state = self.hass.states.get(self.net_cost_entity_id)
+        else:
+            net_state = None
         if net_state and net_state.state not in ("unknown", "unavailable"):
             try:
                 net_cost = float(net_state.state)
@@ -338,14 +344,24 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        ent_reg = er.async_get(self.hass)
+        self.net_cost_entity_id = ent_reg.async_get_entity_id(
+            "sensor", DOMAIN, self.net_cost_unique_id
+        )
+        for uid in self.fixed_cost_unique_ids:
+            eid = ent_reg.async_get_entity_id("sensor", DOMAIN, uid)
+            if eid:
+                self.fixed_cost_entity_ids.append(eid)
+
         for entity_id in [self.net_cost_entity_id, *self.fixed_cost_entity_ids]:
-            self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass,
-                    entity_id,
-                    self._handle_input_event,
+            if entity_id:
+                self.async_on_remove(
+                    async_track_state_change_event(
+                        self.hass,
+                        entity_id,
+                        self._handle_input_event,
+                    )
                 )
-            )
         if self.platform is not None:
             await self.async_update()
             self.async_write_ha_state()
@@ -514,48 +530,41 @@ async def async_setup_entry(
         model="summary",
     )
 
-    entities.append(
-        DailyElectricityCostSensor(
+    daily_electricity = DailyElectricityCostSensor(
             hass=hass,
             name="Electricity Contract Fixed Costs (Total)",
             unique_id=unique_id,
             price_settings=price_settings,
             device=device_info,
         )
-    )
+    entities.append(daily_electricity)
 
-    entities.append(
-        DailyGasCostSensor(
+    daily_gas = DailyGasCostSensor(
             hass=hass,
             name="Gas Contract Fixed Costs (Total)",
             unique_id=f"{DOMAIN}_daily_gas_cost",
             price_settings=price_settings,
             device=device_info,
         )
-    )
+    entities.append(daily_gas)
 
-    entities.append(
-        TotalCostSensor(
+    net_cost = TotalCostSensor(
             hass=hass,
             name="Net Energy Cost (Total)",
             unique_id=f"{DOMAIN}_net_total_cost",
             device=device_info,
         )
-    )
+    entities.append(net_cost)
 
-    entities.append(
-        TotalEnergyCostSensor(
-            hass=hass,
-            name="Energy Contract Cost (Total)",
-            unique_id=f"{DOMAIN}_total_energy_cost",
-            net_cost_entity_id="sensor.net_energy_cost_total",
-            fixed_cost_entity_ids=[
-                "sensor.electricity_contract_fixed_costs_total",
-                "sensor.gas_contract_fixed_costs_total",
-            ],
-            device=device_info,
-        )
+    energy_cost = TotalEnergyCostSensor(
+        hass=hass,
+        name="Energy Contract Cost (Total)",
+        unique_id=f"{DOMAIN}_total_energy_cost",
+        net_cost_unique_id=net_cost.unique_id,
+        fixed_cost_unique_ids=[daily_electricity.unique_id, daily_gas.unique_id],
+        device=device_info,
     )
+    entities.append(energy_cost)
 
     price_sensor = entry.data.get(CONF_PRICE_SENSOR)
     if price_sensor:

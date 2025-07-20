@@ -13,6 +13,7 @@ from custom_components.dynamic_energy_contract_calculator.sensor import (
     CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
+from homeassistant.helpers import entity_registry as er
 from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_PRODUCTION,
@@ -178,14 +179,17 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
 
 
 async def test_total_energy_cost_sensor_branches(hass: HomeAssistant):
+    er_reg = er.async_get(hass)
+    er_reg.async_get_or_create("sensor", DOMAIN, "net_uid", suggested_object_id="net")
+    er_reg.async_get_or_create("sensor", DOMAIN, "fixed_uid", suggested_object_id="fixed")
     hass.states.async_set("sensor.net", "bad")
     hass.states.async_set("sensor.fixed", "bad")
     sensor = TotalEnergyCostSensor(
         hass,
         "Total",
         "teid",
-        net_cost_entity_id="sensor.net",
-        fixed_cost_entity_ids=["sensor.fixed"],
+        net_cost_unique_id="net_uid",
+        fixed_cost_unique_ids=["fixed_uid"],
         device=DeviceInfo(identifiers={("d", "3")}),
     )
     await sensor.async_update()
