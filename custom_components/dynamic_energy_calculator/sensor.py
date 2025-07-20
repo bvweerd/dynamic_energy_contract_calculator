@@ -183,7 +183,7 @@ class TotalCostSensor(BaseUtilitySensor):
                         profit_total += float(entity.native_value or 0.0)
                     except ValueError:
                         continue
-
+        _LOGGER.debug("Aggregated cost=%s profit=%s", cost_total, profit_total)
         self._attr_native_value = round(cost_total - profit_total, 8)
 
     async def async_added_to_hass(self):
@@ -198,6 +198,9 @@ class TotalCostSensor(BaseUtilitySensor):
             )
 
     async def _handle_input_event(self, event):
+        _LOGGER.debug(
+            "%s changed, updating %s", event.data.get("entity_id"), self.entity_id
+        )
         await self.async_update()
         self.async_write_ha_state()
 
@@ -239,6 +242,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._last_updated = datetime.now()
 
     async def async_update(self):
+        _LOGGER.debug(
+            "Updating %s (mode=%s) using %s",
+            self.entity_id,
+            self.mode,
+            self.energy_sensor,
+        )
         if self.source_type == SOURCE_TYPE_GAS:
             markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
             markup_production = 0.0
@@ -274,6 +283,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
             if delta < 0:
                 delta = 0.0
 
+        _LOGGER.debug(
+            "Current energy=%s, Last energy=%s, Delta=%s",
+            current_energy,
+            self._last_energy,
+            delta,
+        )
+
         self._last_energy = current_energy
 
         if self.mode in ("kwh_total", "m3_total"):
@@ -307,6 +323,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 return
 
             value = delta * price
+            _LOGGER.debug(
+                "Calculated price for %s: base=%s markup_c=%s markup_p=%s tax=%s vat=%s -> %s",
+                self.entity_id,
+                price_state.state,
+                markup_consumption,
+                markup_production,
+                tax,
+                vat_factor,
+                price,
+            )
             _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value)
 
             if self.mode == "cost_total":
@@ -356,6 +382,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._attr_available = False
             _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
             return
+        _LOGGER.debug(
+            "State change detected for %s: %s", self.energy_sensor, new_state.state
+        )
         await self.async_update()
         self.async_write_ha_state()
 
@@ -389,6 +418,14 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
 
         subtotal = surcharge + standing - rebate
         total = subtotal * (1 + vat / 100)
+        _LOGGER.debug(
+            "Daily electricity cost calc: surcharge=%s standing=%s rebate=%s vat=%s -> %s",
+            surcharge,
+            standing,
+            rebate,
+            vat,
+            total,
+        )
         return round(total, 8)
 
     async def async_update(self):
@@ -407,7 +444,14 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         )
 
     async def _handle_daily_addition(self, now):
-        self._attr_native_value += self._calculate_daily_cost()
+        addition = self._calculate_daily_cost()
+        _LOGGER.debug(
+            "Adding daily electricity cost %s at %s to %s",
+            addition,
+            now,
+            self.entity_id,
+        )
+        self._attr_native_value += addition
         self.async_write_ha_state()
 
 
@@ -436,6 +480,12 @@ class DailyGasCostSensor(BaseUtilitySensor):
         vat = self.price_settings.get("vat_percentage", 21.0)
         standing = self.price_settings.get("gas_standing_charge_per_day", 0.0)
         total = standing * (1 + vat / 100)
+        _LOGGER.debug(
+            "Daily gas cost calc: standing=%s vat=%s -> %s",
+            standing,
+            vat,
+            total,
+        )
         return round(total, 8)
 
     async def async_update(self):
@@ -454,7 +504,14 @@ class DailyGasCostSensor(BaseUtilitySensor):
         )
 
     async def _handle_daily_addition(self, now):
-        self._attr_native_value += self._calculate_daily_cost()
+        addition = self._calculate_daily_cost()
+        _LOGGER.debug(
+            "Adding daily gas cost %s at %s to %s",
+            addition,
+            now,
+            self.entity_id,
+        )
+        self._attr_native_value += addition
         self.async_write_ha_state()
 
 
@@ -499,8 +556,14 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
                     fixed_cost += float(fixed_state.state)
                 except ValueError:
                     continue
-
-        self._attr_native_value = round(net_cost + fixed_cost, 8)
+        total = net_cost + fixed_cost
+        _LOGGER.debug(
+            "Total energy cost calc: net=%s fixed=%s -> %s",
+            net_cost,
+            fixed_cost,
+            total,
+        )
+        self._attr_native_value = round(total, 8)
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -514,6 +577,9 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             )
 
     async def _handle_input_event(self, event):
+        _LOGGER.debug(
+            "Recalculating total energy cost due to %s", event.data.get("entity_id")
+        )
         await self.async_update()
         self.async_write_ha_state()
 

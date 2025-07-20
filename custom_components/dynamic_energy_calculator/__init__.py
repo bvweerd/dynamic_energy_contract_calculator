@@ -15,23 +15,31 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the base integration (no YAML)."""
     hass.data.setdefault(DOMAIN, {})
+    _LOGGER.info("Initialized Dynamic Energy Contract Calculator")
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry by forwarding to sensor & number platforms."""
+    _LOGGER.info("Setting up entry %s", entry.entry_id)
+
     # Store entry data
     hass.data[DOMAIN][entry.entry_id] = entry.data
 
     # Forward entry to ALL our platforms in one call:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _LOGGER.debug("Forwarded entry %s to platforms %s", entry.entry_id, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry and its platforms."""
+    _LOGGER.info("Unloading entry %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+        _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
+    else:
+        _LOGGER.warning("Failed to unload entry %s", entry.entry_id)
     return unload_ok
