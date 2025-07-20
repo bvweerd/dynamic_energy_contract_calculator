@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
 from .const import DOMAIN, PLATFORMS
+from .services import async_register_services, async_unregister_services
 
 import logging
 
@@ -15,6 +16,9 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the base integration (no YAML)."""
     hass.data.setdefault(DOMAIN, {})
+    if not hass.data[DOMAIN].get("services_registered"):
+        await async_register_services(hass)
+        hass.data[DOMAIN]["services_registered"] = True
     _LOGGER.info("Initialized Dynamic Energy Contract Calculator")
     return True
 
@@ -22,6 +26,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry by forwarding to sensor & number platforms."""
     _LOGGER.info("Setting up entry %s", entry.entry_id)
+
+    if not hass.data[DOMAIN].get("services_registered"):
+        await async_register_services(hass)
+        hass.data[DOMAIN]["services_registered"] = True
 
     # Store entry data
     hass.data[DOMAIN][entry.entry_id] = entry.data
@@ -40,6 +48,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
+        remaining = [
+            k
+            for k in hass.data[DOMAIN]
+            if k not in ("services_registered", "entities")
+        ]
+        if not remaining and hass.data[DOMAIN].get("services_registered"):
+            await async_unregister_services(hass)
+            hass.data[DOMAIN]["services_registered"] = False
     else:
         _LOGGER.warning("Failed to unload entry %s", entry.entry_id)
     return unload_ok
