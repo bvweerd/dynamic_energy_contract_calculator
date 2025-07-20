@@ -70,8 +70,9 @@ async def _handle_reset_sensors(call: ServiceCall) -> None:
     """Reset only the specified sensors back to zero."""
     to_reset = call.data["entity_ids"]
     _LOGGER.info("Service reset_selected_meters called: %s", to_reset)
+    entities = call.hass.data.get(DOMAIN, {}).get("entities", {})
     for entity in to_reset:
-        ent = call.hass.data[DOMAIN]["entities"].get(entity)
+        ent = entities.get(entity)
         if ent and hasattr(ent, "async_reset"):
             _LOGGER.debug("  resetting %s", entity)
             await ent.async_reset()
@@ -82,7 +83,7 @@ async def _handle_set_value(call: ServiceCall) -> None:
     entity = call.data["entity_id"]
     value = call.data["value"]
     _LOGGER.info("Service set_meter_value called: %s → %s", entity, value)
-    ent = call.hass.data[DOMAIN]["entities"].get(entity)
+    ent = call.hass.data.get(DOMAIN, {}).get("entities", {}).get(entity)
     if ent and hasattr(ent, "async_set_value"):
         _LOGGER.debug("  setting %s → %s", entity, value)
         await ent.async_set_value(value)
