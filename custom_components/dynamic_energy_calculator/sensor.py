@@ -11,7 +11,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
 from .const import (
     DOMAIN,
@@ -165,6 +165,7 @@ class TotalCostSensor(BaseUtilitySensor):
             visible=True,
             device=device,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
 
     async def async_update(self):
@@ -407,6 +408,7 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             visible=True,
             device=device,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -473,6 +475,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
             visible=True,
             device=device,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -534,6 +537,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             visible=True,
             device=device,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.net_cost_entity_id = net_cost_entity_id
         self.fixed_cost_entity_ids = fixed_cost_entity_ids
@@ -606,6 +610,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             visible=True,
             device=device,
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_sensor = price_sensor
         self.source_type = source_type

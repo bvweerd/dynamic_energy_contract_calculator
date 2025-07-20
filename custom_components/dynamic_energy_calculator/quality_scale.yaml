@@ -72,7 +72,7 @@ rules:
     status: exempt
     comment: |
       Static set of devices.
-  entity-category: todo
+  entity-category: done
   entity-device-class: done
   entity-disabled-by-default: done
   entity-translations: todo
