@@ -1,6 +1,8 @@
 import pytest
 from homeassistant.core import HomeAssistant
-from custom_components.dynamic_energy_calculator.repair import async_report_issue
+from custom_components.dynamic_energy_contract_calculator.repair import (
+    async_report_issue,
+)
 
 
 async def test_async_report_issue_exception_handled(hass: HomeAssistant):

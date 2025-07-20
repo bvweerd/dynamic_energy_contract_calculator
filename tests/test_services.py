@@ -1,19 +1,21 @@
 import pytest
 from homeassistant.core import HomeAssistant, ServiceCall
 
-from custom_components.dynamic_energy_calculator.services import (
+from custom_components.dynamic_energy_contract_calculator.services import (
     _handle_reset_all,
     _handle_reset_sensors,
     _handle_set_value,
 )
-from custom_components.dynamic_energy_calculator.const import DOMAIN
-from custom_components.dynamic_energy_calculator import (
+from custom_components.dynamic_energy_contract_calculator.const import DOMAIN
+from custom_components.dynamic_energy_contract_calculator import (
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from custom_components.dynamic_energy_calculator.entity import BaseUtilitySensor
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    BaseUtilitySensor,
+)
 
 
 async def test_service_registration(hass: HomeAssistant):
@@ -41,8 +43,10 @@ async def test_service_handlers(hass: HomeAssistant):
         def set_value(self, value):
             called["set"] = value
 
-    hass.data[DOMAIN] = {"entities": {"dynamic_energy_calculator.test": Dummy()}}
-    hass.states.async_set("dynamic_energy_calculator.test", 1)
+    hass.data[DOMAIN] = {
+        "entities": {"dynamic_energy_contract_calculator.test": Dummy()}
+    }
+    hass.states.async_set("dynamic_energy_contract_calculator.test", 1)
 
     await _handle_reset_all(ServiceCall(hass, DOMAIN, "reset_all_meters", {}))
     assert called["reset"]
@@ -53,7 +57,7 @@ async def test_service_handlers(hass: HomeAssistant):
             hass,
             DOMAIN,
             "reset_selected_meters",
-            {"entity_ids": ["dynamic_energy_calculator.test"]},
+            {"entity_ids": ["dynamic_energy_contract_calculator.test"]},
         )
     )
     assert called["reset"]
@@ -63,7 +67,7 @@ async def test_service_handlers(hass: HomeAssistant):
             hass,
             DOMAIN,
             "set_meter_value",
-            {"entity_id": "dynamic_energy_calculator.test", "value": 5},
+            {"entity_id": "dynamic_energy_contract_calculator.test", "value": 5},
         )
     )
     assert called["set"] == 5

@@ -1,4 +1,4 @@
-# custom_components/dynamic_energy_calculator/services.py
+# custom_components/dynamic_energy_contract_calculator/services.py
 
 import logging
 import voluptuous as vol

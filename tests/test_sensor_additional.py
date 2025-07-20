@@ -2,8 +2,10 @@ import pytest
 from datetime import datetime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
-from custom_components.dynamic_energy_calculator.entity import DynamicEnergySensor
-from custom_components.dynamic_energy_calculator.sensor import (
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    DynamicEnergySensor,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import (
     TotalCostSensor,
     DailyElectricityCostSensor,
     DailyGasCostSensor,
@@ -11,7 +13,7 @@ from custom_components.dynamic_energy_calculator.sensor import (
     CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_PRODUCTION,
     SOURCE_TYPE_GAS,
@@ -102,7 +104,7 @@ async def test_dynamic_sensor_added_to_hass(hass: HomeAssistant):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_track_state_change_event",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_track_state_change_event",
             fake_track,
         )
         await sensor.async_added_to_hass()
@@ -134,7 +136,7 @@ async def test_total_cost_sensor_added(hass: HomeAssistant):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.sensor.async_track_state_change_event",
+            "custom_components.dynamic_energy_contract_calculator.sensor.async_track_state_change_event",
             fake_track,
         )
         await sensor.async_added_to_hass()
@@ -161,7 +163,7 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
     g.async_write_ha_state = lambda *a, **k: None
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.sensor.async_track_time_change",
+            "custom_components.dynamic_energy_contract_calculator.sensor.async_track_time_change",
             lambda *a, **k: "unsub",
         )
         await e.async_added_to_hass()
@@ -199,7 +201,7 @@ async def test_total_energy_cost_sensor_branches(hass: HomeAssistant):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.sensor.async_track_state_change_event",
+            "custom_components.dynamic_energy_contract_calculator.sensor.async_track_state_change_event",
             fake_track,
         )
         await sensor.async_added_to_hass()
@@ -273,15 +275,17 @@ async def test_current_price_sensor_update_branches(hass: HomeAssistant):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.sensor.async_track_state_change_event",
+            "custom_components.dynamic_energy_contract_calculator.sensor.async_track_state_change_event",
             lambda *a, **k: "unsub",
         )
         await prod.async_added_to_hass()
 
 
 async def test_async_setup_entry_gas(hass: HomeAssistant):
-    from custom_components.dynamic_energy_calculator.sensor import async_setup_entry
-    from custom_components.dynamic_energy_calculator import async_setup
+    from custom_components.dynamic_energy_contract_calculator.sensor import (
+        async_setup_entry,
+    )
+    from custom_components.dynamic_energy_contract_calculator import async_setup
 
     await async_setup(hass, {})
     hass.states.async_set("sensor.gas", 0)

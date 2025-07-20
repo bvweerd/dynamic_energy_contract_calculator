@@ -1,4 +1,4 @@
-# custom_components/dynamic_energy_calculator/__init__.py
+# custom_components/dynamic_energy_contract_calculator/__init__.py
 
 from __future__ import annotations
 

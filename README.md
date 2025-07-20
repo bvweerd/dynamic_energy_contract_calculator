@@ -10,7 +10,7 @@ This Home Assistant custom integration adds utility sensors that calculate elect
    - Restart Home Assistant to load the integration.
 
 2. **Manual installation:**
-   - Copy the `dynamic_energy_calculator` folder from `custom_components` into your Home Assistant `custom_components` directory.
+   - Copy the `dynamic_energy_contract_calculator` folder from `custom_components` into your Home Assistant `custom_components` directory.
    - Restart Home Assistant.
 
 ## Configuration
@@ -62,7 +62,7 @@ These sensors can be used in the [Energy dashboard](https://www.home-assistant.i
 
 ## Services
 
-The integration exposes several services under the `dynamic_energy_calculator` domain:
+The integration exposes several services under the `dynamic_energy_contract_calculator` domain:
 
 - `reset_all_meters` – reset all dynamic energy sensors to `0`
 - `reset_selected_meters` – reset only the specified sensors
@@ -119,7 +119,7 @@ condition:
   - condition: template
     value_template: "{{ now().day == 1 }}"
 action:
-  - service: dynamic_energy_calculator.reset_all_meters
+  - service: dynamic_energy_contract_calculator.reset_all_meters
 ```
 
 ## Price Settings

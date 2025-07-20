@@ -1,8 +1,10 @@
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.dynamic_energy_calculator.entity import DynamicEnergySensor
-from custom_components.dynamic_energy_calculator.const import (
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    DynamicEnergySensor,
+)
+from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_CONSUMPTION,
 )
 
@@ -31,7 +33,7 @@ async def test_energy_unavailable(hass: HomeAssistant):
             called["key"] = translation_key
 
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             issue,
         )
         await sensor.async_update()
@@ -45,7 +47,7 @@ async def test_energy_invalid(hass: HomeAssistant):
     called = {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(ok=True),
         )
         await sensor.async_update()
@@ -68,7 +70,7 @@ async def test_missing_price_sensor(hass: HomeAssistant):
     called = {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(missing=True),
         )
         await sensor.async_update()
@@ -84,7 +86,7 @@ async def test_price_unavailable(hass: HomeAssistant):
     called = {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(price=True),
         )
         await sensor.async_update()
@@ -100,7 +102,7 @@ async def test_price_invalid(hass: HomeAssistant):
     called = {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "custom_components.dynamic_energy_calculator.entity.async_report_issue",
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(price=True),
         )
         await sensor.async_update()
@@ -138,7 +140,7 @@ async def test_handle_input_event(hass: HomeAssistant):
 
 
 async def test_update_listener(hass: HomeAssistant):
-    from custom_components.dynamic_energy_calculator import _update_listener
+    from custom_components.dynamic_energy_contract_calculator import _update_listener
 
     called = {}
     with pytest.MonkeyPatch.context() as mp:
