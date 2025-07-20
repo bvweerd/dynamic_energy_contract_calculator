@@ -140,6 +140,14 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self._attr_native_value = round(value, 8)
         self.async_write_ha_state()
 
+    async def async_reset(self) -> None:
+        """Async wrapper for reset."""
+        self.reset()
+
+    async def async_set_value(self, value: float) -> None:
+        """Async wrapper for set_value."""
+        self.set_value(value)
+
 
 class TotalCostSensor(BaseUtilitySensor):
     def __init__(
