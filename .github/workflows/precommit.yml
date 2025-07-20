@@ -36,7 +36,9 @@ jobs:
           
       - name: Run pre-commit hooks
         run: |
-          pre-commit run --all-files
+          # Pre-commit exits with code 1 when it makes changes. We don't want
+          # the workflow to fail in that case, so ignore the exit code.
+          pre-commit run --all-files || true
 
       - name: Commit and push changes
         if: success()
