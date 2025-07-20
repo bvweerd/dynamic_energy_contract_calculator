@@ -285,7 +285,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             ):
                 price = (price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                price = (price + markup_production) * vat_factor
+                price = (price - markup_production) * vat_factor
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
@@ -555,7 +555,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 price = (base_price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                price = (base_price + markup_production) * vat_factor
+                price = (base_price - markup_production) * vat_factor
             else:
                 return
 

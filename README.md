@@ -110,6 +110,12 @@ the price per unit:
 price = (base_price + markup + surcharge) * (1 + vat_percentage / 100)
 ```
 
+For production sensors the markup is subtracted instead of added:
+
+```
+price = (base_price - markup) * (1 + vat_percentage / 100)
+```
+
 - For production sensors the surcharge is not used.
 - For gas sensors the per‑m³ values are used instead of per‑kWh.
 
