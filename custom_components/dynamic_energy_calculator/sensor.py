@@ -31,6 +31,8 @@ import logging
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 1
+
 SENSOR_MODES_ELECTRICITY = [
     {
         "key": "kwh_total",
@@ -113,6 +115,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self._attr_device_class = device_class
         self._attr_state_class = "total"
         self._attr_native_value = 0.0
+        self._attr_available = True
         self._attr_icon = icon
         self._attr_entity_registry_enabled_default = visible
         self._attr_device_info = device
@@ -253,11 +256,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         energy_state = self.hass.states.get(self.energy_sensor)
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
             return
+        self._attr_available = True
 
         try:
             current_energy = float(energy_state.state)
         except ValueError:
+            self._attr_available = False
+            _LOGGER.warning("Energy source %s has invalid state", self.energy_sensor)
             return
 
         delta = 0.0
@@ -273,11 +281,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
         elif self.price_sensor:
             price_state = self.hass.states.get(self.price_sensor)
             if price_state is None or price_state.state in ("unknown", "unavailable"):
+                self._attr_available = False
+                _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
                 return
             try:
                 price = float(price_state.state)
             except ValueError:
+                self._attr_available = False
+                _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
                 return
+            self._attr_available = True
 
             if (
                 self.source_type == SOURCE_TYPE_CONSUMPTION
@@ -340,6 +353,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
     async def _handle_input_event(self, event):
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
             return
         await self.async_update()
         self.async_write_ha_state()
@@ -533,11 +548,16 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
     async def async_update(self):
         state = self.hass.states.get(self.price_sensor)
         if state is None or state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
             return
         try:
             base_price = float(state.state)
         except ValueError:
+            self._attr_available = False
+            _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
             return
+        self._attr_available = True
 
         if self.source_type == SOURCE_TYPE_GAS:
             markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
@@ -578,6 +598,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         )
 
     async def _handle_price_change(self, event):
+        new_state = event.data.get("new_state")
+        if new_state is None or new_state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
+            return
         await self.async_update()
         self.async_write_ha_state()
 

@@ -23,6 +23,19 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 Price settings can be changed later from the integration's options flow. See
 the *Price Settings* section below for all available keys.
 
+### Installation parameters
+
+During setup you will be asked for the following information:
+
+1. **Source type** – choose whether the selected sensors measure electricity
+   consumption, electricity production or gas consumption.
+2. **Energy sensors** – one or more sensors with the `energy` or `gas` device
+   class that provide cumulative readings.
+3. **Price sensor** – optional sensor that provides the current energy price
+   in €/kWh or €/m³.
+4. **Price settings** – values from the table below used to calculate the final
+   price.
+
 See the [Home Assistant configuration documentation](https://www.home-assistant.io/docs/configuration/integrations/) for general details on adding custom integrations.
 
 ## Provided Sensors
@@ -100,6 +113,12 @@ VAT is calculated.
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
 
+### Configuration parameters
+
+All of the parameters above can be changed later from the integration's options
+flow. You can also modify the list of energy sensors or change the selected
+price sensor at any time via **Settings → Devices & Services**.
+
 ## How Calculations Work
 
 For every update of an energy sensor the integration calculates the consumed or
@@ -157,4 +176,10 @@ is therefore not supported.
 The screenshots below show how the integration can be configured in Home
 Assistant. Because these files are not stored in the repository, you can find
 them in the accompanying download `integration_setup.png` and `options_flow.png`.
+
+## Removal
+
+To remove the integration open **Settings → Devices & Services**, locate
+**Dynamic Energy Contract Calculator**, choose **Delete** from the menu and
+confirm. All created sensors will be removed from Home Assistant.
 
