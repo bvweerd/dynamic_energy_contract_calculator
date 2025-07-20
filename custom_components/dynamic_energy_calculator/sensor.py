@@ -36,7 +36,7 @@ PARALLEL_UPDATES = 1
 SENSOR_MODES_ELECTRICITY = [
     {
         "key": "kwh_total",
-        "name": "Total kWh",
+        "translation_key": "kwh_total",
         "unit": UnitOfEnergy.KILO_WATT_HOUR,
         "device_class": "energy",
         "icon": "mdi:counter",
@@ -44,7 +44,7 @@ SENSOR_MODES_ELECTRICITY = [
     },
     {
         "key": "cost_total",
-        "name": "Total Cost",
+        "translation_key": "cost_total",
         "unit": "€",
         "device_class": None,
         "icon": "mdi:cash",
@@ -52,7 +52,7 @@ SENSOR_MODES_ELECTRICITY = [
     },
     {
         "key": "profit_total",
-        "name": "Total Profit",
+        "translation_key": "profit_total",
         "unit": "€",
         "device_class": None,
         "icon": "mdi:cash-plus",
@@ -60,7 +60,7 @@ SENSOR_MODES_ELECTRICITY = [
     },
     {
         "key": "kwh_during_cost_total",
-        "name": "kWh During Cost",
+        "translation_key": "kwh_during_cost_total",
         "unit": UnitOfEnergy.KILO_WATT_HOUR,
         "device_class": "energy",
         "icon": "mdi:transmission-tower-export",
@@ -68,7 +68,7 @@ SENSOR_MODES_ELECTRICITY = [
     },
     {
         "key": "kwh_during_profit_total",
-        "name": "kWh During Profit",
+        "translation_key": "kwh_during_profit_total",
         "unit": UnitOfEnergy.KILO_WATT_HOUR,
         "device_class": "energy",
         "icon": "mdi:transmission-tower-import",
@@ -79,7 +79,7 @@ SENSOR_MODES_ELECTRICITY = [
 SENSOR_MODES_GAS = [
     {
         "key": "m3_total",
-        "name": "Total m³",
+        "translation_key": "m3_total",
         "unit": UnitOfVolume.CUBIC_METERS,
         "device_class": "gas",
         "icon": "mdi:counter",
@@ -87,7 +87,7 @@ SENSOR_MODES_GAS = [
     },
     {
         "key": "cost_total",
-        "name": "Total Cost",
+        "translation_key": "cost_total",
         "unit": "€",
         "device_class": None,
         "icon": "mdi:cash",
@@ -101,15 +101,19 @@ UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 class BaseUtilitySensor(SensorEntity, RestoreEntity):
     def __init__(
         self,
-        name: str,
+        name: str | None,
         unique_id: str,
         unit: str,
-        device_class: str,
+        device_class: str | None,
         icon: str,
         visible: bool,
         device: DeviceInfo | None = None,
+        translation_key: str | None = None,
     ):
-        self._attr_name = name
+        if name is not None:
+            self._attr_name = name
+        self._attr_translation_key = translation_key
+        self._attr_has_entity_name = translation_key is not None
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
@@ -157,13 +161,14 @@ class TotalCostSensor(BaseUtilitySensor):
         self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo
     ):
         super().__init__(
-            name=name,
+            name=None,
             unique_id=unique_id,
             unit="€",
             device_class=None,
             icon="mdi:scale-balance",
             visible=True,
             device=device,
+            translation_key="net_total_cost",
         )
         self.hass = hass
 
@@ -223,13 +228,14 @@ class DynamicEnergySensor(BaseUtilitySensor):
         device: DeviceInfo | None = None,
     ):
         super().__init__(
-            name,
+            None,
             unique_id,
             unit=unit,
             device_class=device_class,
             icon=icon,
             visible=visible,
             device=device,
+            translation_key=mode,
         )
         self.hass = hass
         self.energy_sensor = energy_sensor
@@ -399,13 +405,14 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         device: DeviceInfo,
     ):
         super().__init__(
-            name=name,
+            name=None,
             unique_id=unique_id,
             unit="€",
             device_class=None,
             icon="mdi:calendar-currency",
             visible=True,
             device=device,
+            translation_key="daily_electricity_cost_total",
         )
         self.hass = hass
         self.price_settings = price_settings
@@ -465,13 +472,14 @@ class DailyGasCostSensor(BaseUtilitySensor):
         device: DeviceInfo,
     ):
         super().__init__(
-            name=name,
+            name=None,
             unique_id=unique_id,
             unit="€",
             device_class=None,
             icon="mdi:calendar-currency",
             visible=True,
             device=device,
+            translation_key="daily_gas_cost_total",
         )
         self.hass = hass
         self.price_settings = price_settings
@@ -526,13 +534,14 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         device: DeviceInfo,
     ):
         super().__init__(
-            name=name,
+            name=None,
             unique_id=unique_id,
             unit="€",
             device_class=None,
             icon="mdi:currency-eur",
             visible=True,
             device=device,
+            translation_key="total_energy_cost",
         )
         self.hass = hass
         self.net_cost_entity_id = net_cost_entity_id
@@ -598,13 +607,14 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
     ):
         unit = "€/m³" if source_type == SOURCE_TYPE_GAS else "€/kWh"
         super().__init__(
-            name=name,
+            name=None,
             unique_id=unique_id,
             unit=unit,
             device_class=None,
             icon=icon,
             visible=True,
             device=device,
+            translation_key=name.lower().replace(" ", "_"),
         )
         self.hass = hass
         self.price_sensor = price_sensor
@@ -707,12 +717,11 @@ async def async_setup_entry(
 
             for mode_def in mode_defs:
                 mode = mode_def["key"]
-                name = mode_def["name"]
                 uid = f"{DOMAIN}_{base_id}_{mode}"
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
-                        name=name,
+                        name=mode_def.get("translation_key", mode),
                         unique_id=uid,
                         energy_sensor=sensor,
                         price_sensor=price_sensor,
