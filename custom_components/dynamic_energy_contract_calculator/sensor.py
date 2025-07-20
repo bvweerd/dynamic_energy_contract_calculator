@@ -145,6 +145,9 @@ class TotalCostSensor(BaseUtilitySensor):
                     self._handle_input_event,
                 )
             )
+        if self.platform is not None:
+            await self.async_update()
+            self.async_write_ha_state()
 
     async def _handle_input_event(self, event):
         _LOGGER.debug(
@@ -343,6 +346,9 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
                     self._handle_input_event,
                 )
             )
+        if self.platform is not None:
+            await self.async_update()
+            self.async_write_ha_state()
 
     async def _handle_input_event(self, event):
         _LOGGER.debug(
