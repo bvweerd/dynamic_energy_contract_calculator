@@ -27,6 +27,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry by forwarding to sensor & number platforms."""
     _LOGGER.info("Setting up entry %s", entry.entry_id)
 
+    if not hass.data[DOMAIN].get("services_registered"):
+        await async_register_services(hass)
+        hass.data[DOMAIN]["services_registered"] = True
+
     # Store entry data
     hass.data[DOMAIN][entry.entry_id] = entry.data
 

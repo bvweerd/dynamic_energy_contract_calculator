@@ -875,4 +875,5 @@ async def async_setup_entry(
 
     async_add_entities(entities, True)
 
-    hass.data[DOMAIN]["entities"] = entities
+    hass.data[DOMAIN]["entities"] = {ent.entity_id: ent for ent in entities}
+
