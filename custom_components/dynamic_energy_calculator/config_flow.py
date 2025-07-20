@@ -177,7 +177,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 if isinstance(default, bool):
                     schema_fields[vol.Required(key, default=current)] = bool
                 else:
-                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
+                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(
+                        float
+                    )
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
@@ -346,7 +348,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 if isinstance(default, bool):
                     schema_fields[vol.Required(key, default=current)] = bool
                 else:
-                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
+                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(
+                        float
+                    )
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
