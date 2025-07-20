@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from homeassistant.components.sensor import SensorEntity, RestoreEntity
+from homeassistant.components.sensor import (
+    SensorEntity,
+    RestoreEntity,
+    SensorStateClass,
+)
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -118,7 +122,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
-        self._attr_state_class = "total"
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_value = 0.0
         self._attr_available = True
         self._attr_icon = icon
@@ -171,7 +175,6 @@ class TotalCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="net_total_cost",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
 
     async def async_update(self):
@@ -239,6 +242,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
             device=device,
             translation_key=mode,
         )
+        if mode in ("kwh_total", "m3_total"):
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
         self.input_sensors = [energy_sensor]
@@ -449,7 +454,6 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="daily_electricity_cost_total",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -517,7 +521,6 @@ class DailyGasCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="daily_gas_cost_total",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.price_settings = price_settings
 
@@ -580,7 +583,6 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             device=device,
             translation_key="total_energy_cost",
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self.hass = hass
         self.net_cost_entity_id = net_cost_entity_id
         self.fixed_cost_entity_ids = fixed_cost_entity_ids
@@ -654,7 +656,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             device=device,
             translation_key=name.lower().replace(" ", "_"),
         )
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_state_class = SensorStateClass.MEASUREMENT
         self.hass = hass
         self.price_sensor = price_sensor
         self.source_type = source_type
@@ -874,3 +876,4 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
     hass.data[DOMAIN]["entities"] = {ent.entity_id: ent for ent in entities}
+

@@ -1,6 +1,6 @@
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
@@ -122,7 +122,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
         {"gas_standing_charge_per_day": 0.5, "vat_percentage": 0.0},
         DeviceInfo(identifiers={("dec", "test")}),
     )
-    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
 
 
@@ -139,7 +139,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
         },
         DeviceInfo(identifiers={("dec", "test")}),
     )
-    assert sensor.entity_category is EntityCategory.DIAGNOSTIC
+    assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
 
 
@@ -174,6 +174,32 @@ async def test_current_electricity_price(hass: HomeAssistant):
         device=DeviceInfo(identifiers={("dec", "test")}),
     )
     assert sensor.native_unit_of_measurement == "€/kWh"
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+
+async def test_dynamic_energy_sensor_state_class(hass: HomeAssistant):
+    sensor_kwh = DynamicEnergySensor(
+        hass,
+        "Energy",
+        "eidkwh",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        {},
+        mode="kwh_total",
+    )
+    assert sensor_kwh.state_class == SensorStateClass.TOTAL_INCREASING
+
+    sensor_m3 = DynamicEnergySensor(
+        hass,
+        "Gas",
+        "eidgas",
+        "sensor.gas",
+        SOURCE_TYPE_GAS,
+        {},
+        mode="m3_total",
+        unit=UnitOfVolume.CUBIC_METERS,
+    )
+    assert sensor_m3.state_class == SensorStateClass.TOTAL_INCREASING
 
 
 async def test_total_energy_cost_multiple(hass: HomeAssistant):
@@ -285,6 +311,7 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(1.0)
 
+
 async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
     price_settings = {}
     sensor = DynamicEnergySensor(
@@ -301,9 +328,11 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
     hass.states.async_set("sensor.energy", 1)
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+
         def fake_issue(hass_arg, issue_id, translation_key, placeholders=None):
             called["issue_id"] = issue_id
             called["key"] = translation_key
+
         mp.setattr(
             "custom_components.dynamic_energy_calculator.sensor.async_report_issue",
             fake_issue,
