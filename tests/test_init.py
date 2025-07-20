@@ -107,6 +107,7 @@ async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
     UTILITY_ENTITIES.append(dummy)
 
     with pytest.MonkeyPatch.context() as mp:
+
         async def unload(entry_to_unload, platforms):
             return True
 

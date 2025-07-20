@@ -60,7 +60,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         entity_map = hass.data[DOMAIN].pop("entities", {})
         if entity_map:
-            UTILITY_ENTITIES[:] = [ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()]
+            UTILITY_ENTITIES[:] = [
+                ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()
+            ]
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
         remaining = [
