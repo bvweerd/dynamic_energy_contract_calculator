@@ -282,3 +282,29 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     hass.states.async_set("sensor.price", 1.0)
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(1.0)
+
+async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
+    price_settings = {}
+    sensor = DynamicEnergySensor(
+        hass,
+        "Test",
+        "uid",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor=None,
+        mode="cost_total",
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    called = {}
+    with pytest.MonkeyPatch.context() as mp:
+        def fake_issue(hass_arg, issue_id, translation_key, placeholders=None):
+            called["issue_id"] = issue_id
+            called["key"] = translation_key
+        mp.setattr(
+            "custom_components.dynamic_energy_calculator.sensor.async_report_issue",
+            fake_issue,
+        )
+        await sensor.async_update()
+    assert called.get("key") == "missing_price_sensor"

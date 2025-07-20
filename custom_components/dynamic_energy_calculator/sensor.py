@@ -26,6 +26,7 @@ from .const import (
     SOURCE_TYPE_PRODUCTION,
     SOURCE_TYPE_GAS,
 )
+from .repair import async_report_issue
 
 import logging
 
@@ -267,6 +268,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
             self._attr_available = False
             _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
+            async_report_issue(
+                self.hass,
+                f"energy_unavailable_{self.energy_sensor}",
+                "energy_source_unavailable",
+                {"sensor": self.energy_sensor},
+            )
             return
         self._attr_available = True
 
@@ -275,6 +282,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         except ValueError:
             self._attr_available = False
             _LOGGER.warning("Energy source %s has invalid state", self.energy_sensor)
+            async_report_issue(
+                self.hass,
+                f"energy_invalid_{self.energy_sensor}",
+                "energy_source_unavailable",
+                {"sensor": self.energy_sensor},
+            )
             return
 
         delta = 0.0
@@ -292,6 +305,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         self._last_energy = current_energy
 
+        if self.mode not in ("kwh_total", "m3_total") and not self.price_sensor:
+            async_report_issue(
+                self.hass,
+                f"missing_price_sensor_{self.entity_id}",
+                "missing_price_sensor",
+                {"sensor": self.entity_id},
+            )
+            return
+
         if self.mode in ("kwh_total", "m3_total"):
             self._attr_native_value += delta
         elif self.price_sensor:
@@ -299,12 +321,24 @@ class DynamicEnergySensor(BaseUtilitySensor):
             if price_state is None or price_state.state in ("unknown", "unavailable"):
                 self._attr_available = False
                 _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
+                async_report_issue(
+                    self.hass,
+                    f"price_unavailable_{self.price_sensor}",
+                    "price_sensor_unavailable",
+                    {"sensor": self.price_sensor},
+                )
                 return
             try:
                 price = float(price_state.state)
             except ValueError:
                 self._attr_available = False
                 _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
+                async_report_issue(
+                    self.hass,
+                    f"price_invalid_{self.price_sensor}",
+                    "price_sensor_unavailable",
+                    {"sensor": self.price_sensor},
+                )
                 return
             self._attr_available = True
 
