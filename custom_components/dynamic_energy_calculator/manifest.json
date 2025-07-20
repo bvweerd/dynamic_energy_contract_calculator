@@ -9,6 +9,7 @@
   "iot_class": "calculated",
   "translation_key": "dynamic_energy_calculator",
   "issue_tracker": "https://github.com/bvweerd/dynamic_energy_calculator/issues",
+  "diagnostics": true,
   "quality_scale": "silver",
   "requirements": [],
   "ssdp": [],
