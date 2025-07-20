@@ -20,6 +20,9 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 3. Select the energy sensors you want to track and provide an optional price sensor for live pricing.
 4. Optionally configure price settings such as markup and tax values.
 
+Price settings can be changed later from the integration's options flow. See
+the *Price Settings* section below for all available keys.
+
 See the [Home Assistant configuration documentation](https://www.home-assistant.io/docs/configuration/integrations/) for general details on adding custom integrations.
 
 ## Provided Sensors
@@ -56,7 +59,24 @@ Each service is documented in Home Assistant once the integration is installed. 
 
 ## Usage
 
-Add the created sensors to your dashboards or use them in automations to keep track of real-time energy costs. You can use the provided services to correct meter values or start new measurements when needed.
+Add the created sensors to your dashboards or use them in automations to keep
+track of real-time energy costs. The integration provides several services (see
+the *Services* section below) that can be called from automations or scripts to
+reset meters or manually set a value.
+
+### Example: notify when daily cost exceeds €5
+
+```yaml
+alias: "Notify high daily cost"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.energy_contract_cost_total
+    above: 5
+action:
+  - service: notify.mobile_app_phone
+    data:
+      message: "Your energy usage exceeded €5 today."
+```
 
 ## Price Settings
 
@@ -96,6 +116,15 @@ price = (base_price + markup + surcharge) * (1 + vat_percentage / 100)
 The delta in energy (kWh or m³) is multiplied by this price and added to the
 appropriate cost or profit sensor. Daily sensors add their values once per day
 at midnight.
+
+## Troubleshooting
+
+- **No sensors created:** check the Home Assistant logs for setup errors and
+  verify that your energy sensors are selected during configuration.
+- **Prices remain at 0:** ensure a valid price sensor is configured or manually
+  set one in the options flow.
+- **Resetting values:** use the `reset_all_meters` or `reset_selected_meters`
+  services if the readings get out of sync.
 
 ## BTW (VAT) en teruglevering
 
