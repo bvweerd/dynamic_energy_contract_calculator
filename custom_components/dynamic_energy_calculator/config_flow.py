@@ -29,6 +29,8 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
     VERSION = 1
 
     def __init__(self) -> None:
+        super().__init__()
+        self.context = {}
         self.configs: list[dict] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
@@ -37,6 +39,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
     ) -> FlowResult:
+        await self.async_set_unique_id(DOMAIN)
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
         if user_input is not None:
             choice = user_input[CONF_SOURCE_TYPE]
             if choice == "finish":
