@@ -8,6 +8,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import DOMAIN, PLATFORMS
 from .services import async_register_services, async_unregister_services
+from .sensor import UTILITY_ENTITIES
 
 import logging
 
@@ -57,6 +58,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Unloading entry %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        entity_map = hass.data[DOMAIN].pop("entities", {})
+        if entity_map:
+            UTILITY_ENTITIES[:] = [ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()]
         hass.data[DOMAIN].pop(entry.entry_id)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
         remaining = [

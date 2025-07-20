@@ -8,6 +8,8 @@ from custom_components.dynamic_energy_calculator import (
     async_unload_entry,
 )
 from custom_components.dynamic_energy_calculator.const import DOMAIN, PLATFORMS
+from custom_components.dynamic_energy_calculator.entity import BaseUtilitySensor
+from custom_components.dynamic_energy_calculator.sensor import UTILITY_ENTITIES
 
 
 async def test_async_setup(hass: HomeAssistant):
@@ -88,3 +90,29 @@ async def test_async_unload_entry_failure_keeps_data(hass: HomeAssistant):
     assert not result
     assert entry.entry_id in hass.data[DOMAIN]
     assert hass.data[DOMAIN]["services_registered"]
+
+
+async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+
+    dummy = BaseUtilitySensor("Test", "uid", "€", None, "mdi:flash", True)
+    dummy.hass = hass
+
+    hass.data[DOMAIN] = {
+        entry.entry_id: {},
+        "services_registered": True,
+        "entities": {"dynamic_energy_calculator.test": dummy},
+    }
+    UTILITY_ENTITIES.append(dummy)
+
+    with pytest.MonkeyPatch.context() as mp:
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        result = await async_unload_entry(hass, entry)
+
+    assert result
+    assert dummy not in UTILITY_ENTITIES
+    assert "entities" not in hass.data[DOMAIN]
