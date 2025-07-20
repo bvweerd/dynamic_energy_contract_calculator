@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import HomeAssistant
@@ -10,6 +12,7 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType
 
 from .const import (
     DOMAIN,
@@ -453,12 +456,13 @@ async def async_setup_entry(
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
 
+        mode_defs: list[dict[str, Any]]
         if source_type == SOURCE_TYPE_GAS:
             price_sensor = entry.data.get(CONF_PRICE_SENSOR_GAS)
-            mode_defs = SENSOR_MODES_GAS
+            mode_defs = cast(list[dict[str, Any]], SENSOR_MODES_GAS)
         else:
             price_sensor = entry.data.get(CONF_PRICE_SENSOR)
-            mode_defs = SENSOR_MODES_ELECTRICITY
+            mode_defs = cast(list[dict[str, Any]], SENSOR_MODES_ELECTRICITY)
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
@@ -467,7 +471,7 @@ async def async_setup_entry(
             device_info = DeviceInfo(
                 identifiers={(DOMAIN, base_id)},
                 name=f"{DOMAIN_ABBREVIATION}: {friendly_name}",
-                entry_type="service",
+                entry_type=DeviceEntryType.SERVICE,
                 manufacturer="DynamicEnergyCalc",
                 model=source_type,
             )
@@ -499,7 +503,7 @@ async def async_setup_entry(
     device_info = DeviceInfo(
         identifiers={(DOMAIN, base_id)},
         name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
-        entry_type="service",
+        entry_type=DeviceEntryType.SERVICE,
         manufacturer="DynamicEnergyCalc",
         model="summary",
     )

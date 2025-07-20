@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import cast
+
 from homeassistant.components.sensor import (
     SensorEntity,
     RestoreEntity,
     SensorStateClass,
+    SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
@@ -30,7 +33,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         name: str | None,
         unique_id: str,
         unit: str,
-        device_class: str | None,
+        device_class: SensorDeviceClass | str | None,
         icon: str,
         visible: bool,
         device: DeviceInfo | None = None,
@@ -42,6 +45,8 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
         self._attr_has_entity_name = translation_key is not None
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
+        if device_class is not None and not isinstance(device_class, SensorDeviceClass):
+            device_class = SensorDeviceClass(device_class)
         self._attr_device_class = device_class
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_native_value = 0.0
@@ -52,7 +57,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     @property
     def native_value(self) -> float:
-        return round(self._attr_native_value, 8)
+        return float(round(float(cast(float, self._attr_native_value or 0.0)), 8))
 
     async def async_added_to_hass(self):
         last_state = await self.async_get_last_state()
@@ -94,7 +99,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         price_sensor: str | None = None,
         mode: str = "kwh_total",
         unit: str = UnitOfEnergy.KILO_WATT_HOUR,
-        device_class: str = None,
+        device_class: SensorDeviceClass | str | None = None,
         icon: str = "mdi:flash",
         visible: bool = True,
         device: DeviceInfo | None = None,

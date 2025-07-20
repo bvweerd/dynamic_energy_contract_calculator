@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import voluptuous as vol
 
+from typing import Any
+
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowContext
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers.selector import selector
 
 from .const import (
@@ -23,13 +26,15 @@ STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
 
 
-class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle a config flow for Dynamic Energy Contract Calculator."""
 
     VERSION = 1
 
     def __init__(self) -> None:
         super().__init__()
+        
+        self.context: ConfigFlowContext = {}
         self.configs: list[dict] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
@@ -37,7 +42,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         await self.async_set_unique_id(DOMAIN)
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
@@ -98,7 +103,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ]
         )
 
-    async def async_step_select_sources(self, user_input=None) -> FlowResult:
+    async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
             self.configs.append(
@@ -138,7 +143,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
-    async def async_step_price_settings(self, user_input=None) -> FlowResult:
+    async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.price_settings = user_input
             return await self.async_step_user()
@@ -153,7 +158,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
-        schema_fields = {
+        schema_fields: dict[Any, Any] = {
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
                     "select": {
@@ -192,7 +197,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry) -> type[config_entries.OptionsFlow]:
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
         return DynamicEnergyCalculatorOptionsFlowHandler(config_entry)
 
 
