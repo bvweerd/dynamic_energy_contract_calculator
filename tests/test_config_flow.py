@@ -17,6 +17,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 async def test_flow_no_blocks(hass: HomeAssistant):
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
+    flow.context = {}
 
     result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
     assert result["type"] == FlowResultType.FORM
@@ -26,6 +27,7 @@ async def test_flow_no_blocks(hass: HomeAssistant):
 async def test_full_flow(hass: HomeAssistant):
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
+    flow.context = {}
 
     async def _get_energy():
         return ["sensor.energy"]
@@ -48,6 +50,7 @@ async def test_full_flow(hass: HomeAssistant):
 async def test_single_instance_abort(hass: HomeAssistant):
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
+    flow.context = {}
 
     entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     entry.add_to_hass(hass)

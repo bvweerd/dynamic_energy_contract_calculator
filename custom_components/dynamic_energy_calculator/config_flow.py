@@ -30,7 +30,6 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     def __init__(self) -> None:
         super().__init__()
-        self.context = {}
         self.configs: list[dict] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
