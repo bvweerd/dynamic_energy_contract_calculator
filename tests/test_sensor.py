@@ -10,6 +10,7 @@ from custom_components.dynamic_energy_calculator.sensor import (
     TotalCostSensor,
     TotalEnergyCostSensor,
     DailyGasCostSensor,
+    DailyElectricityCostSensor,
     CurrentElectricityPriceSensor,
     UTILITY_ENTITIES,
 )
@@ -124,6 +125,22 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
 
 
+async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
+    sensor = DailyElectricityCostSensor(
+        hass,
+        "Electric Fixed",
+        "eid",
+        {
+            "electricity_surcharge_per_day": 0.5,
+            "electricity_standing_charge_per_day": 0.2,
+            "electricity_tax_rebate_per_day": 0.1,
+            "vat_percentage": 0.0,
+        },
+        DeviceInfo(identifiers={("dec", "test")}),
+    )
+    assert sensor._calculate_daily_cost() == pytest.approx(0.6)
+
+
 async def test_current_gas_consumption_price(hass: HomeAssistant):
     price_settings = {
         "gas_markup_per_m3": 0.0,
@@ -141,6 +158,20 @@ async def test_current_gas_consumption_price(hass: HomeAssistant):
         device=DeviceInfo(identifiers={("dec", "test")}),
     )
     assert sensor.native_unit_of_measurement == "€/m³"
+
+
+async def test_current_electricity_price(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Elec Price",
+        "eid",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "test")}),
+    )
+    assert sensor.native_unit_of_measurement == "€/kWh"
 
 
 async def test_total_energy_cost_multiple(hass: HomeAssistant):
