@@ -2,17 +2,22 @@ import pytest
 from homeassistant.core import HomeAssistant, ServiceCall
 
 from custom_components.dynamic_energy_calculator.services import (
-    async_register_services,
     _handle_reset_all,
     _handle_reset_sensors,
     _handle_set_value,
 )
 from custom_components.dynamic_energy_calculator.const import DOMAIN
+from custom_components.dynamic_energy_calculator import (
+    async_setup,
+    async_setup_entry,
+    async_unload_entry,
+)
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dynamic_energy_calculator.sensor import BaseUtilitySensor
 
 
 async def test_service_registration(hass: HomeAssistant):
-    await async_register_services(hass)
+    await async_setup(hass, {})
     assert hass.services.has_service(DOMAIN, "reset_all_meters")
     assert hass.services.has_service(DOMAIN, "reset_selected_meters")
     assert hass.services.has_service(DOMAIN, "set_meter_value")
@@ -72,3 +77,29 @@ async def test_service_handlers(hass: HomeAssistant):
         )
     )
     assert called["set"] == 5
+
+
+async def test_services_removed_after_unload(hass: HomeAssistant):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+    await async_setup(hass, {})
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def forward(entry_to_forward, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_forward_entry_setups", forward)
+        await async_setup_entry(hass, entry)
+
+    assert hass.services.has_service(DOMAIN, "reset_all_meters")
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        assert await async_unload_entry(hass, entry)
+
+    assert not hass.services.has_service(DOMAIN, "reset_all_meters")

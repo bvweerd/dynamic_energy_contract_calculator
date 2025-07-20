@@ -8,7 +8,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -879,26 +879,5 @@ async def async_setup_entry(
         )
 
     async_add_entities(entities, True)
-
-    async def handle_reset_all(call: ServiceCall):
-        for ent in entities:
-            ent.reset()
-
-    async def handle_reset_selected(call: ServiceCall):
-        ids = call.data.get("entity_ids", [])
-        for ent in entities:
-            if ent.entity_id in ids:
-                ent.reset()
-
-    async def handle_set_value(call: ServiceCall):
-        entity_id = call.data.get("entity_id")
-        value = call.data.get("value", 0.0)
-        for ent in entities:
-            if ent.entity_id == entity_id:
-                ent.set_value(value)
-
-    hass.services.async_register(DOMAIN, "reset_all_meters", handle_reset_all)
-    hass.services.async_register(DOMAIN, "reset_selected_meters", handle_reset_selected)
-    hass.services.async_register(DOMAIN, "set_meter_value", handle_set_value)
 
     hass.data[DOMAIN]["entities"] = entities

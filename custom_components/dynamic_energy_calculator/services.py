@@ -45,6 +45,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
     _LOGGER.debug("Dynamic Energy Contract Calculator services registered.")
 
 
+async def async_unregister_services(hass: HomeAssistant) -> None:
+    """Remove custom services when no entries remain."""
+    hass.services.async_remove(DOMAIN, "reset_all_meters")
+    hass.services.async_remove(DOMAIN, "reset_selected_meters")
+    hass.services.async_remove(DOMAIN, "set_meter_value")
+    _LOGGER.debug("Dynamic Energy Contract Calculator services unregistered.")
+
+
 # ─── service handlers ─────────────────────────────────────────────────────────
 
 
