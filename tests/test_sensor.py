@@ -452,3 +452,34 @@ async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant
     await sensor._handle_price_change(event)
     assert not called
     assert not sensor.available
+
+async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
+    from custom_components.dynamic_energy_calculator.sensor import TotalCostSensor, UTILITY_ENTITIES
+    UTILITY_ENTITIES.clear()
+    class BadValueSensor(DynamicEnergySensor):
+        @property
+        def native_value(self):
+            return "bad"
+
+    bad_cost = BadValueSensor(
+        hass,
+        "BadCost",
+        "bc1",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        {},
+        mode="cost_total",
+    )
+    bad_profit = BadValueSensor(
+        hass,
+        "BadProfit",
+        "bp1",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        {},
+        mode="profit_total",
+    )
+    UTILITY_ENTITIES.extend([bad_cost, bad_profit])
+    sensor = TotalCostSensor(hass, "Total", "t_invalid", None)
+    await sensor.async_update()
+    assert sensor.native_value == 0
