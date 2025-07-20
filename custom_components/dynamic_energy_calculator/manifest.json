@@ -1,6 +1,6 @@
 {
   "domain": "dynamic_energy_calculator",
-  "name": "Dynamic Energy Calculator",
+  "name": "Dynamic Energy Contract Calculator",
   "codeowners": ["@bvweerd"],
   "config_flow": true,
   "dependencies": [],

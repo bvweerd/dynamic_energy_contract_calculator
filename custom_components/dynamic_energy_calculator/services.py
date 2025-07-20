@@ -29,7 +29,7 @@ SET_VALUE_SCHEMA = vol.Schema(
 
 
 async def async_register_services(hass: HomeAssistant) -> None:
-    """Register custom services for Dynamic Energy Calculator."""
+    """Register custom services for Dynamic Energy Contract Calculator."""
     hass.services.async_register(
         DOMAIN, "reset_all_meters", _handle_reset_all, schema=RESET_ALL_SCHEMA
     )
@@ -42,7 +42,7 @@ async def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "set_meter_value", _handle_set_value, schema=SET_VALUE_SCHEMA
     )
-    _LOGGER.debug("Dynamic Energy Calculator services registered.")
+    _LOGGER.debug("Dynamic Energy Contract Calculator services registered.")
 
 
 # ─── service handlers ─────────────────────────────────────────────────────────
