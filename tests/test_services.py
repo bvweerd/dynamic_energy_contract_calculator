@@ -44,16 +44,6 @@ async def test_service_handlers(hass: HomeAssistant):
     hass.data[DOMAIN] = {"entities": {"dynamic_energy_calculator.test": Dummy()}}
     hass.states.async_set("dynamic_energy_calculator.test", 1)
 
-    def ids(prefix=None):
-        if prefix == f"{DOMAIN}.":
-            return ["dynamic_energy_calculator.test"]
-        return []
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(
-        hass.states.__class__, "async_entity_ids", lambda self, prefix=None: ids(prefix)
-    )
-
     await _handle_reset_all(ServiceCall(hass, DOMAIN, "reset_all_meters", {}))
     assert called["reset"]
 

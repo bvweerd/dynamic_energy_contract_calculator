@@ -11,6 +11,11 @@ reset_selected_meters:
       description: List of sensor entity_ids to reset.
       required: true
       example: ["sensor.dynamic_energy_calculator_kwh_total"]
+      selector:
+        entity:
+          domain: sensor
+          integration: dynamic_energy_calculator
+          multiple: true
 
 set_meter_value:
   name: Set meter value
@@ -21,8 +26,17 @@ set_meter_value:
       description: The entity_id of the sensor.
       required: true
       example: "sensor.dynamic_energy_calculator_kwh_total"
+      selector:
+        entity:
+          domain: sensor
+          integration: dynamic_energy_calculator
     value:
       name: Value
       description: The new value for the sensor.
       required: true
       example: 123.45
+      selector:
+        number:
+          min: 0
+          mode: box
+          step: 0.01

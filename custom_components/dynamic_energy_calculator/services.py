@@ -59,10 +59,10 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
 async def _handle_reset_all(call: ServiceCall) -> None:
     """Reset **all** dynamic‐energy sensors back to zero."""
     _LOGGER.info("Service reset_all_meters called")
-    for entity in call.hass.states.async_entity_ids(f"{DOMAIN}."):
-        ent = call.hass.data[DOMAIN]["entities"].get(entity)
-        if ent and hasattr(ent, "async_reset"):
-            _LOGGER.debug("  resetting %s", entity)
+    entities = call.hass.data.get(DOMAIN, {}).get("entities", {})
+    for entity_id, ent in entities.items():
+        if hasattr(ent, "async_reset"):
+            _LOGGER.debug("  resetting %s", entity_id)
             await ent.async_reset()
 
 
