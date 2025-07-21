@@ -156,26 +156,66 @@ price sensor at any time via **Settings → Devices & Services**.
 
 ## How Calculations Work
 
-For every update of an energy sensor the integration calculates the consumed or
-produced amount since the last update. The formula below is used to determine
-the price per unit:
+For every update of an energy sensor the integration calculates the change
+since the previous update. This delta is multiplied by a price that depends on
+the selected source type and the configured price settings.
+
+### Consumption
+
+Electricity consumption uses the formula:
 
 ```
-price = (base_price + markup + surcharge) * (1 + vat_percentage / 100)
+price = (
+    base_price
+    + per_unit_supplier_electricity_markup
+    + per_unit_government_electricity_tax
+) * (1 + vat_percentage / 100)
 ```
 
-For production sensors the markup is subtracted instead of added:
+Gas consumption uses:
 
 ```
-price = (base_price - markup) * (1 + vat_percentage / 100)
+price = (
+    base_price
+    + per_unit_supplier_gas_markup
+    + per_unit_government_gas_tax
+) * (1 + vat_percentage / 100)
 ```
 
-- For production sensors the surcharge is not used.
-- For gas sensors the per‑m³ values are used instead of per‑kWh.
+### Production
 
-The delta in energy (kWh or m³) is multiplied by this price and added to the
-appropriate cost or profit sensor. Daily sensors add their values once per day
-at midnight.
+For production sensors the supplier markup is subtracted. Depending on the
+`production_price_include_vat` option VAT may or may not be applied:
+
+```
+if production_price_include_vat:
+    price = (
+        base_price
+        - per_unit_supplier_electricity_production_markup
+    ) * (1 + vat_percentage / 100)
+else:
+    price = base_price - per_unit_supplier_electricity_production_markup
+```
+
+The resulting price is multiplied by the energy delta (kWh or m³) and added to
+the appropriate cost or profit sensor.
+
+### Daily costs
+
+Once per day at midnight fixed contract costs are added:
+
+```
+electricity_daily = (
+    per_day_grid_operator_electricity_connection_fee
+    + per_day_supplier_electricity_standing_charge
+    - per_day_government_electricity_tax_rebate
+) * (1 + vat_percentage / 100)
+
+gas_daily = (
+    per_day_grid_operator_gas_connection_fee
+    + per_day_supplier_gas_standing_charge
+) * (1 + vat_percentage / 100)
+```
 
 ## Data Update
 
