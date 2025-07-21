@@ -6,15 +6,9 @@ import copy
 from typing import Any
 
 from homeassistant import config_entries
-try:
-    from homeassistant.config_entries import ConfigFlowContext
-except ImportError:  # pragma: no cover - older HA versions
-    ConfigFlowContext = dict
+from homeassistant.config_entries import ConfigFlowContext
 from homeassistant.core import callback
-try:
-    from homeassistant.config_entries import ConfigFlowResult as FlowResult
-except ImportError:  # pragma: no cover - older HA versions
-    from homeassistant.config_entries import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers.selector import selector
 
 from .const import (
@@ -49,8 +43,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
-    ) -> FlowResult:
-        # Multiple entries are allowed; no unique ID enforced
+    ) -> ConfigFlowResult:
+        await self.async_set_unique_id(DOMAIN)
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
         if user_input is not None:
             choice = user_input[CONF_SOURCE_TYPE]
             if choice == "finish":
@@ -108,7 +104,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ]
         )
 
-    async def async_step_select_sources(self, user_input=None) -> FlowResult:
+    async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
             self.configs.append(
@@ -148,7 +144,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
-    async def async_step_price_settings(self, user_input=None) -> FlowResult:
+    async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.price_settings = dict(user_input)
             return await self.async_step_user()
@@ -163,11 +159,6 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
-        include_gas = (
-            self.source_type == SOURCE_TYPE_GAS
-            or any(c[CONF_SOURCE_TYPE] == SOURCE_TYPE_GAS for c in self.configs)
-        )
-
         schema_fields: dict[Any, Any] = {
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
@@ -177,10 +168,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                         "mode": "dropdown",
                     }
                 }
-            )
-        }
-        if include_gas:
-            schema_fields[vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)] = selector(
+            ),
+            vol.Required(
+                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
+            ): selector(
                 {
                     "select": {
                         "options": all_prices,
@@ -188,17 +179,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                         "mode": "dropdown",
                     }
                 }
-            )
-        gas_keys = {
-            "per_unit_supplier_gas_markup",
-            "per_unit_government_gas_tax",
-            "per_day_grid_operator_gas_connection_fee",
-            "per_day_supplier_gas_standing_charge",
+            ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                continue
-            if not include_gas and key in gas_keys:
                 continue
             current = self.price_settings.get(key, default)
             if isinstance(default, bool):
@@ -347,8 +331,6 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
-        include_gas = any(c[CONF_SOURCE_TYPE] == SOURCE_TYPE_GAS for c in self.configs)
-
         schema_fields = {
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
@@ -358,10 +340,10 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                         "mode": "dropdown",
                     }
                 }
-            )
-        }
-        if include_gas:
-            schema_fields[vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)] = selector(
+            ),
+            vol.Required(
+                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
+            ): selector(
                 {
                     "select": {
                         "options": all_prices,
@@ -369,17 +351,10 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                         "mode": "dropdown",
                     }
                 }
-            )
-        gas_keys = {
-            "per_unit_supplier_gas_markup",
-            "per_unit_government_gas_tax",
-            "per_day_grid_operator_gas_connection_fee",
-            "per_day_supplier_gas_standing_charge",
+            ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                continue
-            if not include_gas and key in gas_keys:
                 continue
             current = self.price_settings.get(key, default)
             if isinstance(default, bool):

@@ -10,8 +10,5 @@ async def set_time_zone(hass):
     os.environ["TZ"] = "America/Los_Angeles"
     if hasattr(time, "tzset"):
         time.tzset()
-    if hasattr(hass.config, "async_set_time_zone"):
-        await hass.config.async_set_time_zone("America/Los_Angeles")
-    else:
-        hass.config.set_time_zone("America/Los_Angeles")
+    await hass.config.async_set_time_zone("America/Los_Angeles")
     yield

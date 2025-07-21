@@ -506,7 +506,7 @@ async def async_setup_entry(
             state = hass.states.get(sensor)
             friendly_name = state.attributes.get("friendly_name") if state else sensor
             device_info = DeviceInfo(
-                identifiers={(DOMAIN, f"{entry.entry_id}_{base_id}")},
+                identifiers={(DOMAIN, base_id)},
                 name=f"{DOMAIN_ABBREVIATION}: {friendly_name}",
                 entry_type=DeviceEntryType.SERVICE,
                 manufacturer="DynamicEnergyCalc",
@@ -515,7 +515,7 @@ async def async_setup_entry(
 
             for mode_def in mode_defs:
                 mode = mode_def["key"]
-                uid = f"{DOMAIN}_{entry.entry_id}_{base_id}_{mode}"
+                uid = f"{DOMAIN}_{base_id}_{mode}"
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -536,9 +536,9 @@ async def async_setup_entry(
     UTILITY_ENTITIES.extend(entities)
 
     base_id = "daily_electricity_cost"
-    unique_id = f"{DOMAIN}_{entry.entry_id}_{base_id}"
+    unique_id = f"{DOMAIN}_{base_id}"
     device_info = DeviceInfo(
-        identifiers={(DOMAIN, f"{entry.entry_id}_{base_id}")},
+        identifiers={(DOMAIN, base_id)},
         name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
         entry_type=DeviceEntryType.SERVICE,
         manufacturer="DynamicEnergyCalc",
@@ -557,7 +557,7 @@ async def async_setup_entry(
     daily_gas = DailyGasCostSensor(
         hass=hass,
         name="Gas Contract Fixed Costs (Total)",
-        unique_id=f"{DOMAIN}_{entry.entry_id}_daily_gas_cost",
+        unique_id=f"{DOMAIN}_daily_gas_cost",
         price_settings=price_settings,
         device=device_info,
     )
@@ -566,7 +566,7 @@ async def async_setup_entry(
     net_cost = TotalCostSensor(
         hass=hass,
         name="Net Energy Cost (Total)",
-        unique_id=f"{DOMAIN}_{entry.entry_id}_net_total_cost",
+        unique_id=f"{DOMAIN}_net_total_cost",
         device=device_info,
     )
     entities.append(net_cost)
@@ -574,7 +574,7 @@ async def async_setup_entry(
     energy_cost = TotalEnergyCostSensor(
         hass=hass,
         name="Energy Contract Cost (Total)",
-        unique_id=f"{DOMAIN}_{entry.entry_id}_total_energy_cost",
+        unique_id=f"{DOMAIN}_total_energy_cost",
         net_cost_unique_id=net_cost.unique_id,
         fixed_cost_unique_ids=[daily_electricity.unique_id, daily_gas.unique_id],
         device=device_info,
@@ -587,7 +587,7 @@ async def async_setup_entry(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Consumption Price",
-                unique_id=f"{DOMAIN}_{entry.entry_id}_current_consumption_price",
+                unique_id=f"{DOMAIN}_current_consumption_price",
                 price_sensor=price_sensor,
                 source_type=SOURCE_TYPE_CONSUMPTION,
                 price_settings=price_settings,
@@ -599,7 +599,7 @@ async def async_setup_entry(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Production Price",
-                unique_id=f"{DOMAIN}_{entry.entry_id}_current_production_price",
+                unique_id=f"{DOMAIN}_current_production_price",
                 price_sensor=price_sensor,
                 source_type=SOURCE_TYPE_PRODUCTION,
                 price_settings=price_settings,
@@ -614,7 +614,7 @@ async def async_setup_entry(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Gas Consumption Price",
-                unique_id=f"{DOMAIN}_{entry.entry_id}_current_gas_consumption_price",
+                unique_id=f"{DOMAIN}_current_gas_consumption_price",
                 price_sensor=price_sensor_gas,
                 source_type=SOURCE_TYPE_GAS,
                 price_settings=price_settings,
