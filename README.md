@@ -209,9 +209,40 @@ VAT) and adjust `vat_percentage` accordingly.
 
 ## Example configuration
 
-The screenshots below show how the integration can be configured in Home
-Assistant. Because these files are not stored in the repository, you can find
-them in the accompanying download `integration_setup.png` and `options_flow.png`.
+Below are screenshots from a typical installation that show the most important
+steps of the setup flow. The images are located in `assets/readme` so they can
+also be viewed offline.
+
+### 1. Start the configuration flow
+
+![Main menu](assets/readme/main_menu.png)
+
+The **Add integration** dialog lists *Dynamic Energy Contract Calculator*. After
+selecting it you will be guided through a short setup wizard.
+
+### 2. Choose which sensors to track
+
+![Select sources](assets/readme/select_sources.png)
+
+Here you select the energy sensors that should be monitored. You can choose
+consumption, production or gas sensors. Optionally select a price sensor that
+provides the current tariff.
+
+### 3. Configure price settings
+
+![Price settings](assets/readme/price_settings.png)
+
+This screen lets you configure markups, surcharges and VAT. The values are added
+on top of the base price reported by your price sensor.
+
+### 4. Resulting sensors
+
+![Example production sensor](assets/readme/example_production_sensor.png)
+
+![Example summary sensors](assets/readme/example_summary_sensors.png)
+
+After finishing the wizard the integration creates individual sensors for each
+source as well as summary sensors that combine the totals.
 
 ## Removal
 
