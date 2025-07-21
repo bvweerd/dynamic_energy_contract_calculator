@@ -46,8 +46,8 @@ async def test_base_sensor_reset_and_set(hass: HomeAssistant):
 
 async def test_dynamic_energy_sensor_cost(hass: HomeAssistant):
     price_settings = {
-        "per_kwh_supplier_electricity_markup": 0.0,
-        "per_kwh_government_electricity_tax": 0.0,
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.0,
         "vat_percentage": 0.0,
     }
     sensor = DynamicEnergySensor(
@@ -69,8 +69,8 @@ async def test_dynamic_energy_sensor_cost(hass: HomeAssistant):
 
 async def test_dynamic_gas_sensor_cost(hass: HomeAssistant):
     price_settings = {
-        "per_kwh_supplier_gas_markup": 0.0,
-        "per_kwh_government_gas_tax": 0.0,
+        "per_unit_supplier_gas_markup": 0.0,
+        "per_unit_government_gas_tax": 0.0,
         "vat_percentage": 0.0,
     }
     sensor = DynamicEnergySensor(
@@ -150,8 +150,8 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
 
 async def test_current_gas_consumption_price(hass: HomeAssistant):
     price_settings = {
-        "per_kwh_supplier_gas_markup": 0.0,
-        "per_kwh_government_gas_tax": 0.0,
+        "per_unit_supplier_gas_markup": 0.0,
+        "per_unit_government_gas_tax": 0.0,
         "vat_percentage": 0.0,
     }
     sensor = CurrentElectricityPriceSensor(
@@ -234,7 +234,7 @@ async def test_total_energy_cost_multiple(hass: HomeAssistant):
 
 async def test_production_sensor_cost_and_profit(hass: HomeAssistant):
     price_settings = {
-        "per_kwh_supplier_electricity_production_markup": 0.0,
+        "per_unit_supplier_electricity_production_markup": 0.0,
         "vat_percentage": 0.0,
     }
 
@@ -305,7 +305,7 @@ async def test_production_sensor_cost_and_profit(hass: HomeAssistant):
 
 async def test_production_price_no_vat(hass: HomeAssistant):
     price_settings = {
-        "per_kwh_supplier_electricity_production_markup": 0.0,
+        "per_unit_supplier_electricity_production_markup": 0.0,
         "vat_percentage": 21.0,
         "production_price_include_vat": False,
     }
@@ -410,10 +410,7 @@ async def test_daily_electricity_cost_handle_addition(hass: HomeAssistant):
         hass,
         "Elec Fixed",
         "eid2",
-        {
-            "per_day_grid_operator_electricity_connection_fee": 0.5,
-            "vat_percentage": 0.0,
-        },
+        {"per_day_grid_operator_electricity_connection_fee": 0.5, "vat_percentage": 0.0},
         DeviceInfo(identifiers={("dec", "test")}),
     )
     sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})

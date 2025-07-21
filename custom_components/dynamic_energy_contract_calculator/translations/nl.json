@@ -18,16 +18,16 @@
         "data": {
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
-          "per_kwh_supplier_electricity_markup": "Opslag elektriciteit per kWh",
-          "per_kwh_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
+          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
           "production_price_include_vat": "BTW toepassen op terugleverprijs",
-          "per_kwh_government_electricity_tax": "Belasting elektriciteit per kWh",
+          "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
           "vat_percentage": "BTW-percentage",
           "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
           "per_day_supplier_electricity_standing_charge": "Vaste kosten elektriciteit per dag",
           "per_day_government_electricity_tax_rebate": "Belastingteruggave elektriciteit per dag",
-          "per_kwh_supplier_gas_markup": "Gasopslag per m³",
-          "per_kwh_government_gas_tax": "Belasting gas per m³",
+          "per_unit_supplier_gas_markup": "Gasopslag per m³",
+          "per_unit_government_gas_tax": "Belasting gas per m³",
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
           "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
         }
@@ -56,16 +56,16 @@
         "data": {
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
-          "per_kwh_supplier_electricity_markup": "Opslag elektriciteit per kWh",
-          "per_kwh_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
+          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
           "production_price_include_vat": "BTW toepassen op terugleverprijs",
-          "per_kwh_government_electricity_tax": "Belasting elektriciteit per kWh",
+          "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
           "vat_percentage": "BTW-percentage",
           "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
           "per_day_supplier_electricity_standing_charge": "Vaste kosten elektriciteit per dag",
           "per_day_government_electricity_tax_rebate": "Belastingteruggave elektriciteit per dag",
-          "per_kwh_supplier_gas_markup": "Gasopslag per m³",
-          "per_kwh_government_gas_tax": "Belasting gas per m³",
+          "per_unit_supplier_gas_markup": "Gasopslag per m³",
+          "per_unit_government_gas_tax": "Belasting gas per m³",
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
           "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
         }

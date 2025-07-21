@@ -28,11 +28,11 @@ SOURCE_TYPES = [
 CONF_CONFIGS = "configurations"
 
 PRICE_SETTINGS_KEYS = [
-    "per_kwh_supplier_electricity_markup",
-    "per_kwh_supplier_electricity_production_markup",
-    "per_kwh_government_electricity_tax",
-    "per_kwh_supplier_gas_markup",
-    "per_kwh_government_gas_tax",
+    "per_unit_supplier_electricity_markup",
+    "per_unit_supplier_electricity_production_markup",
+    "per_unit_government_electricity_tax",
+    "per_unit_supplier_gas_markup",
+    "per_unit_government_gas_tax",
     "per_day_grid_operator_electricity_connection_fee",
     "per_day_supplier_electricity_standing_charge",
     "per_day_government_electricity_tax_rebate",
@@ -43,11 +43,11 @@ PRICE_SETTINGS_KEYS = [
 ]
 
 DEFAULT_PRICE_SETTINGS = {
-    "per_kwh_supplier_electricity_markup": 0.02,
-    "per_kwh_supplier_electricity_production_markup": 0.0,
-    "per_kwh_government_electricity_tax": 0.1088,
-    "per_kwh_supplier_gas_markup": 0.0,
-    "per_kwh_government_gas_tax": 0.0,
+    "per_unit_supplier_electricity_markup": 0.02,
+    "per_unit_supplier_electricity_production_markup": 0.0,
+    "per_unit_government_electricity_tax": 0.1088,
+    "per_unit_supplier_gas_markup": 0.0,
+    "per_unit_government_gas_tax": 0.0,
     "per_day_grid_operator_electricity_connection_fee": 0.25,
     "per_day_supplier_electricity_standing_charge": 0.25,
     "per_day_government_electricity_tax_rebate": 0.25,
@@ -56,3 +56,4 @@ DEFAULT_PRICE_SETTINGS = {
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
 }
+

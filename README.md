@@ -133,14 +133,14 @@ the base price from your price sensor before VAT is calculated.
 
 | Setting | Description |
 | ------- | ----------- |
-| `per_kwh_supplier_electricity_markup` | Additional cost per kWh for electricity consumption. |
-| `per_kwh_supplier_electricity_production_markup` | Additional revenue per kWh for produced electricity. |
-| `per_kwh_government_electricity_tax` | Government tax per kWh for consumption. |
+| `per_unit_supplier_electricity_markup` | Additional cost per kWh for electricity consumption. |
+| `per_unit_supplier_electricity_production_markup` | Additional revenue per kWh for produced electricity. |
+| `per_unit_government_electricity_tax` | Government tax per kWh for consumption. |
 | `per_day_grid_operator_electricity_connection_fee` | Daily electricity network fees. |
 | `per_day_supplier_electricity_standing_charge` | Fixed daily cost charged by your supplier. |
 | `per_day_government_electricity_tax_rebate` | Daily rebate applied to reduce fixed costs. |
-| `per_kwh_supplier_gas_markup` | Additional cost per cubic meter of gas. |
-| `per_kwh_government_gas_tax` | Government tax per cubic meter of gas. |
+| `per_unit_supplier_gas_markup` | Additional cost per cubic meter of gas. |
+| `per_unit_government_gas_tax` | Government tax per cubic meter of gas. |
 | `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
 | `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
