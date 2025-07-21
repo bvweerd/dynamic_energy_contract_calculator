@@ -6,11 +6,13 @@ import copy
 from typing import Any
 
 from homeassistant import config_entries
+
 try:
     from homeassistant.config_entries import ConfigFlowContext
 except ImportError:  # pragma: no cover - older HA versions
     ConfigFlowContext = dict
 from homeassistant.core import callback
+
 try:
     from homeassistant.config_entries import ConfigFlowResult as FlowResult
 except ImportError:  # pragma: no cover - older HA versions
@@ -163,9 +165,8 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
         current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
 
-        include_gas = (
-            self.source_type == SOURCE_TYPE_GAS
-            or any(c[CONF_SOURCE_TYPE] == SOURCE_TYPE_GAS for c in self.configs)
+        include_gas = self.source_type == SOURCE_TYPE_GAS or any(
+            c[CONF_SOURCE_TYPE] == SOURCE_TYPE_GAS for c in self.configs
         )
 
         schema_fields: dict[Any, Any] = {
@@ -180,7 +181,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             )
         }
         if include_gas:
-            schema_fields[vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)] = selector(
+            schema_fields[
+                vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)
+            ] = selector(
                 {
                     "select": {
                         "options": all_prices,
@@ -361,7 +364,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             )
         }
         if include_gas:
-            schema_fields[vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)] = selector(
+            schema_fields[
+                vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas)
+            ] = selector(
                 {
                     "select": {
                         "options": all_prices,
