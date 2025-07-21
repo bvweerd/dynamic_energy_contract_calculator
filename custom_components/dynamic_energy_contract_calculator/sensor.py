@@ -256,11 +256,16 @@ class DailyGasCostSensor(BaseUtilitySensor):
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
         standing = self.price_settings.get("per_day_supplier_gas_standing_charge", 0.0)
+        surcharge = self.price_settings.get(
+            "per_day_grid_operator_gas_connection_fee", 0.0
+        )
 
-        total = standing * (1 + vat / 100)
+        subtotal = standing + surcharge
+        total = subtotal * (1 + vat / 100)
         _LOGGER.debug(
-            "Daily gas cost calc: standing=%s vat=%s -> %s",
+            "Daily gas cost calc: standing=%s surcharge=%s vat=%s -> %s",
             standing,
+            surcharge,
             vat,
             total,
         )
