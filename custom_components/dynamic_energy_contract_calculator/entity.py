@@ -155,6 +155,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 "per_unit_government_electricity_tax", 0.0
             )
 
+
         vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
         energy_state = self.hass.states.get(self.energy_sensor)

@@ -258,6 +258,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
         standing = self.price_settings.get(
             "per_day_supplier_gas_standing_charge", 0.0
         )
+
         total = standing * (1 + vat / 100)
         _LOGGER.debug(
             "Daily gas cost calc: standing=%s vat=%s -> %s",
@@ -430,6 +431,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 "per_unit_supplier_gas_markup", 0.0
             )
             tax = self.price_settings.get("per_unit_government_gas_tax", 0.0)
+
             price = (base_price + markup_consumption + tax) * (
                 self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
             )
