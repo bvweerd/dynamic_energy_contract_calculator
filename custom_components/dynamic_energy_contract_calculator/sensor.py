@@ -182,9 +182,15 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
-        surcharge = self.price_settings.get("electricity_surcharge_per_day", 0.0)
-        standing = self.price_settings.get("electricity_standing_charge_per_day", 0.0)
-        rebate = self.price_settings.get("electricity_tax_rebate_per_day", 0.0)
+        surcharge = self.price_settings.get(
+            "per_day_grid_operator_electricity_connection_fee", 0.0
+        )
+        standing = self.price_settings.get(
+            "per_day_supplier_electricity_standing_charge", 0.0
+        )
+        rebate = self.price_settings.get(
+            "per_day_government_electricity_tax_rebate", 0.0
+        )
 
         subtotal = surcharge + standing - rebate
         total = subtotal * (1 + vat / 100)
@@ -249,7 +255,9 @@ class DailyGasCostSensor(BaseUtilitySensor):
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
-        standing = self.price_settings.get("gas_standing_charge_per_day", 0.0)
+        standing = self.price_settings.get(
+            "per_day_supplier_gas_standing_charge", 0.0
+        )
         total = standing * (1 + vat / 100)
         _LOGGER.debug(
             "Daily gas cost calc: standing=%s vat=%s -> %s",
@@ -418,20 +426,26 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         self._attr_available = True
 
         if self.source_type == SOURCE_TYPE_GAS:
-            markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
-            tax = self.price_settings.get("gas_surcharge_per_m3", 0.0)
+            markup_consumption = self.price_settings.get(
+                "per_kwh_supplier_gas_markup", 0.0
+            )
+            tax = self.price_settings.get("per_kwh_government_gas_tax", 0.0)
             price = (base_price + markup_consumption + tax) * (
                 self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
             )
         else:
             markup_consumption = self.price_settings.get(
-                "electricity_consumption_markup_per_kwh", 0.0
+                "per_kwh_supplier_electricity_markup", 0.0
             )
             markup_production = self.price_settings.get(
-                "electricity_production_markup_per_kwh", 0.0
+                "per_kwh_supplier_electricity_production_markup", 0.0
             )
-            tax = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
-            vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+            tax = self.price_settings.get(
+                "per_kwh_government_electricity_tax", 0.0
+            )
+            vat_factor = (
+                self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+            )
 
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 price = (base_price + markup_consumption + tax) * vat_factor
