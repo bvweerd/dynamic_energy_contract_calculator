@@ -19,6 +19,7 @@ from .const import (
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
+    get_price_setting,
 )
 from .repair import async_report_issue, async_clear_issue
 
@@ -139,19 +140,38 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self.energy_sensor,
         )
         if self.source_type == SOURCE_TYPE_GAS:
-            markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
+            markup_consumption = get_price_setting(
+                self.price_settings,
+                ["per_kwh", "supplier", "gas_markup"],
+                0.0,
+            )
             markup_production = 0.0
-            tax = self.price_settings.get("gas_surcharge_per_m3", 0.0)
+            tax = get_price_setting(
+                self.price_settings,
+                ["per_kwh", "government", "gas_tax"],
+                0.0,
+            )
         else:
-            markup_consumption = self.price_settings.get(
-                "electricity_consumption_markup_per_kwh", 0.0
+            markup_consumption = get_price_setting(
+                self.price_settings,
+                ["per_kwh", "supplier", "electricity_markup"],
+                0.0,
             )
-            markup_production = self.price_settings.get(
-                "electricity_production_markup_per_kwh", 0.0
+            markup_production = get_price_setting(
+                self.price_settings,
+                ["per_kwh", "supplier", "electricity_production_markup"],
+                0.0,
             )
-            tax = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+            tax = get_price_setting(
+                self.price_settings,
+                ["per_kwh", "government", "electricity_tax"],
+                0.0,
+            )
 
-        vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
+        vat_factor = (
+            get_price_setting(self.price_settings, ["vat_percentage"], 21.0) / 100.0
+            + 1.0
+        )
 
         energy_state = self.hass.states.get(self.energy_sensor)
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
@@ -269,7 +289,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
             ):
                 price = (price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                if self.price_settings.get("production_price_include_vat", True):
+                if get_price_setting(
+                    self.price_settings,
+                    ["production_price_include_vat"],
+                    True,
+                ):
                     price = (price - markup_production) * vat_factor
                 else:
                     price = price - markup_production

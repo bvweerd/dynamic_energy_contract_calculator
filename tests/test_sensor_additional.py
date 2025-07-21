@@ -24,6 +24,7 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
     DOMAIN,
+    expand_flat_price_settings,
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -150,14 +151,18 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
         hass,
         "E",
         "eid",
-        {"electricity_surcharge_per_day": 0.1, "vat_percentage": 0.0},
+        expand_flat_price_settings(
+            {"per_day_grid_operator_electricity_connection_fee": 0.1, "vat_percentage": 0.0}
+        ),
         DeviceInfo(identifiers={("d", "1")}),
     )
     g = DailyGasCostSensor(
         hass,
         "G",
         "gid",
-        {"gas_standing_charge_per_day": 0.2, "vat_percentage": 0.0},
+        expand_flat_price_settings(
+            {"per_day_supplier_gas_standing_charge": 0.2, "vat_percentage": 0.0}
+        ),
         DeviceInfo(identifiers={("d", "2")}),
     )
     e.async_write_ha_state = lambda *a, **k: None
@@ -253,11 +258,13 @@ async def test_current_price_sensor_update_branches(hass: HomeAssistant):
         "cp2",
         price_sensor="sensor.gp",
         source_type=SOURCE_TYPE_GAS,
-        price_settings={
-            "gas_markup_per_m3": 0.1,
-            "gas_surcharge_per_m3": 0.1,
-            "vat_percentage": 0.0,
-        },
+        price_settings=expand_flat_price_settings(
+            {
+                "per_kwh_supplier_gas_markup": 0.1,
+                "per_kwh_government_gas_tax": 0.1,
+                "vat_percentage": 0.0,
+            }
+        ),
         icon="mdi:gas-burner",
         device=DeviceInfo(identifiers={("d", "5")}),
     )
