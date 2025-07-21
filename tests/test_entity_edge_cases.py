@@ -28,6 +28,10 @@ async def test_energy_unavailable(hass: HomeAssistant):
     sensor = await _make_sensor(hass)
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
 
         def issue(hass_arg, issue_id, translation_key, placeholders=None):
             called["key"] = translation_key
@@ -46,6 +50,10 @@ async def test_energy_invalid(hass: HomeAssistant):
     hass.states.async_set("sensor.energy", "bad")
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
         mp.setattr(
             "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(ok=True),
@@ -86,6 +94,10 @@ async def test_price_unavailable(hass: HomeAssistant):
     called = {}
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
+        mp.setattr(
             "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(price=True),
         )
@@ -101,6 +113,10 @@ async def test_price_invalid(hass: HomeAssistant):
     hass.states.async_set("sensor.price", "bad")
     called = {}
     with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
         mp.setattr(
             "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
             lambda *a, **k: called.update(price=True),
@@ -152,3 +168,29 @@ async def test_update_listener(hass: HomeAssistant):
         entry = type("Entry", (), {"entry_id": "1"})()
         await _update_listener(hass, entry)
     assert called.get("reloaded") == "1"
+
+
+async def test_issue_removed_on_recovery(hass: HomeAssistant):
+    sensor = await _make_sensor(hass)
+    issued = {}
+    cleared = {}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
+            lambda *a, **k: issued.setdefault("called", True),
+        )
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.async_clear_issue",
+            lambda *a, **k: cleared.setdefault("called", True),
+        )
+        await sensor.async_update()
+        assert issued.get("called")
+        hass.states.async_set("sensor.energy", 1)
+        hass.states.async_set("sensor.price", 0)
+        await sensor.async_update()
+        assert cleared.get("called")
+        assert sensor.available
