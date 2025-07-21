@@ -47,7 +47,7 @@ async def test_full_flow(hass: HomeAssistant):
     ]
 
 
-async def test_single_instance_abort(hass: HomeAssistant):
+async def test_multiple_instances_allowed(hass: HomeAssistant):
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
     flow.context = {}
@@ -56,5 +56,4 @@ async def test_single_instance_abort(hass: HomeAssistant):
     entry.add_to_hass(hass)
 
     result = await flow.async_step_user()
-    assert result["type"] == FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    assert result["type"] == FlowResultType.FORM
