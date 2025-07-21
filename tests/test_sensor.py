@@ -410,7 +410,10 @@ async def test_daily_electricity_cost_handle_addition(hass: HomeAssistant):
         hass,
         "Elec Fixed",
         "eid2",
-        {"per_day_grid_operator_electricity_connection_fee": 0.5, "vat_percentage": 0.0},
+        {
+            "per_day_grid_operator_electricity_connection_fee": 0.5,
+            "vat_percentage": 0.0,
+        },
         DeviceInfo(identifiers={("dec", "test")}),
     )
     sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})

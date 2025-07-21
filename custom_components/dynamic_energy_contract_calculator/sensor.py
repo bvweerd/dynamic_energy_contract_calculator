@@ -255,9 +255,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
-        standing = self.price_settings.get(
-            "per_day_supplier_gas_standing_charge", 0.0
-        )
+        standing = self.price_settings.get("per_day_supplier_gas_standing_charge", 0.0)
 
         total = standing * (1 + vat / 100)
         _LOGGER.debug(
@@ -442,12 +440,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             markup_production = self.price_settings.get(
                 "per_unit_supplier_electricity_production_markup", 0.0
             )
-            tax = self.price_settings.get(
-                "per_unit_government_electricity_tax", 0.0
-            )
-            vat_factor = (
-                self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
-            )
+            tax = self.price_settings.get("per_unit_government_electricity_tax", 0.0)
+            vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 price = (base_price + markup_consumption + tax) * vat_factor

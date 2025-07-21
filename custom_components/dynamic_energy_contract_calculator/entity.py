@@ -151,10 +151,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             markup_production = self.price_settings.get(
                 "per_unit_supplier_electricity_production_markup", 0.0
             )
-            tax = self.price_settings.get(
-                "per_unit_government_electricity_tax", 0.0
-            )
-
+            tax = self.price_settings.get("per_unit_government_electricity_tax", 0.0)
 
         vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 
