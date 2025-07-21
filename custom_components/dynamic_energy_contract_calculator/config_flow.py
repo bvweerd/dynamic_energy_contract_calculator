@@ -21,10 +21,6 @@ from .const import (
     CONF_PRICE_SETTINGS,
     SOURCE_TYPES,
     DEFAULT_PRICE_SETTINGS,
-    FLAT_PRICE_SETTING_PATHS,
-    flatten_price_settings,
-    expand_flat_price_settings,
-    get_price_setting,
 )
 
 STEP_SELECT_SOURCES = "select_sources"
@@ -150,10 +146,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
-            flat = dict(user_input)
-            self.price_settings = expand_flat_price_settings(flat)
-            self.price_settings[CONF_PRICE_SENSOR] = flat.get(CONF_PRICE_SENSOR)
-            self.price_settings[CONF_PRICE_SENSOR_GAS] = flat.get(CONF_PRICE_SENSOR_GAS)
+            self.price_settings = dict(user_input)
             return await self.async_step_user()
 
         all_prices = [
@@ -188,12 +181,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 }
             ),
         }
-        flat_current = flatten_price_settings(self.price_settings)
-        for key, path in FLAT_PRICE_SETTING_PATHS.items():
+        for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
                 continue
-            current = flat_current.get(key, 0)
-            default = get_price_setting(DEFAULT_PRICE_SETTINGS, path, 0)
+            current = self.price_settings.get(key, default)
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
             else:
@@ -327,10 +318,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_price_settings(self, user_input=None):
         if user_input is not None:
-            flat = dict(user_input)
-            self.price_settings = expand_flat_price_settings(flat)
-            self.price_settings[CONF_PRICE_SENSOR] = flat.get(CONF_PRICE_SENSOR)
-            self.price_settings[CONF_PRICE_SENSOR_GAS] = flat.get(CONF_PRICE_SENSOR_GAS)
+            self.price_settings = dict(user_input)
             return await self.async_step_user()
 
         all_prices = [
@@ -365,12 +353,10 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 }
             ),
         }
-        flat_current = flatten_price_settings(self.price_settings)
-        for key, path in FLAT_PRICE_SETTING_PATHS.items():
+        for key, default in DEFAULT_PRICE_SETTINGS.items():
             if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
                 continue
-            current = flat_current.get(key, 0)
-            default = get_price_setting(DEFAULT_PRICE_SETTINGS, path, 0)
+            current = self.price_settings.get(key, default)
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
             else:
