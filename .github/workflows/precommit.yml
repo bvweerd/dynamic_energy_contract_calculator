@@ -55,5 +55,6 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "chore: apply pre-commit fixes"
-            git push
+            BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            git push origin "HEAD:${BRANCH}"
           fi
