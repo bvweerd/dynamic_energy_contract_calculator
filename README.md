@@ -238,6 +238,8 @@ provides the current tariff.
 This screen lets you configure markups, surcharges and VAT. The values are added
 on top of the base price reported by your price sensor.
 
+The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2025 with gas consumption <500m3 per year and electricity <10.000kWh per year.
+
 ### 4. Resulting sensors
 
 ![Example production sensor](assets/readme/example_production_sensor.png)
