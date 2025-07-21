@@ -210,8 +210,7 @@ VAT) and adjust `vat_percentage` accordingly.
 ## Example configuration
 
 Below are screenshots from a typical installation that show the most important
-steps of the setup flow. The images are located in `assets/readme` so they can
-also be viewed offline.
+steps of the setup flow. 
 
 ### 1. Start the configuration flow
 
