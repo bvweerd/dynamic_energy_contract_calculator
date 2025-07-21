@@ -48,27 +48,22 @@ async def test_service_handlers(hass: HomeAssistant):
     }
     hass.states.async_set("dynamic_energy_contract_calculator.test", 1)
 
-    await _handle_reset_all(ServiceCall(hass, DOMAIN, "reset_all_meters", {}))
+    class FakeCall:
+        def __init__(self, data):
+            self.hass = hass
+            self.data = data
+
+    await _handle_reset_all(FakeCall({}))
     assert called["reset"]
 
     called["reset"] = False
     await _handle_reset_sensors(
-        ServiceCall(
-            hass,
-            DOMAIN,
-            "reset_selected_meters",
-            {"entity_ids": ["dynamic_energy_contract_calculator.test"]},
-        )
+        FakeCall({"entity_ids": ["dynamic_energy_contract_calculator.test"]})
     )
     assert called["reset"]
 
     await _handle_set_value(
-        ServiceCall(
-            hass,
-            DOMAIN,
-            "set_meter_value",
-            {"entity_id": "dynamic_energy_contract_calculator.test", "value": 5},
-        )
+        FakeCall({"entity_id": "dynamic_energy_contract_calculator.test", "value": 5})
     )
     assert called["set"] == 5
 
