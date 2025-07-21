@@ -127,20 +127,22 @@ action:
 ## Price Settings
 
 During configuration you can adjust several price related options. These values
-are added on top of the base price from your price sensor and are applied before
-VAT is calculated.
+are split into costs per kWh/m³ or per day and are further divided by
+government, grid operator and supplier charges. All values are added on top of
+the base price from your price sensor before VAT is calculated.
 
 | Setting | Description |
 | ------- | ----------- |
-| `electricity_consumption_markup_per_kwh` | Additional cost per kWh for electricity consumption. |
-| `electricity_production_markup_per_kwh` | Additional revenue per kWh for produced electricity. |
-| `electricity_surcharge_per_kwh` | Taxes or surcharges per kWh for consumption. |
-| `electricity_surcharge_per_day` | Daily electricity surcharges. |
-| `electricity_standing_charge_per_day` | Fixed daily cost charged by your supplier. |
-| `electricity_tax_rebate_per_day` | Daily rebate applied to reduce fixed costs. |
-| `gas_markup_per_m3` | Additional cost per cubic meter of gas. |
-| `gas_surcharge_per_m3` | Taxes or surcharges per cubic meter of gas. |
-| `gas_standing_charge_per_day` | Fixed daily gas contract cost. |
+| `per_unit_supplier_electricity_markup` | Additional cost per kWh for electricity consumption. |
+| `per_unit_supplier_electricity_production_markup` | Additional revenue per kWh for produced electricity. |
+| `per_unit_government_electricity_tax` | Government tax per kWh for consumption. |
+| `per_day_grid_operator_electricity_connection_fee` | Daily electricity network fees. |
+| `per_day_supplier_electricity_standing_charge` | Fixed daily cost charged by your supplier. |
+| `per_day_government_electricity_tax_rebate` | Daily rebate applied to reduce fixed costs. |
+| `per_unit_supplier_gas_markup` | Additional cost per cubic meter of gas. |
+| `per_unit_government_gas_tax` | Government tax per cubic meter of gas. |
+| `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
+| `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
 
 If your price sensors already provide prices **including** VAT, set

@@ -139,17 +139,21 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self.energy_sensor,
         )
         if self.source_type == SOURCE_TYPE_GAS:
-            markup_consumption = self.price_settings.get("gas_markup_per_m3", 0.0)
+            markup_consumption = self.price_settings.get(
+                "per_unit_supplier_gas_markup", 0.0
+            )
             markup_production = 0.0
-            tax = self.price_settings.get("gas_surcharge_per_m3", 0.0)
+            tax = self.price_settings.get("per_unit_government_gas_tax", 0.0)
         else:
             markup_consumption = self.price_settings.get(
-                "electricity_consumption_markup_per_kwh", 0.0
+                "per_unit_supplier_electricity_markup", 0.0
             )
             markup_production = self.price_settings.get(
-                "electricity_production_markup_per_kwh", 0.0
+                "per_unit_supplier_electricity_production_markup", 0.0
             )
-            tax = self.price_settings.get("electricity_surcharge_per_kwh", 0.0)
+            tax = self.price_settings.get(
+                "per_unit_government_electricity_tax", 0.0
+            )
 
         vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
 

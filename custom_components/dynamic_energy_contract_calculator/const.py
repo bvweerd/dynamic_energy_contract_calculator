@@ -1,6 +1,6 @@
-"""
-Constants for the Dynamic Energy Contract Calculator integration.
-"""
+"""Constants for the Dynamic Energy Contract Calculator integration."""
+
+
 
 # Domain of the integration
 DOMAIN = "dynamic_energy_contract_calculator"
@@ -30,29 +30,32 @@ SOURCE_TYPES = [
 CONF_CONFIGS = "configurations"
 
 PRICE_SETTINGS_KEYS = [
-    "electricity_consumption_markup_per_kwh",
-    "electricity_production_markup_per_kwh",
-    "electricity_surcharge_per_kwh",
+    "per_unit_supplier_electricity_markup",
+    "per_unit_supplier_electricity_production_markup",
+    "per_unit_government_electricity_tax",
+    "per_unit_supplier_gas_markup",
+    "per_unit_government_gas_tax",
+    "per_day_grid_operator_electricity_connection_fee",
+    "per_day_supplier_electricity_standing_charge",
+    "per_day_government_electricity_tax_rebate",
+    "per_day_grid_operator_gas_connection_fee",
+    "per_day_supplier_gas_standing_charge",
     "vat_percentage",
-    "electricity_surcharge_per_day",
-    "electricity_standing_charge_per_day",
-    "electricity_tax_rebate_per_day",
-    "gas_markup_per_m3",
-    "gas_surcharge_per_m3",
-    "gas_standing_charge_per_day",
     "production_price_include_vat",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
-    "electricity_consumption_markup_per_kwh": 0.02,
-    "electricity_production_markup_per_kwh": 0.0,
-    "electricity_surcharge_per_kwh": 0.1088,
+    "per_unit_supplier_electricity_markup": 0.02,
+    "per_unit_supplier_electricity_production_markup": 0.0,
+    "per_unit_government_electricity_tax": 0.1088,
+    "per_unit_supplier_gas_markup": 0.0,
+    "per_unit_government_gas_tax": 0.0,
+    "per_day_grid_operator_electricity_connection_fee": 0.25,
+    "per_day_supplier_electricity_standing_charge": 0.25,
+    "per_day_government_electricity_tax_rebate": 0.25,
+    "per_day_grid_operator_gas_connection_fee": 0.0,
+    "per_day_supplier_gas_standing_charge": 0.0,
     "vat_percentage": 21.0,
-    "electricity_surcharge_per_day": 0.25,
-    "electricity_standing_charge_per_day": 0.25,
-    "electricity_tax_rebate_per_day": 0.25,
-    "gas_markup_per_m3": 0.0,
-    "gas_surcharge_per_m3": 0.0,
-    "gas_standing_charge_per_day": 0.0,
     "production_price_include_vat": True,
 }
+

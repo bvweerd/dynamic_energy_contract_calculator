@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import voluptuous as vol
+import copy
 
 from typing import Any
 
@@ -38,7 +39,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         self.configs: list[dict] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
-        self.price_settings: dict = DEFAULT_PRICE_SETTINGS.copy()
+        self.price_settings: dict = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
@@ -145,7 +146,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
-            self.price_settings = user_input
+            self.price_settings = dict(user_input)
             return await self.async_step_user()
 
         all_prices = [
@@ -181,14 +182,13 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
-            if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                current = self.price_settings.get(key, default)
-                if isinstance(default, bool):
-                    schema_fields[vol.Required(key, default=current)] = bool
-                else:
-                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(
-                        float
-                    )
+            if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
+                continue
+            current = self.price_settings.get(key, default)
+            if isinstance(default, bool):
+                schema_fields[vol.Required(key, default=current)] = bool
+            else:
+                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
@@ -212,7 +212,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_CONFIGS, config_entry.data.get(CONF_CONFIGS, [])
             )
         )
-        self.price_settings = dict(
+        self.price_settings = copy.deepcopy(
             config_entry.options.get(
                 CONF_PRICE_SETTINGS,
                 config_entry.data.get(CONF_PRICE_SETTINGS, DEFAULT_PRICE_SETTINGS),
@@ -318,7 +318,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_price_settings(self, user_input=None):
         if user_input is not None:
-            self.price_settings = user_input
+            self.price_settings = dict(user_input)
             return await self.async_step_user()
 
         all_prices = [
@@ -354,14 +354,13 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         }
         for key, default in DEFAULT_PRICE_SETTINGS.items():
-            if key not in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                current = self.price_settings.get(key, default)
-                if isinstance(default, bool):
-                    schema_fields[vol.Required(key, default=current)] = bool
-                else:
-                    schema_fields[vol.Required(key, default=current)] = vol.Coerce(
-                        float
-                    )
+            if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
+                continue
+            current = self.price_settings.get(key, default)
+            if isinstance(default, bool):
+                schema_fields[vol.Required(key, default=current)] = bool
+            else:
+                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
