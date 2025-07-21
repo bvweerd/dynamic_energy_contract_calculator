@@ -1,5 +1,5 @@
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from custom_components.dynamic_energy_contract_calculator.services import (
     _handle_reset_all,
