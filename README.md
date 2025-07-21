@@ -2,6 +2,8 @@
 
 This Home Assistant custom integration adds utility sensors that calculate electricity or gas costs using current pricing information. It can track consumption or production and provides several helpers to manage the sensors.
 
+![Example summary sensors](assets/readme/example_summary_sensors.png)
+
 ## Installation
 
 1. **Via [HACS](https://hacs.xyz/):**
