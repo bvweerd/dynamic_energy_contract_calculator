@@ -150,7 +150,10 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
         hass,
         "E",
         "eid",
-        {"per_day_grid_operator_electricity_connection_fee": 0.1, "vat_percentage": 0.0},
+        {
+            "per_day_grid_operator_electricity_connection_fee": 0.1,
+            "vat_percentage": 0.0,
+        },
         DeviceInfo(identifiers={("d", "1")}),
     )
     g = DailyGasCostSensor(
