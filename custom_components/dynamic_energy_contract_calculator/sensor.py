@@ -414,27 +414,19 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         self.price_sensor = price_sensor
         self.source_type = source_type
         self.price_settings = price_settings
+        self._net_today = None
+        self._net_tomorrow = None
+        self._attr_extra_state_attributes = {
+            "net_prices_today": None,
+            "net_prices_tomorrow": None,
+        }
 
-    async def async_update(self):
-        state = self.hass.states.get(self.price_sensor)
-        if state is None or state.state in ("unknown", "unavailable"):
-            self._attr_available = False
-            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
-            return
-        try:
-            base_price = float(state.state)
-        except ValueError:
-            self._attr_available = False
-            _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
-            return
-        self._attr_available = True
-
+    def _calculate_price(self, base_price: float) -> float:
         if self.source_type == SOURCE_TYPE_GAS:
             markup_consumption = self.price_settings.get(
                 "per_unit_supplier_gas_markup", 0.0
             )
             tax = self.price_settings.get("per_unit_government_gas_tax", 0.0)
-
             price = (base_price + markup_consumption + tax) * (
                 self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
             )
@@ -456,9 +448,52 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 else:
                     price = base_price - markup_production
             else:
-                return
+                return None
+        return round(price, 8)
 
-        self._attr_native_value = round(price, 8)
+    def _convert_raw_prices(self, raw_prices):
+        if not isinstance(raw_prices, list):
+            return None
+        converted = []
+        for entry in raw_prices:
+            if not isinstance(entry, dict) or "value" not in entry:
+                continue
+            try:
+                base = float(entry["value"])
+            except (ValueError, TypeError):
+                continue
+            entry_conv = entry.copy()
+            entry_conv["value"] = self._calculate_price(base)
+            converted.append(entry_conv)
+        return converted
+
+    async def async_update(self):
+        state = self.hass.states.get(self.price_sensor)
+        if state is None or state.state in ("unknown", "unavailable"):
+            self._attr_available = False
+            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
+            return
+        try:
+            base_price = float(state.state)
+        except ValueError:
+            self._attr_available = False
+            _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
+            return
+        self._attr_available = True
+
+        raw_today = state.attributes.get("raw_today")
+        raw_tomorrow = state.attributes.get("raw_tomorrow")
+        self._net_today = self._convert_raw_prices(raw_today)
+        self._net_tomorrow = self._convert_raw_prices(raw_tomorrow)
+        self._attr_extra_state_attributes = {
+            "net_prices_today": self._net_today,
+            "net_prices_tomorrow": self._net_tomorrow,
+        }
+
+        price = self._calculate_price(base_price)
+        if price is None:
+            return
+        self._attr_native_value = price
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
