@@ -55,8 +55,8 @@ async def test_options_flow_price_settings(hass: HomeAssistant):
     result = await flow.async_step_user({CONF_SOURCE_TYPE: "price_settings"})
     assert result["type"] == FlowResultType.FORM
 
-    result = await flow.async_step_price_settings({"vat_percentage": 10})
-    assert flow.price_settings["vat_percentage"] == 10
+    result = await flow.async_step_price_settings({"vat_percentage": 10.0})
+    assert flow.price_settings["vat_percentage"] == 10.0
     assert result["type"] == FlowResultType.FORM
 
 
