@@ -489,6 +489,14 @@ async def async_setup_entry(
     )
     entities: list[BaseUtilitySensor] = []
 
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=f"{DOMAIN_ABBREVIATION}: Sensors",
+        entry_type=DeviceEntryType.SERVICE,
+        manufacturer="DynamicEnergyCalc",
+        model="sensor",
+    )
+
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
@@ -503,15 +511,6 @@ async def async_setup_entry(
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
-            state = hass.states.get(sensor)
-            friendly_name = state.attributes.get("friendly_name") if state else sensor
-            device_info = DeviceInfo(
-                identifiers={(DOMAIN, base_id)},
-                name=f"{DOMAIN_ABBREVIATION}: {friendly_name}",
-                entry_type=DeviceEntryType.SERVICE,
-                manufacturer="DynamicEnergyCalc",
-                model=source_type,
-            )
 
             for mode_def in mode_defs:
                 mode = mode_def["key"]
@@ -537,13 +536,6 @@ async def async_setup_entry(
 
     base_id = "daily_electricity_cost"
     unique_id = f"{DOMAIN}_{base_id}"
-    device_info = DeviceInfo(
-        identifiers={(DOMAIN, base_id)},
-        name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
-        entry_type=DeviceEntryType.SERVICE,
-        manufacturer="DynamicEnergyCalc",
-        model="summary",
-    )
 
     daily_electricity = DailyElectricityCostSensor(
         hass=hass,
