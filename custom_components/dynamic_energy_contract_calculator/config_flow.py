@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import voluptuous as vol
-
-NUMBER = vol.Any(vol.Coerce(int), vol.Coerce(float))
 import copy
 
 from typing import Any
@@ -190,7 +188,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
             else:
-                schema_fields[vol.Required(key, default=current)] = NUMBER
+                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
@@ -362,7 +360,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
             else:
-                schema_fields[vol.Required(key, default=current)] = NUMBER
+                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
