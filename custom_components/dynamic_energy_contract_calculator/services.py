@@ -3,6 +3,8 @@
 import logging
 import voluptuous as vol
 
+NUMBER = vol.Any(vol.Coerce(int), vol.Coerce(float))
+
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 
@@ -21,7 +23,7 @@ RESET_SENSORS_SCHEMA = vol.Schema(
 SET_VALUE_SCHEMA = vol.Schema(
     {
         vol.Required("entity_id"): cv.entity_id,
-        vol.Required("value"): vol.Coerce(float),
+        vol.Required("value"): NUMBER,
     }
 )
 
