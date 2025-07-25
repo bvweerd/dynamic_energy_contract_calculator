@@ -518,10 +518,18 @@ async def test_current_price_attributes(hass: HomeAssistant):
     )
 
     raw_today = [
-        {"start": "2025-07-25T00:00:00+02:00", "end": "2025-07-25T01:00:00+02:00", "value": 0.1}
+        {
+            "start": "2025-07-25T00:00:00+02:00",
+            "end": "2025-07-25T01:00:00+02:00",
+            "value": 0.1,
+        }
     ]
     raw_tomorrow = [
-        {"start": "2025-07-26T00:00:00+02:00", "end": "2025-07-26T01:00:00+02:00", "value": 0.2}
+        {
+            "start": "2025-07-26T00:00:00+02:00",
+            "end": "2025-07-26T01:00:00+02:00",
+            "value": 0.2,
+        }
     ]
 
     hass.states.async_set(
@@ -531,11 +539,12 @@ async def test_current_price_attributes(hass: HomeAssistant):
     )
     await sensor.async_update()
 
-    expected_today = [{"start": raw_today[0]["start"], "end": raw_today[0]["end"], "value": 0.1}]
-    expected_tomorrow = [{"start": raw_tomorrow[0]["start"], "end": raw_tomorrow[0]["end"], "value": 0.2}]
+    expected_today = [
+        {"start": raw_today[0]["start"], "end": raw_today[0]["end"], "value": 0.1}
+    ]
+    expected_tomorrow = [
+        {"start": raw_tomorrow[0]["start"], "end": raw_tomorrow[0]["end"], "value": 0.2}
+    ]
 
     assert sensor.extra_state_attributes["net_prices_today"] == expected_today
-    assert (
-        sensor.extra_state_attributes["net_prices_tomorrow"]
-        == expected_tomorrow
-    )
+    assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
