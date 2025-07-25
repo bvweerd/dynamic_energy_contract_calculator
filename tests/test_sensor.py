@@ -503,3 +503,39 @@ async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
     sensor = TotalCostSensor(hass, "Total", "t_invalid", None)
     await sensor.async_update()
     assert sensor.native_value == 0
+
+
+async def test_current_price_attributes(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Attr Price",
+        "attrid",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "attr")}),
+    )
+
+    raw_today = [
+        {"start": "2025-07-25T00:00:00+02:00", "end": "2025-07-25T01:00:00+02:00", "value": 0.1}
+    ]
+    raw_tomorrow = [
+        {"start": "2025-07-26T00:00:00+02:00", "end": "2025-07-26T01:00:00+02:00", "value": 0.2}
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        0.1,
+        {"raw_today": raw_today, "raw_tomorrow": raw_tomorrow},
+    )
+    await sensor.async_update()
+
+    expected_today = [{"start": raw_today[0]["start"], "end": raw_today[0]["end"], "value": 0.1}]
+    expected_tomorrow = [{"start": raw_tomorrow[0]["start"], "end": raw_tomorrow[0]["end"], "value": 0.2}]
+
+    assert sensor.extra_state_attributes["net_prices_today"] == expected_today
+    assert (
+        sensor.extra_state_attributes["net_prices_tomorrow"]
+        == expected_tomorrow
+    )
