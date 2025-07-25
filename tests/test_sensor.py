@@ -503,3 +503,34 @@ async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
     sensor = TotalCostSensor(hass, "Total", "t_invalid", None)
     await sensor.async_update()
     assert sensor.native_value == 0
+
+
+async def test_dynamic_sensor_cumulative_attribute(hass: HomeAssistant):
+    sensor = DynamicEnergySensor(
+        hass,
+        "Agg",
+        "aid",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        {},
+        mode="kwh_total",
+    )
+
+    hass.states.async_set("sensor.energy", 0, {"today": [0] * 24, "tomorrow": [1] * 24})
+
+    from custom_components.dynamic_energy_contract_calculator import (
+        entity as dec_entity,
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return datetime(2024, 1, 1, 10, 0, 0)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(dec_entity, "datetime", FixedDateTime)
+        data = sensor.extra_state_attributes["cumulative"]
+
+    assert len(data) == 24
+    assert data[:14] == [0] * 14
+    assert data[14:] == [1] * 10

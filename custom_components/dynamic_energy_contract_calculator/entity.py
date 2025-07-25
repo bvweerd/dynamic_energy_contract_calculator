@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from typing import cast
+from typing import Any, cast
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -130,6 +130,51 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._last_updated = datetime.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
+
+    def _aggregate_future_values(self) -> list[float | None]:
+        """Return summed hourly values for the next 24 hours."""
+        now = datetime.now().replace(minute=0, second=0, microsecond=0)
+        result: list[float | None] = [None] * 24
+
+        for sensor_id in self.input_sensors:
+            state = self.hass.states.get(sensor_id)
+            if state is None:
+                continue
+            today = state.attributes.get("today")
+            tomorrow = state.attributes.get("tomorrow")
+            if not isinstance(today, list):
+                today = []
+            if not isinstance(tomorrow, list):
+                tomorrow = []
+
+            for i in range(24):
+                ts = now + timedelta(hours=i)
+                source = (
+                    today
+                    if ts.date() == now.date()
+                    else tomorrow
+                    if ts.date() == now.date() + timedelta(days=1)
+                    else None
+                )
+                if source is None:
+                    continue
+                idx = ts.hour
+                if idx >= len(source):
+                    continue
+                try:
+                    val = float(source[idx])
+                except (TypeError, ValueError):
+                    continue
+                if result[i] is None:
+                    result[i] = val
+                else:
+                    result[i] = cast(float, result[i]) + val
+
+        return result
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"cumulative": self._aggregate_future_values()}
 
     async def async_update(self):
         _LOGGER.debug(

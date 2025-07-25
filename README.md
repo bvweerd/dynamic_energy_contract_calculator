@@ -295,3 +295,31 @@ To remove the integration open **Settings → Devices & Services**, locate
 **Dynamic Energy Contract Calculator**, choose **Delete** from the menu and
 confirm. All created sensors will be removed from Home Assistant.
 
+## Output Sensor Calculations
+
+Each output sensor derives its values from the selected input sensors and the configured price settings.
+
+### `..._kwh_total` / `..._m3_total`
+For every update of the linked energy sensor the integration calculates the delta since the previous reading and adds it to these totals.
+
+### `..._cost_total`
+The energy delta is multiplied by the current tariff. The tariff consists of the base price from your price sensor plus supplier markups and taxes, optionally including VAT.
+
+### `..._profit_total`
+For production sources positive prices are treated as profit while negative prices count as cost. This sensor accumulates those profit values.
+
+### `..._kwh_during_cost_total`
+Tracks how much energy was measured while the calculated price was above zero.
+
+### `..._kwh_during_profit_total`
+Tracks energy measured while the calculated price was below zero.
+
+### Contract fixed cost sensors
+`electricity_contract_fixed_costs_total` and `gas_contract_fixed_costs_total` add their respective daily fees at midnight.
+
+### Net and total cost sensors
+`net_energy_cost_total` subtracts accumulated profit from accumulated cost. `energy_contract_cost_total` combines the net cost with both fixed cost sensors.
+
+### Current price sensors
+`current_consumption_price`, `current_production_price` and `current_gas_consumption_price` show the instantaneous tariff based on the price sensor and all configured markups and taxes.
+
