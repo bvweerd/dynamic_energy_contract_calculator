@@ -1,0 +1,165 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dynamische Energiecontract Calculator",
+        "data": {
+          "source_type": "Type bron"
+        }
+      },
+      "select_sources": {
+        "title": "Selecteer bronnen",
+        "data": {
+          "sources": "Energiesensoren"
+        }
+      },
+      "price_settings": {
+        "title": "Prijsinstellingen",
+        "data": {
+          "price_sensor": "Stroomprijssensor",
+          "price_sensor_gas": "Gasprijssensor",
+          "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
+          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "production_price_include_vat": "BTW toepassen op terugleverprijs",
+          "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
+          "vat_percentage": "BTW-percentage",
+          "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
+          "per_day_supplier_electricity_standing_charge": "Vaste kosten elektriciteit per dag",
+          "per_day_government_electricity_tax_rebate": "Belastingteruggave elektriciteit per dag",
+          "per_unit_supplier_gas_markup": "Gasopslag per m³",
+          "per_unit_government_gas_tax": "Belasting gas per m³",
+          "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
+          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
+        }
+      }
+    },
+    "error": {
+      "no_blocks": "Je moet ten minste één configuratieblok toevoegen."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "Dynamische Energiecontract Calculator",
+        "data": {
+          "source_type": "Type bron"
+        }
+      },
+      "select_sources": {
+        "title": "Selecteer bronnen",
+        "data": {
+          "sources": "Energiesensoren"
+        }
+      },
+      "price_settings": {
+        "title": "Prijsinstellingen",
+        "data": {
+          "price_sensor": "Stroomprijssensor",
+          "price_sensor_gas": "Gasprijssensor",
+          "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
+          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "production_price_include_vat": "BTW toepassen op terugleverprijs",
+          "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
+          "vat_percentage": "BTW-percentage",
+          "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
+          "per_day_supplier_electricity_standing_charge": "Vaste kosten elektriciteit per dag",
+          "per_day_government_electricity_tax_rebate": "Belastingteruggave elektriciteit per dag",
+          "per_unit_supplier_gas_markup": "Gasopslag per m³",
+          "per_unit_government_gas_tax": "Belasting gas per m³",
+          "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
+          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
+        }
+      }
+    },
+    "error": {
+      "no_blocks": "Je moet ten minste één configuratieblok toevoegen."
+    }
+  },
+  "services": {
+    "reset_all_meters": {
+      "name": "Alle meters resetten",
+      "description": "Zet alle dynamische energiemeters terug op 0."
+    },
+    "reset_selected_meters": {
+      "name": "Geselecteerde meters resetten",
+      "description": "Zet alleen de opgegeven entity_id’s terug op 0.",
+      "fields": {
+        "entity_ids": {
+          "name": "Entity-ID’s",
+          "description": "Lijst met sensor Entity-ID’s om te resetten."
+        }
+      }
+    },
+    "set_meter_value": {
+      "name": "Meterwaarde instellen",
+      "description": "Stel handmatig de waarde van een meter in.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity-ID",
+          "description": "De entity-ID van de sensor."
+        },
+        "value": {
+          "name": "Waarde",
+          "description": "De nieuwe waarde voor de sensor."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "kwh_total": {
+        "name": "Totaal kWh"
+      },
+      "cost_total": {
+        "name": "Totale kosten"
+      },
+      "profit_total": {
+        "name": "Totale winst"
+      },
+      "kwh_during_cost_total": {
+        "name": "kWh tijdens kosten"
+      },
+      "kwh_during_profit_total": {
+        "name": "kWh tijdens opbrengst"
+      },
+      "m3_total": {
+        "name": "Totaal m³"
+      },
+      "daily_electricity_cost_total": {
+        "name": "Vaste kosten elektriciteitscontract (totaal)"
+      },
+      "daily_gas_cost_total": {
+        "name": "Vaste kosten gascontract (totaal)"
+      },
+      "net_total_cost": {
+        "name": "Netto energiekosten (totaal)"
+      },
+      "total_energy_cost": {
+        "name": "Totale kosten energiecontract"
+      },
+      "current_consumption_price": {
+        "name": "Huidige verbruiksprijs"
+      },
+      "current_production_price": {
+        "name": "Huidige terugleverprijs"
+      },
+      "current_gas_consumption_price": {
+        "name": "Huidige gasverbruiksprijs"
+      }
+    }
+  },
+  "issues": {
+    "missing_price_sensor": {
+      "title": "Ontbrekende prijssensor",
+      "description": "Er is een prijssensor nodig om kosten te berekenen."
+    },
+    "energy_source_unavailable": {
+      "title": "Energiebron niet beschikbaar",
+      "description": "Energiebron {sensor} is niet beschikbaar of ongeldig."
+    },
+    "price_sensor_unavailable": {
+      "title": "Prijssensor niet beschikbaar",
+      "description": "Prijssensor {sensor} is niet beschikbaar of ongeldig."
+    }
+  }
+}

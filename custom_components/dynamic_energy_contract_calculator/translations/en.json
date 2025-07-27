@@ -1,0 +1,139 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dynamic Energy Contract Calculator",
+        "data": {
+          "source_type": "Source type"
+        }
+      },
+      "select_sources": {
+        "title": "Select sources",
+        "data": {
+          "sources": "Energy sensors"
+        }
+      },
+      "price_settings": {
+        "title": "Price settings",
+        "data": {
+          "price_sensor": "Electricity price sensor",
+          "price_sensor_gas": "Gas price sensor",
+          "per_unit_supplier_electricity_markup": "Electricity markup per kWh",
+          "per_unit_supplier_electricity_production_markup": "Electricity production markup per kWh",
+          "production_price_include_vat": "Apply VAT to production price",
+          "per_unit_government_electricity_tax": "Electricity tax per kWh",
+          "vat_percentage": "VAT percentage",
+          "per_day_grid_operator_electricity_connection_fee": "Electricity connection fee per day",
+          "per_day_supplier_electricity_standing_charge": "Electricity standing charge per day",
+          "per_day_government_electricity_tax_rebate": "Electricity tax rebate per day",
+          "per_unit_supplier_gas_markup": "Gas markup per m³",
+          "per_unit_government_gas_tax": "Gas tax per m³",
+          "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
+          "per_day_supplier_gas_standing_charge": "Gas standing charge per day"
+        }
+      }
+    },
+    "error": {
+      "no_blocks": "You must add at least one configuration block."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "Dynamic Energy Contract Calculator",
+        "data": {
+          "source_type": "Source type"
+        }
+      },
+      "select_sources": {
+        "title": "Select sources",
+        "data": {
+          "sources": "Energy sensors"
+        }
+      },
+      "price_settings": {
+        "title": "Price settings",
+        "data": {
+          "price_sensor": "Electricity price sensor",
+          "price_sensor_gas": "Gas price sensor",
+          "per_unit_supplier_electricity_markup": "Electricity markup per kWh",
+          "per_unit_supplier_electricity_production_markup": "Electricity production markup per kWh",
+          "production_price_include_vat": "Apply VAT to production price",
+          "per_unit_government_electricity_tax": "Electricity tax per kWh",
+          "vat_percentage": "VAT percentage",
+          "per_day_grid_operator_electricity_connection_fee": "Electricity connection fee per day",
+          "per_day_supplier_electricity_standing_charge": "Electricity standing charge per day",
+          "per_day_government_electricity_tax_rebate": "Electricity tax rebate per day",
+          "per_unit_supplier_gas_markup": "Gas markup per m³",
+          "per_unit_government_gas_tax": "Gas tax per m³",
+          "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
+          "per_day_supplier_gas_standing_charge": "Gas standing charge per day"
+        }
+      }
+    },
+    "error": {
+      "no_blocks": "You must add at least one configuration block."
+    }
+  },
+  "services": {
+    "reset_all_meters": {
+      "name": "Reset all meters",
+      "description": "Reset all dynamic energy meters to 0."
+    },
+    "reset_selected_meters": {
+      "name": "Reset selected meters",
+      "description": "Reset only the specified entity_ids to 0.",
+      "fields": {
+        "entity_ids": {
+          "name": "Entity IDs",
+          "description": "List of sensor entity_ids to reset."
+        }
+      }
+    },
+    "set_meter_value": {
+      "name": "Set meter value",
+      "description": "Manually set the value of a meter.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "The entity_id of the sensor."
+        },
+        "value": {
+          "name": "Value",
+          "description": "The new value for the sensor."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "kwh_total": {"name": "Total kWh"},
+      "cost_total": {"name": "Total Cost"},
+      "profit_total": {"name": "Total Profit"},
+      "kwh_during_cost_total": {"name": "kWh During Cost"},
+      "kwh_during_profit_total": {"name": "kWh During Profit"},
+      "m3_total": {"name": "Total m³"},
+      "daily_electricity_cost_total": {"name": "Electricity Contract Fixed Costs (Total)"},
+      "daily_gas_cost_total": {"name": "Gas Contract Fixed Costs (Total)"},
+      "net_total_cost": {"name": "Net Energy Cost (Total)"},
+      "total_energy_cost": {"name": "Energy Contract Cost (Total)"},
+      "current_consumption_price": {"name": "Current Consumption Price"},
+      "current_production_price": {"name": "Current Production Price"},
+      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
+    }
+    },
+    "issues": {
+    "missing_price_sensor": {
+      "title": "Missing price sensor",
+      "description": "A price sensor is required for calculating energy costs."
+    },
+    "energy_source_unavailable": {
+      "title": "Energy source unavailable",
+      "description": "Energy sensor {sensor} is unavailable or has invalid data."
+    },
+    "price_sensor_unavailable": {
+      "title": "Price sensor unavailable",
+      "description": "Price sensor {sensor} is unavailable or has invalid data."
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "domain": "dynamic_energy_contract_calculator",
+  "name": "Dynamic Energy Contract Calculator",
+  "codeowners": ["@bvweerd"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://www.github.com/bvweerd/dynamic_energy_contract_calculator",
+  "homekit": {},
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_contract_calculator/issues",
+  "quality_scale": "silver",
+  "requirements": [],
+  "ssdp": [],
+  "version": "0.0.1",
+  "zeroconf": []
+}

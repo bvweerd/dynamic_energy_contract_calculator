@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Update Python dependencies from requirements.txt or setup.py
+  - package-ecosystem: "pip"
+    directory: "/"              # root of your repo
+    schedule:
+      interval: "weekly"        # check weekly
+    open-pull-requests-limit: 5 # maximum number of open PRs at once
+    commit-message:
+      prefix: "deps"
+
+  # Update GitHub Actions workflows as well
+  - package-ecosystem: "github-actions"
+    directory: "/"              
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
