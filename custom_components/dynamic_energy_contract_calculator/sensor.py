@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from homeassistant.components.sensor import SensorStateClass
-from homeassistant.const import UnitOfEnergy, UnitOfVolume
+from homeassistant.const import UnitOfEnergy, UnitOfVolume, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -35,6 +35,11 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
+
+
+def calculate_cop(outside_temp: float, supply_temp: float) -> float:
+    """Calculate heat pump COP from temperatures."""
+    return 3.80 + 0.08 * outside_temp - 0.02 * (supply_temp - 35)
 
 SENSOR_MODES_ELECTRICITY = [
     {
@@ -154,6 +159,139 @@ class TotalCostSensor(BaseUtilitySensor):
         _LOGGER.debug(
             "%s changed, updating %s", event.data.get("entity_id"), self.entity_id
         )
+        await self.async_update()
+        self.async_write_ha_state()
+
+
+class COPSensor(BaseUtilitySensor):
+    """Sensor calculating heat pump COP."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        outside_temp_sensor: str,
+        supply_temp_sensor: str,
+        device: DeviceInfo,
+    ):
+        super().__init__(
+            name=None,
+            unique_id=unique_id,
+            unit=None,
+            device_class=None,
+            icon="mdi:alpha-c-circle",
+            visible=True,
+            device=device,
+            translation_key="cop",
+        )
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self.hass = hass
+        self.outside_temp_sensor = outside_temp_sensor
+        self.supply_temp_sensor = supply_temp_sensor
+
+    async def async_update(self):
+        out_state = self.hass.states.get(self.outside_temp_sensor)
+        sup_state = self.hass.states.get(self.supply_temp_sensor)
+        if (
+            out_state is None
+            or sup_state is None
+            or out_state.state in ("unknown", "unavailable")
+            or sup_state.state in ("unknown", "unavailable")
+        ):
+            self._attr_available = False
+            return
+        try:
+            out_temp = float(out_state.state)
+            sup_temp = float(sup_state.state)
+        except ValueError:
+            self._attr_available = False
+            return
+        self._attr_available = True
+        self._attr_native_value = round(calculate_cop(out_temp, sup_temp), 2)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        for sensor in (self.outside_temp_sensor, self.supply_temp_sensor):
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass, sensor, self._handle_change
+                )
+            )
+
+    async def _handle_change(self, event):
+        await self.async_update()
+        self.async_write_ha_state()
+
+
+class HeatPumpThermalPowerSensor(BaseUtilitySensor):
+    """Sensor calculating thermal power output of heat pump."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        power_sensor: str,
+        outside_temp_sensor: str,
+        supply_temp_sensor: str,
+        device: DeviceInfo,
+    ):
+        super().__init__(
+            name=None,
+            unique_id=unique_id,
+            unit=UnitOfPower.KILO_WATT,
+            device_class=None,
+            icon="mdi:fire",
+            visible=True,
+            device=device,
+            translation_key="current_thermal_power",
+        )
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self.hass = hass
+        self.power_sensor = power_sensor
+        self.outside_temp_sensor = outside_temp_sensor
+        self.supply_temp_sensor = supply_temp_sensor
+
+    async def async_update(self):
+        power_state = self.hass.states.get(self.power_sensor)
+        out_state = self.hass.states.get(self.outside_temp_sensor)
+        sup_state = self.hass.states.get(self.supply_temp_sensor)
+        if (
+            power_state is None
+            or out_state is None
+            or sup_state is None
+            or power_state.state in ("unknown", "unavailable")
+            or out_state.state in ("unknown", "unavailable")
+            or sup_state.state in ("unknown", "unavailable")
+        ):
+            self._attr_available = False
+            return
+        try:
+            power = float(power_state.state)
+            out_temp = float(out_state.state)
+            sup_temp = float(sup_state.state)
+        except ValueError:
+            self._attr_available = False
+            return
+        self._attr_available = True
+        cop = calculate_cop(out_temp, sup_temp)
+        self._attr_native_value = round(power * cop, 2)
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        for sensor in (
+            self.power_sensor,
+            self.outside_temp_sensor,
+            self.supply_temp_sensor,
+        ):
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass, sensor, self._handle_change
+                )
+            )
+
+    async def _handle_change(self, event):
         await self.async_update()
         self.async_write_ha_state()
 

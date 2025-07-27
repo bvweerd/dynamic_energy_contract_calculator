@@ -119,7 +119,9 @@
       "total_energy_cost": {"name": "Energy Contract Cost (Total)"},
       "current_consumption_price": {"name": "Current Consumption Price"},
       "current_production_price": {"name": "Current Production Price"},
-      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
+      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"},
+      "cop": {"name": "Coefficient of Performance"},
+      "current_thermal_power": {"name": "Current Thermal Power"}
     }
     },
     "issues": {

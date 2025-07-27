@@ -548,3 +548,40 @@ async def test_current_price_attributes(hass: HomeAssistant):
 
     assert sensor.extra_state_attributes["net_prices_today"] == expected_today
     assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
+
+
+async def test_cop_and_thermal_power_sensors(hass: HomeAssistant):
+    from custom_components.dynamic_energy_contract_calculator.sensor import (
+        COPSensor,
+        HeatPumpThermalPowerSensor,
+    )
+
+    hass.states.async_set("sensor.outside", 10)
+    hass.states.async_set("sensor.supply", 40)
+    hass.states.async_set("sensor.power", 2)
+
+    device = DeviceInfo(identifiers={("dec", "hp")})
+    cop_sensor = COPSensor(
+        hass,
+        "COP",
+        "cop_uid",
+        outside_temp_sensor="sensor.outside",
+        supply_temp_sensor="sensor.supply",
+        device=device,
+    )
+    power_sensor = HeatPumpThermalPowerSensor(
+        hass,
+        "Thermal",
+        "thermal_uid",
+        power_sensor="sensor.power",
+        outside_temp_sensor="sensor.outside",
+        supply_temp_sensor="sensor.supply",
+        device=device,
+    )
+
+    await cop_sensor.async_update()
+    await power_sensor.async_update()
+
+    expected_cop = 3.80 + 0.08 * 10 - 0.02 * (40 - 35)
+    assert cop_sensor.native_value == pytest.approx(expected_cop, rel=1e-2)
+    assert power_sensor.native_value == pytest.approx(expected_cop * 2, rel=1e-2)

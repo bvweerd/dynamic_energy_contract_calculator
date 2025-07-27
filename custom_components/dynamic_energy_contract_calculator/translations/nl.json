@@ -145,6 +145,12 @@
       },
       "current_gas_consumption_price": {
         "name": "Huidige gasverbruiksprijs"
+      },
+      "cop": {
+        "name": "Rendementsfactor"
+      },
+      "current_thermal_power": {
+        "name": "Huidig thermisch vermogen"
       }
     }
   },
