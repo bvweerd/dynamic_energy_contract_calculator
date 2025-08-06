@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
@@ -522,6 +522,12 @@ async def async_setup_entry(
     price_settings = entry.options.get(
         CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
     )
+    price_sensor = entry.options.get(
+        CONF_PRICE_SENSOR, entry.data.get(CONF_PRICE_SENSOR)
+    )
+    price_sensor_gas = entry.options.get(
+        CONF_PRICE_SENSOR_GAS, entry.data.get(CONF_PRICE_SENSOR_GAS)
+    )
     entities: list[BaseUtilitySensor] = []
 
     for block in configs:
@@ -530,11 +536,11 @@ async def async_setup_entry(
 
         mode_defs: list[dict[str, Any]]
         if source_type == SOURCE_TYPE_GAS:
-            price_sensor = entry.data.get(CONF_PRICE_SENSOR_GAS)
-            mode_defs = cast(list[dict[str, Any]], SENSOR_MODES_GAS)
+            selected_price_sensor = price_sensor_gas
+            mode_defs = SENSOR_MODES_GAS
         else:
-            price_sensor = entry.data.get(CONF_PRICE_SENSOR)
-            mode_defs = cast(list[dict[str, Any]], SENSOR_MODES_ELECTRICITY)
+            selected_price_sensor = price_sensor
+            mode_defs = SENSOR_MODES_ELECTRICITY
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
@@ -557,7 +563,7 @@ async def async_setup_entry(
                         name=mode_def.get("translation_key", mode),
                         unique_id=uid,
                         energy_sensor=sensor,
-                        price_sensor=price_sensor,
+                        price_sensor=selected_price_sensor,
                         price_settings=price_settings,
                         mode=mode,
                         source_type=source_type,
@@ -616,7 +622,6 @@ async def async_setup_entry(
     )
     entities.append(energy_cost)
 
-    price_sensor = entry.data.get(CONF_PRICE_SENSOR)
     if price_sensor:
         entities.append(
             CurrentElectricityPriceSensor(
@@ -643,7 +648,6 @@ async def async_setup_entry(
             )
         )
 
-    price_sensor_gas = entry.data.get(CONF_PRICE_SENSOR_GAS)
     if price_sensor_gas:
         entities.append(
             CurrentElectricityPriceSensor(
