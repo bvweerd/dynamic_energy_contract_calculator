@@ -14,6 +14,7 @@ permissions:
   
 jobs:
   bump-release:
+    name: "Bump Release Version"
     # Zorg dat we alleen in deze job de tag-push afhandelen
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
