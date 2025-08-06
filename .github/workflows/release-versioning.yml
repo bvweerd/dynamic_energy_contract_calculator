@@ -14,6 +14,7 @@ permissions:
   
 jobs:
   bump-release:
+    name: "Bump Release Version"
     # Zorg dat we alleen in deze job de tag-push afhandelen
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -42,6 +43,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add custom_components/dynamic_energy_contract_calculator/manifest.json setup.cfg
           git commit -m "chore: bump to next version after release ${{ github.ref_name }}"
+          git pull --rebase origin main
           git push origin HEAD:main
 
   publish-release:
