@@ -16,6 +16,7 @@ permissions:
   
 jobs:
   test:
+    name: "Pytest"
     env:
       PYTHONPATH: .
     runs-on: ubuntu-latest

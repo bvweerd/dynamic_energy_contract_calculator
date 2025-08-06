@@ -9,6 +9,7 @@ permissions:
   
 jobs:
   build-and-upload:
+    name: "Create Release ZIP"
     runs-on: ubuntu-latest
 
     steps:
