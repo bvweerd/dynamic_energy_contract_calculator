@@ -67,6 +67,30 @@ async def test_dynamic_energy_sensor_cost(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(0.5)
 
 
+async def test_dynamic_energy_sensor_multiple_prices(hass: HomeAssistant):
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.0,
+        "vat_percentage": 0.0,
+    }
+    sensor = DynamicEnergySensor(
+        hass,
+        "TestMulti",
+        "uidmulti",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor=["sensor.price1", "sensor.price2"],
+        mode="cost_total",
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.price1", 0.3)
+    hass.states.async_set("sensor.price2", 0.2)
+    await sensor.async_update()
+    assert sensor.native_value == pytest.approx(0.5)
+
+
 async def test_dynamic_gas_sensor_cost(hass: HomeAssistant):
     price_settings = {
         "per_unit_supplier_gas_markup": 0.0,
