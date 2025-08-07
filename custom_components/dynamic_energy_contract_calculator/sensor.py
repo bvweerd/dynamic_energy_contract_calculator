@@ -392,7 +392,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         hass: HomeAssistant,
         name: str,
         unique_id: str,
-        price_sensor: str,
+        price_sensor: str | list[str],
         source_type: str,
         price_settings: dict[str, float],
         icon: str,
@@ -411,7 +411,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         )
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self.hass = hass
-        self.price_sensor = price_sensor
+        if isinstance(price_sensor, list):
+            self.price_sensors = price_sensor
+        else:
+            self.price_sensors = [price_sensor]
+        self.price_sensor = self.price_sensors[0] if self.price_sensors else None
         self.source_type = source_type
         self.price_settings = price_settings
         self._net_today = None
@@ -468,21 +472,29 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         return converted
 
     async def async_update(self):
-        state = self.hass.states.get(self.price_sensor)
-        if state is None or state.state in ("unknown", "unavailable"):
+        total_price = 0.0
+        raw_today = None
+        raw_tomorrow = None
+        valid = False
+        for sensor in self.price_sensors:
+            state = self.hass.states.get(sensor)
+            if state is None or state.state in ("unknown", "unavailable"):
+                _LOGGER.warning("Price sensor %s is unavailable", sensor)
+                continue
+            try:
+                total_price += float(state.state)
+                valid = True
+            except ValueError:
+                _LOGGER.warning("Price sensor %s has invalid state", sensor)
+                continue
+            if raw_today is None:
+                raw_today = state.attributes.get("raw_today")
+                raw_tomorrow = state.attributes.get("raw_tomorrow")
+        if not valid:
             self._attr_available = False
-            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
-            return
-        try:
-            base_price = float(state.state)
-        except ValueError:
-            self._attr_available = False
-            _LOGGER.warning("Price sensor %s has invalid state", self.price_sensor)
             return
         self._attr_available = True
 
-        raw_today = state.attributes.get("raw_today")
-        raw_tomorrow = state.attributes.get("raw_tomorrow")
         self._net_today = self._convert_raw_prices(raw_today)
         self._net_tomorrow = self._convert_raw_prices(raw_tomorrow)
         self._attr_extra_state_attributes = {
@@ -490,26 +502,29 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             "net_prices_tomorrow": self._net_tomorrow,
         }
 
-        price = self._calculate_price(base_price)
+        price = self._calculate_price(total_price)
         if price is None:
             return
         self._attr_native_value = price
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self.async_on_remove(
-            async_track_state_change_event(
-                self.hass,
-                self.price_sensor,
-                self._handle_price_change,
+        for sensor in self.price_sensors:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    sensor,
+                    self._handle_price_change,
+                )
             )
-        )
 
     async def _handle_price_change(self, event):
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             self._attr_available = False
-            _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
+            _LOGGER.warning(
+                "Price sensor %s is unavailable", event.data.get("entity_id")
+            )
             return
         await self.async_update()
         self.async_write_ha_state()
@@ -528,6 +543,10 @@ async def async_setup_entry(
     price_sensor_gas = entry.options.get(
         CONF_PRICE_SENSOR_GAS, entry.data.get(CONF_PRICE_SENSOR_GAS)
     )
+    if isinstance(price_sensor, str):
+        price_sensor = [price_sensor]
+    if isinstance(price_sensor_gas, str):
+        price_sensor_gas = [price_sensor_gas]
     entities: list[BaseUtilitySensor] = []
 
     for block in configs:
