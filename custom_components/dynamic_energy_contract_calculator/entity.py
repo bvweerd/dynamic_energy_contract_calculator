@@ -99,7 +99,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         energy_sensor: str,
         source_type: str,
         price_settings: dict[str, float],
-        price_sensor: str | None = None,
+        price_sensor: str | list[str] | None = None,
         mode: str = "kwh_total",
         unit: str = UnitOfEnergy.KILO_WATT_HOUR,
         device_class: SensorDeviceClass | str | None = None,
@@ -121,8 +121,14 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
-        self.input_sensors = [energy_sensor]
-        self.price_sensor = price_sensor
+        if isinstance(price_sensor, list):
+            self.price_sensors = price_sensor
+        elif price_sensor is None:
+            self.price_sensors = []
+        else:
+            self.price_sensors = [price_sensor]
+        self.price_sensor = self.price_sensors[0] if self.price_sensors else None
+        self.input_sensors = [energy_sensor] + self.price_sensors
         self.mode = mode
         self.source_type = source_type
         self.price_settings = price_settings
@@ -212,7 +218,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         self._last_energy = current_energy
 
-        if self.mode not in ("kwh_total", "m3_total") and not self.price_sensor:
+        if self.mode not in ("kwh_total", "m3_total") and not self.price_sensors:
             async_report_issue(
                 self.hass,
                 f"missing_price_sensor_{self.entity_id}",
@@ -223,16 +229,32 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         if self.mode in ("kwh_total", "m3_total"):
             self._attr_native_value += delta
-        elif self.price_sensor:
-            price_state = self.hass.states.get(self.price_sensor)
-            if price_state is None or price_state.state in ("unknown", "unavailable"):
+        elif self.price_sensors:
+            total_price = 0.0
+            valid = False
+            for sensor_id in self.price_sensors:
+                price_state = self.hass.states.get(sensor_id)
+                if price_state is None or price_state.state in (
+                    "unknown",
+                    "unavailable",
+                ):
+                    _LOGGER.warning("Price sensor %s is unavailable", sensor_id)
+                    continue
+                try:
+                    total_price += float(price_state.state)
+                    valid = True
+                except ValueError:
+                    _LOGGER.warning("Price sensor %s has invalid state", sensor_id)
+                    continue
+            if not valid:
                 self._attr_available = False
                 if self._price_unavailable_since is None:
                     self._price_unavailable_since = datetime.now()
-                if datetime.now() - self._price_unavailable_since >= timedelta(
-                    seconds=UNAVAILABLE_GRACE_SECONDS
+                if (
+                    datetime.now() - self._price_unavailable_since
+                    >= timedelta(seconds=UNAVAILABLE_GRACE_SECONDS)
+                    and self.price_sensor
                 ):
-                    _LOGGER.warning("Price sensor %s is unavailable", self.price_sensor)
                     async_report_issue(
                         self.hass,
                         f"price_unavailable_{self.price_sensor}",
@@ -240,31 +262,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         {"sensor": self.price_sensor},
                     )
                 return
-            try:
-                price = float(price_state.state)
-            except ValueError:
-                self._attr_available = False
-                if self._price_unavailable_since is None:
-                    self._price_unavailable_since = datetime.now()
-                if datetime.now() - self._price_unavailable_since >= timedelta(
-                    seconds=UNAVAILABLE_GRACE_SECONDS
-                ):
-                    _LOGGER.warning(
-                        "Price sensor %s has invalid state", self.price_sensor
-                    )
-                    async_report_issue(
-                        self.hass,
-                        f"price_invalid_{self.price_sensor}",
-                        "price_sensor_unavailable",
-                        {"sensor": self.price_sensor},
-                    )
-                return
             self._attr_available = True
-            if self._price_unavailable_since is not None:
+            if self._price_unavailable_since is not None and self.price_sensor:
                 async_clear_issue(self.hass, f"price_unavailable_{self.price_sensor}")
                 async_clear_issue(self.hass, f"price_invalid_{self.price_sensor}")
                 self._price_unavailable_since = None
 
+            price = total_price
             if (
                 self.source_type == SOURCE_TYPE_CONSUMPTION
                 or self.source_type == SOURCE_TYPE_GAS
@@ -283,7 +287,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             _LOGGER.debug(
                 "Calculated price for %s: base=%s markup_c=%s markup_p=%s tax=%s vat=%s -> %s",
                 self.entity_id,
-                price_state.state,
+                total_price,
                 markup_consumption,
                 markup_production,
                 tax,

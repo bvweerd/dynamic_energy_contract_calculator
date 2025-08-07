@@ -110,7 +110,7 @@ async def test_dynamic_sensor_added_to_hass(hass: HomeAssistant):
         )
         await sensor.async_added_to_hass()
 
-    assert called == ["sensor.energy", "unsub"]
+    assert called == ["sensor.energy", "unsub", "sensor.price", "unsub"]
 
 
 async def test_total_cost_sensor_added(hass: HomeAssistant):
@@ -305,7 +305,7 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
             CONF_CONFIGS: [
                 {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]}
             ],
-            CONF_PRICE_SENSOR_GAS: "sensor.gprice",
+            CONF_PRICE_SENSOR_GAS: ["sensor.gprice"],
         },
         options={CONF_PRICE_SETTINGS: {}},
     )
