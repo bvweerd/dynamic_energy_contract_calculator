@@ -156,15 +156,19 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             or state.attributes.get("unit_of_measurement") == "€/m³"
             or state.attributes.get("unit_of_measurement") == "€/kWh"
         ]
-        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
-        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
+        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
+        if isinstance(current_price_sensor, str):
+            current_price_sensor = [current_price_sensor]
+        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, [])
+        if isinstance(current_price_sensor_gas, str):
+            current_price_sensor_gas = [current_price_sensor_gas]
 
         schema_fields: dict[Any, Any] = {
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
                     "select": {
                         "options": all_prices,
-                        "multiple": False,
+                        "multiple": True,
                         "mode": "dropdown",
                     }
                 }
@@ -175,7 +179,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 {
                     "select": {
                         "options": all_prices,
-                        "multiple": False,
+                        "multiple": True,
                         "mode": "dropdown",
                     }
                 }
@@ -328,15 +332,19 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             or state.attributes.get("unit_of_measurement") == "€/m³"
             or state.attributes.get("unit_of_measurement") == "€/kWh"
         ]
-        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, "")
-        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, "")
+        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
+        if isinstance(current_price_sensor, str):
+            current_price_sensor = [current_price_sensor]
+        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, [])
+        if isinstance(current_price_sensor_gas, str):
+            current_price_sensor_gas = [current_price_sensor_gas]
 
         schema_fields = {
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
                     "select": {
                         "options": all_prices,
-                        "multiple": False,
+                        "multiple": True,
                         "mode": "dropdown",
                     }
                 }
@@ -347,7 +355,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     "select": {
                         "options": all_prices,
-                        "multiple": False,
+                        "multiple": True,
                         "mode": "dropdown",
                     }
                 }
