@@ -30,7 +30,7 @@ async def test_async_setup_entry(hass: HomeAssistant):
                     CONF_SOURCES: ["sensor.energy"],
                 }
             ],
-            CONF_PRICE_SENSOR: "sensor.price",
+            CONF_PRICE_SENSOR: ["sensor.price"],
         },
         options={CONF_PRICE_SETTINGS: {}},
     )
