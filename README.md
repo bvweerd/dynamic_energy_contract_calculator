@@ -19,7 +19,9 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 
 1. In Home Assistant navigate to **Settings → Devices & Services** and use **Add Integration**.
 2. Search for **Dynamic Energy Contract Calculator** and follow the setup flow.
-3. Select the energy sensors you want to track and provide an optional price sensor for live pricing.
+3. Select the energy sensors you want to track and provide optional price sensors for live pricing.
+   Values from multiple price sensors are added together, allowing you to keep separate sensors
+   for things like dynamic tariff surcharges.
 4. Optionally configure price settings such as markup and tax values.
 
 Price settings can be changed later from the integration's options flow. See
@@ -33,8 +35,9 @@ During setup you will be asked for the following information:
    consumption, electricity production or gas consumption.
 2. **Energy sensors** – one or more sensors with the `energy` or `gas` device
    class that provide cumulative readings.
-3. **Price sensor** – optional sensor that provides the current energy price
-   in €/kWh or €/m³.
+3. **Price sensors** – optional sensors that provide components of the current energy price
+   in €/kWh or €/m³. You can select more than one; their values are summed.
+   This makes it possible to add sensors that expose dynamic tariff surcharges.
 4. **Price settings** – values from the table below used to calculate the final
    price.
 
