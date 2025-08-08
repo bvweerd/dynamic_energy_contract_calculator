@@ -513,7 +513,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                             continue
                         if idx < len(raw_today):
                             try:
-                                raw_today[idx]["value"] = float(raw_today[idx]["value"]) + add_val
+                                raw_today[idx]["value"] = (
+                                    float(raw_today[idx]["value"]) + add_val
+                                )
                             except (ValueError, TypeError, KeyError):
                                 raw_today[idx]["value"] = add_val
                         else:
@@ -524,7 +526,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             st_raw_tomorrow = state.attributes.get("raw_tomorrow")
             if isinstance(st_raw_tomorrow, list):
                 if raw_tomorrow is None:
-                    raw_tomorrow = [e.copy() for e in st_raw_tomorrow if isinstance(e, dict)]
+                    raw_tomorrow = [
+                        e.copy() for e in st_raw_tomorrow if isinstance(e, dict)
+                    ]
                 else:
                     for idx, entry in enumerate(st_raw_tomorrow):
                         if not isinstance(entry, dict) or "value" not in entry:
@@ -535,7 +539,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                             continue
                         if idx < len(raw_tomorrow):
                             try:
-                                raw_tomorrow[idx]["value"] = float(raw_tomorrow[idx]["value"]) + add_val
+                                raw_tomorrow[idx]["value"] = (
+                                    float(raw_tomorrow[idx]["value"]) + add_val
+                                )
                             except (ValueError, TypeError, KeyError):
                                 raw_tomorrow[idx]["value"] = add_val
                         else:
