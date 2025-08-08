@@ -350,7 +350,7 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(1.0)
 
 
-async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
+async def test_missing_price_sensor_no_issue(hass: HomeAssistant):
     price_settings = {}
     sensor = DynamicEnergySensor(
         hass,
@@ -376,7 +376,7 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
             fake_issue,
         )
         await sensor.async_update()
-    assert called.get("key") == "missing_price_sensor"
+    assert not called
 
 
 async def test_base_sensor_restore_state(hass: HomeAssistant):
