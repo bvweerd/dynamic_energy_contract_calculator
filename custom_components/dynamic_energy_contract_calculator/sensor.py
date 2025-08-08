@@ -456,8 +456,16 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         return round(price, 8)
 
     def _convert_raw_prices(self, raw_prices):
+        """Convert raw price entries by applying price settings.
+
+        The input may be a list accumulated from multiple price sensors.
+        Each entry is copied before modification to avoid mutating the
+        original structure.
+        """
+
         if not isinstance(raw_prices, list):
             return None
+
         converted = []
         for entry in raw_prices:
             if not isinstance(entry, dict) or "value" not in entry:
@@ -466,9 +474,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 base = float(entry["value"])
             except (ValueError, TypeError):
                 continue
+
             entry_conv = entry.copy()
             entry_conv["value"] = self._calculate_price(base)
             converted.append(entry_conv)
+
         return converted
 
     async def async_update(self):
@@ -476,6 +486,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         raw_today = None
         raw_tomorrow = None
         valid = False
+
         for sensor in self.price_sensors:
             state = self.hass.states.get(sensor)
             if state is None or state.state in ("unknown", "unavailable"):
@@ -487,9 +498,56 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             except ValueError:
                 _LOGGER.warning("Price sensor %s has invalid state", sensor)
                 continue
-            if raw_today is None:
-                raw_today = state.attributes.get("raw_today")
-                raw_tomorrow = state.attributes.get("raw_tomorrow")
+
+            st_raw_today = state.attributes.get("raw_today")
+            if isinstance(st_raw_today, list):
+                if raw_today is None:
+                    raw_today = [e.copy() for e in st_raw_today if isinstance(e, dict)]
+                else:
+                    for idx, entry in enumerate(st_raw_today):
+                        if not isinstance(entry, dict) or "value" not in entry:
+                            continue
+                        try:
+                            add_val = float(entry["value"])
+                        except (ValueError, TypeError):
+                            continue
+                        if idx < len(raw_today):
+                            try:
+                                raw_today[idx]["value"] = (
+                                    float(raw_today[idx]["value"]) + add_val
+                                )
+                            except (ValueError, TypeError, KeyError):
+                                raw_today[idx]["value"] = add_val
+                        else:
+                            new_entry = entry.copy()
+                            new_entry["value"] = add_val
+                            raw_today.append(new_entry)
+
+            st_raw_tomorrow = state.attributes.get("raw_tomorrow")
+            if isinstance(st_raw_tomorrow, list):
+                if raw_tomorrow is None:
+                    raw_tomorrow = [
+                        e.copy() for e in st_raw_tomorrow if isinstance(e, dict)
+                    ]
+                else:
+                    for idx, entry in enumerate(st_raw_tomorrow):
+                        if not isinstance(entry, dict) or "value" not in entry:
+                            continue
+                        try:
+                            add_val = float(entry["value"])
+                        except (ValueError, TypeError):
+                            continue
+                        if idx < len(raw_tomorrow):
+                            try:
+                                raw_tomorrow[idx]["value"] = (
+                                    float(raw_tomorrow[idx]["value"]) + add_val
+                                )
+                            except (ValueError, TypeError, KeyError):
+                                raw_tomorrow[idx]["value"] = add_val
+                        else:
+                            new_entry = entry.copy()
+                            new_entry["value"] = add_val
+                            raw_tomorrow.append(new_entry)
         if not valid:
             self._attr_available = False
             return
