@@ -149,10 +149,6 @@
     }
   },
   "issues": {
-    "missing_price_sensor": {
-      "title": "Ontbrekende prijssensor",
-      "description": "Er is een prijssensor nodig om kosten te berekenen."
-    },
     "energy_source_unavailable": {
       "title": "Energiebron niet beschikbaar",
       "description": "Energiebron {sensor} is niet beschikbaar of ongeldig."
