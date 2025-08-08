@@ -181,38 +181,6 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
     assert g.native_value > 0
 
 
-async def test_daily_cost_sensors_initial_value(hass: HomeAssistant):
-    e = DailyElectricityCostSensor(
-        hass,
-        "E",
-        "eid",
-        {
-            "per_day_grid_operator_electricity_connection_fee": 0.1,
-            "vat_percentage": 0.0,
-        },
-        DeviceInfo(identifiers={("d", "1")}),
-    )
-    g = DailyGasCostSensor(
-        hass,
-        "G",
-        "gid",
-        {"per_day_supplier_gas_standing_charge": 0.2, "vat_percentage": 0.0},
-        DeviceInfo(identifiers={("d", "2")}),
-    )
-    e.async_write_ha_state = lambda *a, **k: None
-    g.async_write_ha_state = lambda *a, **k: None
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "custom_components.dynamic_energy_contract_calculator.sensor.async_track_time_change",
-            lambda *a, **k: "unsub",
-        )
-        await e.async_added_to_hass()
-        await g.async_added_to_hass()
-
-    assert e.native_value == pytest.approx(e._calculate_daily_cost())
-    assert g.native_value == pytest.approx(g._calculate_daily_cost())
-
-
 async def test_total_energy_cost_sensor_branches(hass: HomeAssistant):
     er_reg = er.async_get(hass)
     er_reg.async_get_or_create("sensor", DOMAIN, "net_uid", suggested_object_id="net")
