@@ -575,6 +575,8 @@ async def async_setup_entry(
 
             for mode_def in mode_defs:
                 mode = mode_def["key"]
+                if not selected_price_sensor and mode not in ("kwh_total", "m3_total"):
+                    continue
                 uid = f"{DOMAIN}_{base_id}_{mode}"
                 entities.append(
                     DynamicEnergySensor(
