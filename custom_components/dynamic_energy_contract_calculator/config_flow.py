@@ -1,30 +1,42 @@
 from __future__ import annotations
 
-import voluptuous as vol
 import copy
-
 from typing import Any
 
+import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowContext
-from homeassistant.core import callback
-from homeassistant.config_entries import ConfigFlowResult
+from homeassistant.config_entries import ConfigFlowContext, ConfigFlowResult
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import selector
 
 from .const import (
-    DOMAIN,
     CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
     CONF_PRICE_SENSOR,
     CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
-    SOURCE_TYPES,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
     DEFAULT_PRICE_SETTINGS,
+    DOMAIN,
+    SOURCE_TYPE_GAS,
+    SOURCE_TYPES,
 )
 
 STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
+
+
+async def _get_energy_sensors(hass: HomeAssistant, source_type: str | None) -> list[str]:
+    """Return available energy or gas sensors with total state class."""
+    device_class = "gas" if source_type == SOURCE_TYPE_GAS else "energy"
+    return sorted(
+        [
+            state.entity_id
+            for state in hass.states.async_all("sensor")
+            if state.attributes.get("device_class") == device_class
+            and state.attributes.get("state_class") in ("total", "total_increasing")
+        ]
+    )
 
 
 class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
@@ -94,16 +106,6 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             }
         )
 
-    async def _get_energy_sensors(self) -> list[str]:
-        return sorted(
-            [
-                state.entity_id
-                for state in self.hass.states.async_all("sensor")
-                if state.attributes.get("device_class") == "energy"
-                or state.attributes.get("device_class") == "gas"
-            ]
-        )
-
     async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
@@ -127,8 +129,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 )
 
             return await self.async_step_user()
-
-        all_sensors = await self._get_energy_sensors()
+        all_sensors = await _get_energy_sensors(self.hass, self.source_type)
 
         last = next(
             (
@@ -312,12 +313,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
 
             return await self.async_step_user()
 
-        all_sensors = [
-            state.entity_id
-            for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "energy"
-            or state.attributes.get("device_class") == "gas"
-        ]
+        all_sensors = await _get_energy_sensors(self.hass, self.source_type)
 
         last = next(
             (
