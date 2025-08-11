@@ -92,9 +92,7 @@ async def test_options_flow_edit_source_replaces_existing_config(
     result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
     assert result["type"] == FlowResultType.FORM
 
-    result = await flow.async_step_select_sources(
-        {CONF_SOURCES: ["sensor.energy_2"]}
-    )
+    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy_2"]})
     assert result["type"] == FlowResultType.FORM
 
     result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
