@@ -26,7 +26,9 @@ STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
 
 
-async def _get_energy_sensors(hass: HomeAssistant, source_type: str | None) -> list[str]:
+async def _get_energy_sensors(
+    hass: HomeAssistant, source_type: str | None
+) -> list[str]:
     """Return available energy or gas sensors with total state class."""
     device_class = "gas" if source_type == SOURCE_TYPE_GAS else "energy"
     return sorted(
