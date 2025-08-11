@@ -107,12 +107,25 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
     async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
-            self.configs.append(
-                {
-                    CONF_SOURCE_TYPE: self.source_type,
-                    CONF_SOURCES: self.sources,
-                }
+
+            existing = next(
+                (
+                    config
+                    for config in self.configs
+                    if config[CONF_SOURCE_TYPE] == self.source_type
+                ),
+                None,
             )
+            if existing is not None:
+                existing[CONF_SOURCES] = self.sources
+            else:
+                self.configs.append(
+                    {
+                        CONF_SOURCE_TYPE: self.source_type,
+                        CONF_SOURCES: self.sources,
+                    }
+                )
+
             return await self.async_step_user()
 
         all_sensors = await self._get_energy_sensors()
@@ -278,12 +291,25 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_select_sources(self, user_input=None):
         if user_input and CONF_SOURCES in user_input:
             self.sources = user_input[CONF_SOURCES]
-            self.configs.append(
-                {
-                    CONF_SOURCE_TYPE: self.source_type,
-                    CONF_SOURCES: self.sources,
-                }
+
+            existing = next(
+                (
+                    config
+                    for config in self.configs
+                    if config[CONF_SOURCE_TYPE] == self.source_type
+                ),
+                None,
             )
+            if existing is not None:
+                existing[CONF_SOURCES] = self.sources
+            else:
+                self.configs.append(
+                    {
+                        CONF_SOURCE_TYPE: self.source_type,
+                        CONF_SOURCES: self.sources,
+                    }
+                )
+
             return await self.async_step_user()
 
         all_sensors = [
