@@ -58,3 +58,35 @@ async def test_single_instance_abort(hass: HomeAssistant):
     result = await flow.async_step_user()
     assert result["type"] == FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_edit_source_replaces_existing_config(hass: HomeAssistant):
+    flow = DynamicEnergyCalculatorConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+
+    async def _get_energy():
+        return ["sensor.energy", "sensor.energy_2"]
+
+    flow._get_energy_sensors = _get_energy
+
+    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
+    assert result["type"] == FlowResultType.FORM
+
+    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy"]})
+    assert result["type"] == FlowResultType.FORM
+
+    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
+    assert result["type"] == FlowResultType.FORM
+
+    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy_2"]})
+    assert result["type"] == FlowResultType.FORM
+
+    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_CONFIGS] == [
+        {
+            CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
+            CONF_SOURCES: ["sensor.energy_2"],
+        }
+    ]

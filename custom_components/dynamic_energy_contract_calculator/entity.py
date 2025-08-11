@@ -219,12 +219,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._last_energy = current_energy
 
         if self.mode not in ("kwh_total", "m3_total") and not self.price_sensors:
-            async_report_issue(
-                self.hass,
-                f"missing_price_sensor_{self.entity_id}",
-                "missing_price_sensor",
-                {"sensor": self.entity_id},
+            _LOGGER.debug(
+                "Skipping update for %s due to missing price sensor", self.entity_id
             )
+            self._attr_available = False
             return
 
         if self.mode in ("kwh_total", "m3_total"):

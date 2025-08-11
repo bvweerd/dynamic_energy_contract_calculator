@@ -71,7 +71,7 @@ async def test_delta_negative(hass: HomeAssistant):
     assert sensor.native_value == 0
 
 
-async def test_missing_price_sensor(hass: HomeAssistant):
+async def test_missing_price_sensor_no_issue(hass: HomeAssistant):
     sensor = await _make_sensor(hass, price_sensor=None)
     sensor._last_energy = 0
     hass.states.async_set("sensor.energy", 1)
@@ -82,7 +82,7 @@ async def test_missing_price_sensor(hass: HomeAssistant):
             lambda *a, **k: called.update(missing=True),
         )
         await sensor.async_update()
-    assert called.get("missing")
+    assert not called
 
 
 async def test_price_unavailable(hass: HomeAssistant):
