@@ -350,7 +350,7 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(1.0)
 
 
-async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
+async def test_missing_price_sensor_no_issue(hass: HomeAssistant):
     price_settings = {}
     sensor = DynamicEnergySensor(
         hass,
@@ -376,7 +376,7 @@ async def test_missing_price_sensor_issue_called(hass: HomeAssistant):
             fake_issue,
         )
         await sensor.async_update()
-    assert called.get("key") == "missing_price_sensor"
+    assert not called
 
 
 async def test_base_sensor_restore_state(hass: HomeAssistant):
@@ -572,3 +572,92 @@ async def test_current_price_attributes(hass: HomeAssistant):
 
     assert sensor.extra_state_attributes["net_prices_today"] == expected_today
     assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
+
+
+async def test_current_price_attributes_multiple_sensors(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Attr Price Multi",
+        "attrid_multi",
+        price_sensor=["sensor.price1", "sensor.price2"],
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "attr_multi")}),
+    )
+
+    raw_today_1 = [
+        {
+            "start": "2025-07-25T00:00:00+02:00",
+            "end": "2025-07-25T01:00:00+02:00",
+            "value": 0.1,
+        },
+        {
+            "start": "2025-07-25T01:00:00+02:00",
+            "end": "2025-07-25T02:00:00+02:00",
+            "value": 0.2,
+        },
+    ]
+    raw_today_2 = [
+        {
+            "start": "2025-07-25T00:00:00+02:00",
+            "end": "2025-07-25T01:00:00+02:00",
+            "value": 0.4,
+        },
+        {
+            "start": "2025-07-25T01:00:00+02:00",
+            "end": "2025-07-25T02:00:00+02:00",
+            "value": 0.5,
+        },
+    ]
+    raw_tomorrow_1 = [
+        {
+            "start": "2025-07-26T00:00:00+02:00",
+            "end": "2025-07-26T01:00:00+02:00",
+            "value": 0.3,
+        }
+    ]
+    raw_tomorrow_2 = [
+        {
+            "start": "2025-07-26T00:00:00+02:00",
+            "end": "2025-07-26T01:00:00+02:00",
+            "value": 0.6,
+        }
+    ]
+
+    hass.states.async_set(
+        "sensor.price1",
+        0.1,
+        {"raw_today": raw_today_1, "raw_tomorrow": raw_tomorrow_1},
+    )
+    hass.states.async_set(
+        "sensor.price2",
+        0.4,
+        {"raw_today": raw_today_2, "raw_tomorrow": raw_tomorrow_2},
+    )
+
+    await sensor.async_update()
+
+    expected_today = [
+        {
+            "start": raw_today_1[0]["start"],
+            "end": raw_today_1[0]["end"],
+            "value": 0.5,
+        },
+        {
+            "start": raw_today_1[1]["start"],
+            "end": raw_today_1[1]["end"],
+            "value": 0.7,
+        },
+    ]
+    expected_tomorrow = [
+        {
+            "start": raw_tomorrow_1[0]["start"],
+            "end": raw_tomorrow_1[0]["end"],
+            "value": 0.9,
+        }
+    ]
+
+    assert sensor.extra_state_attributes["net_prices_today"] == expected_today
+    assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
+    assert sensor.native_value == pytest.approx(0.5)
