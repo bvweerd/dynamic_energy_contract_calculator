@@ -24,6 +24,9 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
 )
+from custom_components.dynamic_energy_contract_calculator.saldering import (
+    SalderingTracker,
+)
 
 
 async def test_base_sensor_reset_and_set(hass: HomeAssistant):
@@ -348,6 +351,66 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     hass.states.async_set("sensor.price", 1.0)
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(1.0)
+
+
+async def test_saldering_applies_tax_credit(hass: HomeAssistant):
+    tracker = SalderingTracker()
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.1,
+        "vat_percentage": 21.0,
+        "production_price_include_vat": True,
+    }
+
+    consumption = DynamicEnergySensor(
+        hass,
+        "Consumption Cost",
+        "consumption_cost",
+        "sensor.consumption_energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+        saldering_tracker=tracker,
+    )
+    production = DynamicEnergySensor(
+        hass,
+        "Production Profit",
+        "production_profit",
+        "sensor.production_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="profit_total",
+        saldering_tracker=tracker,
+    )
+
+    consumption.async_write_ha_state = lambda *args, **kwargs: None
+    production.async_write_ha_state = lambda *args, **kwargs: None
+
+    await tracker.async_register_sensor(consumption)
+
+    consumption._last_energy = 0.0
+    hass.states.async_set("sensor.consumption_energy", 1.0)
+    hass.states.async_set("sensor.price", 0.0)
+    await consumption.async_update()
+
+    assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(1.0, rel=1e-6)
+
+    production._last_energy = 0.0
+    hass.states.async_set("sensor.production_energy", 1.0)
+    await production.async_update()
+
+    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(0.0, abs=1e-6)
+
+    production._last_energy = 1.0
+    hass.states.async_set("sensor.production_energy", 2.0)
+    await production.async_update()
+
+    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
 
 
 async def test_missing_price_sensor_no_issue(hass: HomeAssistant):

@@ -48,3 +48,4 @@ async def test_diagnostics_redaction_and_structure(hass: HomeAssistant):
     assert result["sources"][0]["entity_id"] == "sensor.energy"
     assert result["sources"][0]["state"]["state"] == "1"
     assert result["sources"][0]["state"]["attributes"] == {"attr": "val"}
+    assert result["saldering"] == {"enabled": False}
