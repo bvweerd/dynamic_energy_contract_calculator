@@ -102,9 +102,37 @@ SENSOR_MODES_GAS = [
 UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 
 
-class TotalCostSensor(BaseUtilitySensor):
+def _build_saldering_attributes(
+    tracker: SalderingTracker | None,
+) -> dict[str, float | bool]:
+    if tracker is None:
+        return {"saldering_enabled": False}
+    balances = tracker.tax_balance_per_sensor
+    total_balance = round(sum(balances.values()), 8)
+    return {
+        "saldering_enabled": True,
+        "saldering_net_consumption_kwh": round(tracker.net_consumption_kwh, 8),
+        "saldering_tax_balance_eur": total_balance,
+    }
+
+
+class SalderingStatusMixin:
+    _saldering_tracker: SalderingTracker | None
+
+    def _update_saldering_attributes(self) -> None:
+        self._attr_extra_state_attributes = _build_saldering_attributes(
+            self._saldering_tracker
+        )
+
+
+class TotalCostSensor(SalderingStatusMixin, BaseUtilitySensor):
     def __init__(
-        self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        device: DeviceInfo,
+        saldering_tracker: SalderingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -117,6 +145,8 @@ class TotalCostSensor(BaseUtilitySensor):
             translation_key="net_total_cost",
         )
         self.hass = hass
+        self._saldering_tracker = saldering_tracker
+        self._update_saldering_attributes()
 
     async def async_update(self):
         cost_total = 0.0
@@ -136,6 +166,7 @@ class TotalCostSensor(BaseUtilitySensor):
                         continue
         _LOGGER.debug("Aggregated cost=%s profit=%s", cost_total, profit_total)
         self._attr_native_value = round(cost_total - profit_total, 8)
+        self._update_saldering_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -159,7 +190,7 @@ class TotalCostSensor(BaseUtilitySensor):
         self.async_write_ha_state()
 
 
-class DailyElectricityCostSensor(BaseUtilitySensor):
+class DailyElectricityCostSensor(SalderingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -167,6 +198,7 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         unique_id: str,
         price_settings: dict[str, float],
         device: DeviceInfo,
+        saldering_tracker: SalderingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -180,6 +212,8 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         )
         self.hass = hass
         self.price_settings = price_settings
+        self._saldering_tracker = saldering_tracker
+        self._update_saldering_attributes()
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
@@ -206,10 +240,11 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         return round(total, 8)
 
     async def async_update(self):
-        pass
+        self._update_saldering_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._update_saldering_attributes()
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -230,9 +265,10 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         )
         self._attr_native_value += addition
         self.async_write_ha_state()
+        self._update_saldering_attributes()
 
 
-class DailyGasCostSensor(BaseUtilitySensor):
+class DailyGasCostSensor(SalderingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -240,6 +276,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
         unique_id: str,
         price_settings: dict[str, float],
         device: DeviceInfo,
+        saldering_tracker: SalderingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -253,6 +290,8 @@ class DailyGasCostSensor(BaseUtilitySensor):
         )
         self.hass = hass
         self.price_settings = price_settings
+        self._saldering_tracker = saldering_tracker
+        self._update_saldering_attributes()
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
@@ -273,7 +312,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
         return round(total, 8)
 
     async def async_update(self):
-        pass
+        self._update_saldering_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -297,9 +336,10 @@ class DailyGasCostSensor(BaseUtilitySensor):
         )
         self._attr_native_value += addition
         self.async_write_ha_state()
+        self._update_saldering_attributes()
 
 
-class TotalEnergyCostSensor(BaseUtilitySensor):
+class TotalEnergyCostSensor(SalderingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -308,6 +348,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         net_cost_unique_id: str,
         fixed_cost_unique_ids: list[str],
         device: DeviceInfo,
+        saldering_tracker: SalderingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -324,6 +365,8 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         self.fixed_cost_unique_ids = fixed_cost_unique_ids
         self.net_cost_entity_id: str | None = None
         self.fixed_cost_entity_ids: list[str] = []
+        self._saldering_tracker = saldering_tracker
+        self._update_saldering_attributes()
 
     async def async_update(self):
         net_cost = 0.0
@@ -354,6 +397,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             total,
         )
         self._attr_native_value = round(total, 8)
+        self._update_saldering_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -689,6 +733,7 @@ async def async_setup_entry(
         unique_id=unique_id,
         price_settings=price_settings,
         device=device_info,
+        saldering_tracker=saldering_tracker,
     )
     entities.append(daily_electricity)
 
@@ -706,6 +751,7 @@ async def async_setup_entry(
         name="Net Energy Cost (Total)",
         unique_id=f"{DOMAIN}_net_total_cost",
         device=device_info,
+        saldering_tracker=saldering_tracker,
     )
     entities.append(net_cost)
 
@@ -716,6 +762,7 @@ async def async_setup_entry(
         net_cost_unique_id=net_cost.unique_id,
         fixed_cost_unique_ids=[daily_electricity.unique_id, daily_gas.unique_id],
         device=device_info,
+        saldering_tracker=saldering_tracker,
     )
     entities.append(energy_cost)
 

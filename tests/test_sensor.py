@@ -141,9 +141,16 @@ async def test_total_cost_sensor(hass: HomeAssistant):
     UTILITY_ENTITIES.extend([cost, profit])
     cost._attr_native_value = 5
     profit._attr_native_value = 2
-    total = TotalCostSensor(hass, "Total", "t1", None)
+    total = TotalCostSensor(
+        hass,
+        "Total",
+        "t1",
+        None,
+        saldering_tracker=None,
+    )
     await total.async_update()
     assert total.native_value == pytest.approx(3)
+    assert total.extra_state_attributes == {"saldering_enabled": False}
 
 
 async def test_daily_gas_cost_sensor(hass: HomeAssistant):
@@ -156,6 +163,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
+    assert sensor.extra_state_attributes == {"saldering_enabled": False}
 
 
 async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
@@ -173,6 +181,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
+    assert sensor.extra_state_attributes == {"saldering_enabled": False}
 
 
 async def test_current_gas_consumption_price(hass: HomeAssistant):
@@ -411,6 +420,54 @@ async def test_saldering_applies_tax_credit(hass: HomeAssistant):
 
     assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
     assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
+
+
+async def test_summary_sensor_saldering_attributes(hass: HomeAssistant):
+    tracker = SalderingTracker()
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.1,
+        "vat_percentage": 21.0,
+    }
+
+    cost_sensor = DynamicEnergySensor(
+        hass,
+        "Cost",
+        "cost_uid",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+        saldering_tracker=tracker,
+    )
+    cost_sensor.async_write_ha_state = lambda *args, **kwargs: None
+    await tracker.async_register_sensor(cost_sensor)
+    UTILITY_ENTITIES.clear()
+    UTILITY_ENTITIES.append(cost_sensor)
+
+    cost_sensor._last_energy = 0.0
+    hass.states.async_set("sensor.energy", 1.0)
+    hass.states.async_set("sensor.price", 0.0)
+    await cost_sensor.async_update()
+
+    summary = TotalCostSensor(
+        hass,
+        "Summary Total",
+        "summary_uid",
+        DeviceInfo(identifiers={("dec", "summary")}),
+        saldering_tracker=tracker,
+    )
+    summary.async_write_ha_state = lambda *args, **kwargs: None
+    await summary.async_update()
+
+    attrs = summary.extra_state_attributes
+    assert attrs["saldering_enabled"] is True
+    assert attrs["saldering_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
+    assert attrs["saldering_tax_balance_eur"] == pytest.approx(
+        0.121, rel=1e-6
+    )
+    UTILITY_ENTITIES.clear()
 
 
 async def test_missing_price_sensor_no_issue(hass: HomeAssistant):
