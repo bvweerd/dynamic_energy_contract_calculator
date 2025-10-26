@@ -29,6 +29,7 @@ from .const import (
     SOURCE_TYPE_GAS,
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
+from .saldering import SalderingTracker
 
 import logging
 
@@ -607,6 +608,16 @@ async def async_setup_entry(
         price_sensor_gas = [price_sensor_gas]
     entities: list[BaseUtilitySensor] = []
 
+    saldering_enabled = bool(price_settings.get("saldering_enabled"))
+    saldering_tracker: SalderingTracker | None = None
+    if saldering_enabled:
+        saldering_map = hass.data[DOMAIN].setdefault("saldering", {})
+        tracker = saldering_map.get(entry.entry_id)
+        if tracker is None:
+            tracker = SalderingTracker()
+            saldering_map[entry.entry_id] = tracker
+        saldering_tracker = tracker
+
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
@@ -636,6 +647,12 @@ async def async_setup_entry(
                 if not selected_price_sensor and mode not in ("kwh_total", "m3_total"):
                     continue
                 uid = f"{DOMAIN}_{base_id}_{mode}"
+                tracker_arg = (
+                    saldering_tracker
+                    if saldering_tracker
+                    and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
+                else None
+                )
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -650,6 +667,7 @@ async def async_setup_entry(
                         icon=mode_def["icon"],
                         visible=mode_def["visible"],
                         device=device_info,
+                        saldering_tracker=tracker_arg,
                     )
                 )
 

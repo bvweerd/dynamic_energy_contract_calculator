@@ -40,6 +40,7 @@ PRICE_SETTINGS_KEYS = [
     "per_day_supplier_gas_standing_charge",
     "vat_percentage",
     "production_price_include_vat",
+    "saldering_enabled",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -55,4 +56,5 @@ DEFAULT_PRICE_SETTINGS = {
     "per_day_supplier_gas_standing_charge": 0.0,
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
+    "saldering_enabled": False,
 }
