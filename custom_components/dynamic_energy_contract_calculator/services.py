@@ -64,9 +64,9 @@ async def _handle_reset_all(call: ServiceCall) -> None:
         if hasattr(ent, "async_reset"):
             _LOGGER.debug("  resetting %s", entity_id)
             await ent.async_reset()
-    saldering_map = call.hass.data.get(DOMAIN, {}).get("saldering")
-    if isinstance(saldering_map, dict):
-        for tracker in saldering_map.values():
+    netting_map = call.hass.data.get(DOMAIN, {}).get("netting")
+    if isinstance(netting_map, dict):
+        for tracker in netting_map.values():
             await tracker.async_reset_all()
 
 
@@ -80,6 +80,10 @@ async def _handle_reset_sensors(call: ServiceCall) -> None:
         if ent and hasattr(ent, "async_reset"):
             _LOGGER.debug("  resetting %s", entity)
             await ent.async_reset()
+    netting_map = call.hass.data.get(DOMAIN, {}).get("netting")
+    if isinstance(netting_map, dict):
+        for tracker in netting_map.values():
+            await tracker.async_reset_all()
 
 
 async def _handle_set_value(call: ServiceCall) -> None:

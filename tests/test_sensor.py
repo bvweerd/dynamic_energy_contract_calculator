@@ -24,8 +24,8 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
 )
-from custom_components.dynamic_energy_contract_calculator.saldering import (
-    SalderingTracker,
+from custom_components.dynamic_energy_contract_calculator.netting import (
+    NettingTracker,
 )
 
 
@@ -146,11 +146,11 @@ async def test_total_cost_sensor(hass: HomeAssistant):
         "Total",
         "t1",
         None,
-        saldering_tracker=None,
+        netting_tracker=None,
     )
     await total.async_update()
     assert total.native_value == pytest.approx(3)
-    assert total.extra_state_attributes == {"saldering_enabled": False}
+    assert total.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_daily_gas_cost_sensor(hass: HomeAssistant):
@@ -163,7 +163,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
-    assert sensor.extra_state_attributes == {"saldering_enabled": False}
+    assert sensor.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
@@ -181,7 +181,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
-    assert sensor.extra_state_attributes == {"saldering_enabled": False}
+    assert sensor.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_current_gas_consumption_price(hass: HomeAssistant):
@@ -362,8 +362,8 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(1.0)
 
 
-async def test_saldering_applies_tax_credit(hass: HomeAssistant):
-    tracker = await SalderingTracker.async_create(hass, "entry_saldering_credit")
+async def test_netting_applies_tax_credit(hass: HomeAssistant):
+    tracker = await NettingTracker.async_create(hass, "entry_netting_credit")
     await tracker.async_reset_all()
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
@@ -381,7 +381,7 @@ async def test_saldering_applies_tax_credit(hass: HomeAssistant):
         price_settings,
         price_sensor="sensor.price",
         mode="cost_total",
-        saldering_tracker=tracker,
+        netting_tracker=tracker,
     )
     production = DynamicEnergySensor(
         hass,
@@ -392,7 +392,7 @@ async def test_saldering_applies_tax_credit(hass: HomeAssistant):
         price_settings,
         price_sensor="sensor.price",
         mode="profit_total",
-        saldering_tracker=tracker,
+        netting_tracker=tracker,
     )
 
     consumption.async_write_ha_state = lambda *args, **kwargs: None
@@ -423,8 +423,8 @@ async def test_saldering_applies_tax_credit(hass: HomeAssistant):
     assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
 
 
-async def test_summary_sensor_saldering_attributes(hass: HomeAssistant):
-    tracker = await SalderingTracker.async_create(hass, "entry_saldering_summary")
+async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
+    tracker = await NettingTracker.async_create(hass, "entry_netting_summary")
     await tracker.async_reset_all()
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
@@ -441,7 +441,7 @@ async def test_summary_sensor_saldering_attributes(hass: HomeAssistant):
         price_settings,
         price_sensor="sensor.price",
         mode="cost_total",
-        saldering_tracker=tracker,
+        netting_tracker=tracker,
     )
     cost_sensor.async_write_ha_state = lambda *args, **kwargs: None
     await tracker.async_register_sensor(cost_sensor)
@@ -458,15 +458,15 @@ async def test_summary_sensor_saldering_attributes(hass: HomeAssistant):
         "Summary Total",
         "summary_uid",
         DeviceInfo(identifiers={("dec", "summary")}),
-        saldering_tracker=tracker,
+        netting_tracker=tracker,
     )
     summary.async_write_ha_state = lambda *args, **kwargs: None
     await summary.async_update()
 
     attrs = summary.extra_state_attributes
-    assert attrs["saldering_enabled"] is True
-    assert attrs["saldering_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
-    assert attrs["saldering_tax_balance_eur"] == pytest.approx(
+    assert attrs["netting_enabled"] is True
+    assert attrs["netting_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
+    assert attrs["netting_tax_balance_eur"] == pytest.approx(
         0.121, rel=1e-6
     )
     UTILITY_ENTITIES.clear()
