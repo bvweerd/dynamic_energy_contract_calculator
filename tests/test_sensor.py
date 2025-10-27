@@ -363,7 +363,8 @@ async def test_production_price_no_vat(hass: HomeAssistant):
 
 
 async def test_saldering_applies_tax_credit(hass: HomeAssistant):
-    tracker = SalderingTracker()
+    tracker = await SalderingTracker.async_create(hass, "entry_saldering_credit")
+    await tracker.async_reset_all()
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
         "per_unit_government_electricity_tax": 0.1,
@@ -423,7 +424,8 @@ async def test_saldering_applies_tax_credit(hass: HomeAssistant):
 
 
 async def test_summary_sensor_saldering_attributes(hass: HomeAssistant):
-    tracker = SalderingTracker()
+    tracker = await SalderingTracker.async_create(hass, "entry_saldering_summary")
+    await tracker.async_reset_all()
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
         "per_unit_government_electricity_tax": 0.1,

@@ -58,3 +58,6 @@ DEFAULT_PRICE_SETTINGS = {
     "production_price_include_vat": True,
     "saldering_enabled": False,
 }
+
+SALDERING_STORAGE_VERSION = 1
+SALDERING_STORAGE_KEY_PREFIX = f"{DOMAIN}_saldering"

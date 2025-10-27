@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple, TYPE_CHECKING, Dict
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
+
+from .const import (
+    DOMAIN,
+    SALDERING_STORAGE_KEY_PREFIX,
+    SALDERING_STORAGE_VERSION,
+)
 
 if TYPE_CHECKING:
     from .entity import DynamicEnergySensor
@@ -19,12 +28,58 @@ class _Adjustment:
 class SalderingTracker:
     """Coordinate saldering (net metering) adjustments across sensors."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        store: Store,
+        initial_state: dict | None,
+    ) -> None:
         self._lock = asyncio.Lock()
+        self._store = store
+        self._entry_id = entry_id
         self._net_consumption_kwh: float = 0.0
         self._queue: List[_Adjustment] = []
-        self._balances: dict[str, float] = {}
+        self._balances: Dict[str, float] = {}
         self._sensors: dict[str, DynamicEnergySensor] = {}
+
+        if initial_state:
+            self._net_consumption_kwh = float(
+                initial_state.get("net_consumption_kwh", 0.0)
+            )
+            queue_data = initial_state.get("queue", [])
+            if isinstance(queue_data, list):
+                for entry in queue_data:
+                    if not isinstance(entry, dict):
+                        continue
+                    sid = entry.get("sensor_id")
+                    value = entry.get("value")
+                    try:
+                        adj = _Adjustment(sensor_id=str(sid), value=float(value))
+                    except (TypeError, ValueError):
+                        continue
+                    if adj.value > 0:
+                        self._queue.append(adj)
+            balances = initial_state.get("balances", {})
+            if isinstance(balances, dict):
+                for key, val in balances.items():
+                    try:
+                        self._balances[str(key)] = float(val)
+                    except (TypeError, ValueError):
+                        continue
+
+    @classmethod
+    async def async_create(cls, hass: HomeAssistant, entry_id: str) -> "SalderingTracker":
+        """Create a tracker and restore persisted state."""
+        storage_key = f"{SALDERING_STORAGE_KEY_PREFIX}_{entry_id}"
+        store = Store(
+            hass,
+            SALDERING_STORAGE_VERSION,
+            storage_key,
+            private=True,
+        )
+        initial = await store.async_load() or {}
+        return cls(hass, entry_id, store, initial)
 
     @property
     def net_consumption_kwh(self) -> float:
@@ -42,6 +97,7 @@ class SalderingTracker:
             uid = sensor.unique_id
             self._sensors[uid] = sensor
             self._balances.setdefault(uid, 0.0)
+            await self._async_save_state()
 
     async def async_unregister_sensor(self, sensor: DynamicEnergySensor) -> None:
         """Remove a cost sensor from the tracker."""
@@ -52,6 +108,7 @@ class SalderingTracker:
             self._queue = [
                 adj for adj in self._queue if adj.sensor_id != uid
             ]
+            await self._async_save_state()
 
     async def async_reset_sensor(self, sensor: DynamicEnergySensor) -> None:
         """Clear outstanding tax balance for a sensor."""
@@ -61,6 +118,7 @@ class SalderingTracker:
             self._queue = [
                 adj for adj in self._queue if adj.sensor_id != uid
             ]
+            await self._async_save_state()
 
     async def async_record_consumption(
         self,
@@ -84,6 +142,7 @@ class SalderingTracker:
                 self._balances[uid] = self._balances.get(uid, 0.0) + taxable_value
                 self._queue.append(_Adjustment(sensor_id=uid, value=taxable_value))
 
+            await self._async_save_state()
             return taxable_kwh, taxable_value
 
     async def async_record_production(
@@ -103,6 +162,7 @@ class SalderingTracker:
 
             self._net_consumption_kwh = net_after
             if credited_value <= 0:
+                await self._async_save_state()
                 return credited_kwh, 0.0, []
 
             remaining = credited_value
@@ -128,6 +188,7 @@ class SalderingTracker:
                 if sensor is not None and adj.value > 0:
                     sensor_adjustments.append((sensor, adj.value))
 
+            await self._async_save_state()
             return credited_kwh, credited_value, sensor_adjustments
 
     async def async_reset_all(self) -> None:
@@ -137,3 +198,17 @@ class SalderingTracker:
             self._queue.clear()
             for key in list(self._balances):
                 self._balances[key] = 0.0
+            await self._async_save_state()
+
+    async def _async_save_state(self) -> None:
+        """Persist the tracker state to storage."""
+        data = {
+            "net_consumption_kwh": round(self._net_consumption_kwh, 8),
+            "queue": [
+                {"sensor_id": adj.sensor_id, "value": round(adj.value, 8)}
+                for adj in self._queue
+                if adj.value > 0
+            ],
+            "balances": {key: round(value, 8) for key, value in self._balances.items()},
+        }
+        await self._store.async_save(data)

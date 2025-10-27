@@ -264,8 +264,8 @@ class DailyElectricityCostSensor(SalderingStatusMixin, BaseUtilitySensor):
             self.entity_id,
         )
         self._attr_native_value += addition
-        self.async_write_ha_state()
         self._update_saldering_attributes()
+        self.async_write_ha_state()
 
 
 class DailyGasCostSensor(SalderingStatusMixin, BaseUtilitySensor):
@@ -316,6 +316,7 @@ class DailyGasCostSensor(SalderingStatusMixin, BaseUtilitySensor):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._update_saldering_attributes()
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -335,8 +336,8 @@ class DailyGasCostSensor(SalderingStatusMixin, BaseUtilitySensor):
             self.entity_id,
         )
         self._attr_native_value += addition
-        self.async_write_ha_state()
         self._update_saldering_attributes()
+        self.async_write_ha_state()
 
 
 class TotalEnergyCostSensor(SalderingStatusMixin, BaseUtilitySensor):
@@ -658,7 +659,7 @@ async def async_setup_entry(
         saldering_map = hass.data[DOMAIN].setdefault("saldering", {})
         tracker = saldering_map.get(entry.entry_id)
         if tracker is None:
-            tracker = SalderingTracker()
+            tracker = await SalderingTracker.async_create(hass, entry.entry_id)
             saldering_map[entry.entry_id] = tracker
         saldering_tracker = tracker
 
@@ -743,6 +744,7 @@ async def async_setup_entry(
         unique_id=f"{DOMAIN}_daily_gas_cost",
         price_settings=price_settings,
         device=device_info,
+        saldering_tracker=saldering_tracker,
     )
     entities.append(daily_gas)
 

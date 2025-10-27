@@ -419,12 +419,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
     async def async_reset(self) -> None:
         if self._uses_saldering:
-            await self._saldering_tracker.async_reset_all()  # type: ignore[union-attr]
+            await self._saldering_tracker.async_reset_sensor(self)  # type: ignore[union-attr]
         await super().async_reset()
 
     async def async_set_value(self, value: float) -> None:
         if self._uses_saldering:
-            await self._saldering_tracker.async_reset_all()  # type: ignore[union-attr]
+            await self._saldering_tracker.async_reset_sensor(self)  # type: ignore[union-attr]
         await super().async_set_value(value)
 
     async def async_apply_tax_adjustment(self, deduction: float) -> None:
