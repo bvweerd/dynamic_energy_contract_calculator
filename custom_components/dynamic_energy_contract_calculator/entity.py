@@ -23,7 +23,7 @@ from .const import (
 from .repair import async_report_issue, async_clear_issue
 
 if TYPE_CHECKING:  # pragma: no cover - runtime import would create a cycle
-    from .saldering import SalderingTracker
+    from .netting import NettingTracker
 
 import logging
 
@@ -109,7 +109,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         icon: str = "mdi:flash",
         visible: bool = True,
         device: DeviceInfo | None = None,
-        saldering_tracker: "SalderingTracker | None" = None,
+        netting_tracker: "NettingTracker | None" = None,
     ):
         super().__init__(
             None,
@@ -136,16 +136,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.mode = mode
         self.source_type = source_type
         self.price_settings = price_settings
-        self._saldering_tracker = saldering_tracker
+        self._netting_tracker = netting_tracker
         self._last_energy = None
         self._last_updated = datetime.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
 
     @property
-    def _uses_saldering(self) -> bool:
+    def _uses_netting(self) -> bool:
         return (
-            self._saldering_tracker is not None
+            self._netting_tracker is not None
             and self.source_type == SOURCE_TYPE_CONSUMPTION
             and self.mode == "cost_total"
         )
@@ -296,9 +296,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 tax_unit_price = tax * vat_factor
                 value = delta * gross_unit_price
 
-                if self._uses_saldering:
+                if self._uses_netting:
                     base_value = delta * base_unit_price
-                    _, taxable_value = await self._saldering_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    _, taxable_value = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
@@ -314,9 +314,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 if (
                     self.mode == "profit_total"
-                    and self._saldering_tracker is not None
+                    and self._netting_tracker is not None
                 ):
-                    _, tax_credit_value, adjustments = await self._saldering_tracker.async_record_production(  # type: ignore[union-attr]
+                    _, tax_credit_value, adjustments = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
                         delta, tax * vat_factor
                     )
                     if tax_credit_value > 0:
@@ -387,8 +387,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
 
-        if self._uses_saldering:
-            await self._saldering_tracker.async_register_sensor(self)  # type: ignore[union-attr]
+        if self._uses_netting:
+            await self._netting_tracker.async_register_sensor(self)  # type: ignore[union-attr]
 
         for entity_id in self.input_sensors:
             self.async_on_remove(
@@ -413,18 +413,18 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.async_write_ha_state()
 
     async def async_will_remove_from_hass(self) -> None:
-        if self._uses_saldering:
-            await self._saldering_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
+        if self._uses_netting:
+            await self._netting_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
         await super().async_will_remove_from_hass()
 
     async def async_reset(self) -> None:
-        if self._uses_saldering:
-            await self._saldering_tracker.async_reset_sensor(self)  # type: ignore[union-attr]
+        if self._uses_netting:
+            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
         await super().async_reset()
 
     async def async_set_value(self, value: float) -> None:
-        if self._uses_saldering:
-            await self._saldering_tracker.async_reset_sensor(self)  # type: ignore[union-attr]
+        if self._uses_netting:
+            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
         await super().async_set_value(value)
 
     async def async_apply_tax_adjustment(self, deduction: float) -> None:

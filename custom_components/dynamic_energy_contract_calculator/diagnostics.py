@@ -28,19 +28,15 @@ async def async_get_config_entry_diagnostics(
         "sources": sources,
     }
 
-    tracker = (
-        hass.data.get(DOMAIN, {})
-        .get("saldering", {})
-        .get(entry.entry_id)
-    )
+    tracker = hass.data.get(DOMAIN, {}).get("netting", {}).get(entry.entry_id)
     if tracker:
-        data["saldering"] = {
+        data["netting"] = {
             "enabled": True,
             "net_consumption_kwh": tracker.net_consumption_kwh,
             "tax_balance_per_sensor": tracker.tax_balance_per_sensor,
         }
     else:
-        data["saldering"] = {"enabled": False}
+        data["netting"] = {"enabled": False}
 
     for block in entry.data.get(CONF_CONFIGS, []):
         for source in block.get(CONF_SOURCES, []):

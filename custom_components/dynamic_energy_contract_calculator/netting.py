@@ -1,21 +1,17 @@
-"""Helpers for handling Dutch net metering (salderingsregeling)."""
+"""Helpers for handling Dutch netting (salderingsregeling)."""
 
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import List, Tuple, TYPE_CHECKING, Dict
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import (
-    DOMAIN,
-    SALDERING_STORAGE_KEY_PREFIX,
-    SALDERING_STORAGE_VERSION,
-)
+from .const import NETTING_STORAGE_KEY_PREFIX, NETTING_STORAGE_VERSION
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .entity import DynamicEnergySensor
 
 
@@ -25,8 +21,8 @@ class _Adjustment:
     value: float
 
 
-class SalderingTracker:
-    """Coordinate saldering (net metering) adjustments across sensors."""
+class NettingTracker:
+    """Coordinate netting adjustments across sensors."""
 
     def __init__(
         self,
@@ -69,12 +65,12 @@ class SalderingTracker:
                         continue
 
     @classmethod
-    async def async_create(cls, hass: HomeAssistant, entry_id: str) -> "SalderingTracker":
+    async def async_create(cls, hass: HomeAssistant, entry_id: str) -> "NettingTracker":
         """Create a tracker and restore persisted state."""
-        storage_key = f"{SALDERING_STORAGE_KEY_PREFIX}_{entry_id}"
+        storage_key = f"{NETTING_STORAGE_KEY_PREFIX}_{entry_id}"
         store = Store(
             hass,
-            SALDERING_STORAGE_VERSION,
+            NETTING_STORAGE_VERSION,
             storage_key,
             private=True,
         )
@@ -92,7 +88,7 @@ class SalderingTracker:
         return dict(self._balances)
 
     async def async_register_sensor(self, sensor: DynamicEnergySensor) -> None:
-        """Register a cost sensor that participates in saldering."""
+        """Register a cost sensor that participates in netting."""
         async with self._lock:
             uid = sensor.unique_id
             self._sensors[uid] = sensor
@@ -105,9 +101,7 @@ class SalderingTracker:
             uid = sensor.unique_id
             self._sensors.pop(uid, None)
             self._balances.pop(uid, None)
-            self._queue = [
-                adj for adj in self._queue if adj.sensor_id != uid
-            ]
+            self._queue = [adj for adj in self._queue if adj.sensor_id != uid]
             await self._async_save_state()
 
     async def async_reset_sensor(self, sensor: DynamicEnergySensor) -> None:
@@ -115,9 +109,7 @@ class SalderingTracker:
         async with self._lock:
             uid = sensor.unique_id
             self._balances[uid] = 0.0
-            self._queue = [
-                adj for adj in self._queue if adj.sensor_id != uid
-            ]
+            self._queue = [adj for adj in self._queue if adj.sensor_id != uid]
             await self._async_save_state()
 
     async def async_record_consumption(
