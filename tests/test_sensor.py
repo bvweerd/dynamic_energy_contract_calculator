@@ -696,6 +696,55 @@ async def test_current_price_attributes(hass: HomeAssistant):
     assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
 
 
+async def test_current_price_attributes_entsoe(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Attr Price Entsoe",
+        "attrid_entsoe",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "attr_entsoe")}),
+    )
+
+    prices_today = [
+        {"time": "2025-10-28 00:00:00+01:00", "price": "0.077"},
+        {"time": "2025-10-28 00:15:00+01:00", "price": 0.0551},
+    ]
+    prices_tomorrow = [
+        {"time": "2025-10-29 00:00:00+01:00", "price": 0.06591},
+        {"time": "2025-10-29 00:15:00+01:00", "price": 0.06426},
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        "0.077",
+        {"prices_today": prices_today, "prices_tomorrow": prices_tomorrow},
+    )
+
+    await sensor.async_update()
+
+    attrs_today = sensor.extra_state_attributes["net_prices_today"]
+    attrs_tomorrow = sensor.extra_state_attributes["net_prices_tomorrow"]
+
+    assert attrs_today is not None
+    assert attrs_tomorrow is not None
+    assert attrs_today[0]["time"] == prices_today[0]["time"]
+    assert attrs_today[0]["value"] == pytest.approx(0.077)
+    assert attrs_today[0]["price"] == pytest.approx(0.077)
+    assert attrs_today[1]["time"] == prices_today[1]["time"]
+    assert attrs_today[1]["value"] == pytest.approx(0.0551)
+    assert attrs_today[1]["price"] == pytest.approx(0.0551)
+    assert attrs_tomorrow[0]["time"] == prices_tomorrow[0]["time"]
+    assert attrs_tomorrow[0]["value"] == pytest.approx(0.06591)
+    assert attrs_tomorrow[0]["price"] == pytest.approx(0.06591)
+    assert attrs_tomorrow[1]["time"] == prices_tomorrow[1]["time"]
+    assert attrs_tomorrow[1]["value"] == pytest.approx(0.06426)
+    assert attrs_tomorrow[1]["price"] == pytest.approx(0.06426)
+    assert sensor.native_value == pytest.approx(0.077)
+
+
 async def test_current_price_attributes_multiple_sensors(hass: HomeAssistant):
     sensor = CurrentElectricityPriceSensor(
         hass,
