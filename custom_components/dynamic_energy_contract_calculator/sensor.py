@@ -501,6 +501,81 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 return None
         return round(price, 8)
 
+    def _normalize_price_entries(self, entries):
+        """Return list of entries with numeric value field."""
+        if not isinstance(entries, list):
+            return None
+
+        normalized: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            entry_copy = entry.copy()
+            value_key = None
+            if "value" in entry_copy:
+                value_key = "value"
+            elif "price" in entry_copy:
+                value_key = "price"
+            if value_key is None:
+                continue
+            try:
+                numeric_value = float(entry_copy[value_key])
+            except (ValueError, TypeError):
+                continue
+            entry_copy["value"] = numeric_value
+            if "price" in entry_copy:
+                entry_copy["price"] = numeric_value
+            normalized.append(entry_copy)
+        return normalized if normalized else None
+
+    def _extract_price_entries(self, state, attribute_candidates):
+        """Extract normalized price entries from the provided state."""
+        if state is None:
+            return None
+        for attr_name in attribute_candidates:
+            raw_entries = state.attributes.get(attr_name)
+            normalized = self._normalize_price_entries(raw_entries)
+            if normalized:
+                return normalized
+        return None
+
+    def _merge_price_lists(
+        self,
+        existing: list[dict[str, Any]] | None,
+        additions: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Merge price entries by index, summing values."""
+        if not additions:
+            return existing
+        if existing is None:
+            return [entry.copy() for entry in additions]
+
+        for idx, entry in enumerate(additions):
+            if not isinstance(entry, dict):
+                continue
+            try:
+                add_val = float(entry.get("value"))
+            except (ValueError, TypeError):
+                continue
+            if idx < len(existing):
+                try:
+                    base_val = float(existing[idx].get("value"))
+                except (ValueError, TypeError):
+                    base_val = 0.0
+                new_val = base_val + add_val
+                existing[idx]["value"] = new_val
+                if "price" in existing[idx]:
+                    existing[idx]["price"] = new_val
+                elif "price" in entry:
+                    existing[idx]["price"] = new_val
+            else:
+                entry_copy = entry.copy()
+                entry_copy["value"] = add_val
+                if "price" in entry_copy:
+                    entry_copy["price"] = add_val
+                existing.append(entry_copy)
+        return existing
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
@@ -514,15 +589,25 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         converted = []
         for entry in raw_prices:
-            if not isinstance(entry, dict) or "value" not in entry:
+            if not isinstance(entry, dict):
+                continue
+            value_key = None
+            if "value" in entry:
+                value_key = "value"
+            elif "price" in entry:
+                value_key = "price"
+            if value_key is None:
                 continue
             try:
-                base = float(entry["value"])
+                base = float(entry[value_key])
             except (ValueError, TypeError):
                 continue
 
             entry_conv = entry.copy()
-            entry_conv["value"] = self._calculate_price(base)
+            calculated = self._calculate_price(base)
+            entry_conv["value"] = calculated
+            if "price" in entry_conv:
+                entry_conv["price"] = calculated
             converted.append(entry_conv)
 
         return converted
@@ -545,55 +630,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 _LOGGER.warning("Price sensor %s has invalid state", sensor)
                 continue
 
-            st_raw_today = state.attributes.get("raw_today")
-            if isinstance(st_raw_today, list):
-                if raw_today is None:
-                    raw_today = [e.copy() for e in st_raw_today if isinstance(e, dict)]
-                else:
-                    for idx, entry in enumerate(st_raw_today):
-                        if not isinstance(entry, dict) or "value" not in entry:
-                            continue
-                        try:
-                            add_val = float(entry["value"])
-                        except (ValueError, TypeError):
-                            continue
-                        if idx < len(raw_today):
-                            try:
-                                raw_today[idx]["value"] = (
-                                    float(raw_today[idx]["value"]) + add_val
-                                )
-                            except (ValueError, TypeError, KeyError):
-                                raw_today[idx]["value"] = add_val
-                        else:
-                            new_entry = entry.copy()
-                            new_entry["value"] = add_val
-                            raw_today.append(new_entry)
+            st_raw_today = self._extract_price_entries(
+                state, ("raw_today", "prices_today")
+            )
+            raw_today = self._merge_price_lists(raw_today, st_raw_today)
 
-            st_raw_tomorrow = state.attributes.get("raw_tomorrow")
-            if isinstance(st_raw_tomorrow, list):
-                if raw_tomorrow is None:
-                    raw_tomorrow = [
-                        e.copy() for e in st_raw_tomorrow if isinstance(e, dict)
-                    ]
-                else:
-                    for idx, entry in enumerate(st_raw_tomorrow):
-                        if not isinstance(entry, dict) or "value" not in entry:
-                            continue
-                        try:
-                            add_val = float(entry["value"])
-                        except (ValueError, TypeError):
-                            continue
-                        if idx < len(raw_tomorrow):
-                            try:
-                                raw_tomorrow[idx]["value"] = (
-                                    float(raw_tomorrow[idx]["value"]) + add_val
-                                )
-                            except (ValueError, TypeError, KeyError):
-                                raw_tomorrow[idx]["value"] = add_val
-                        else:
-                            new_entry = entry.copy()
-                            new_entry["value"] = add_val
-                            raw_tomorrow.append(new_entry)
+            st_raw_tomorrow = self._extract_price_entries(
+                state, ("raw_tomorrow", "prices_tomorrow")
+            )
+            raw_tomorrow = self._merge_price_lists(raw_tomorrow, st_raw_tomorrow)
         if not valid:
             self._attr_available = False
             return
