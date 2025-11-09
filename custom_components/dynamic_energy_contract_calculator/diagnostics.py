@@ -8,7 +8,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_CONFIGS, CONF_SOURCES
+from .const import CONF_CONFIGS, CONF_SOURCES, DOMAIN
 
 REDACT_CONFIG: set[str] = set()
 REDACT_STATE = {"context"}
@@ -27,6 +27,16 @@ async def async_get_config_entry_diagnostics(
         },
         "sources": sources,
     }
+
+    tracker = hass.data.get(DOMAIN, {}).get("netting", {}).get(entry.entry_id)
+    if tracker:
+        data["netting"] = {
+            "enabled": True,
+            "net_consumption_kwh": tracker.net_consumption_kwh,
+            "tax_balance_per_sensor": tracker.tax_balance_per_sensor,
+        }
+    else:
+        data["netting"] = {"enabled": False}
 
     for block in entry.data.get(CONF_CONFIGS, []):
         for source in block.get(CONF_SOURCES, []):

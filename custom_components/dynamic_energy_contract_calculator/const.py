@@ -40,6 +40,7 @@ PRICE_SETTINGS_KEYS = [
     "per_day_supplier_gas_standing_charge",
     "vat_percentage",
     "production_price_include_vat",
+    "netting_enabled",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -55,4 +56,8 @@ DEFAULT_PRICE_SETTINGS = {
     "per_day_supplier_gas_standing_charge": 0.0,
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
+    "netting_enabled": False,
 }
+
+NETTING_STORAGE_VERSION = 1
+NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"
