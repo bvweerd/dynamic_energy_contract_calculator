@@ -109,7 +109,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         icon: str = "mdi:flash",
         visible: bool = True,
         device: DeviceInfo | None = None,
-        netting_tracker: "NettingTracker | None" = None,
+        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             None,
@@ -283,22 +283,21 @@ class DynamicEnergySensor(BaseUtilitySensor):
             taxable_value = 0.0
 
             if self.source_type == SOURCE_TYPE_GAS:
-                unit_price = (
-                    total_price + markup_consumption + tax
-                ) * vat_factor
+                unit_price = (total_price + markup_consumption + tax) * vat_factor
                 value = delta * unit_price
                 adjusted_value = value
             elif self.source_type == SOURCE_TYPE_CONSUMPTION:
-                gross_unit_price = (
-                    total_price + markup_consumption + tax
-                ) * vat_factor
+                gross_unit_price = (total_price + markup_consumption + tax) * vat_factor
                 base_unit_price = (total_price + markup_consumption) * vat_factor
                 tax_unit_price = tax * vat_factor
                 value = delta * gross_unit_price
 
                 if self._uses_netting:
                     base_value = delta * base_unit_price
-                    _, taxable_value = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    (
+                        _,
+                        taxable_value,
+                    ) = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
@@ -312,11 +311,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 value = delta * unit_price
                 adjusted_value = value
 
-                if (
-                    self.mode == "profit_total"
-                    and self._netting_tracker is not None
-                ):
-                    _, tax_credit_value, adjustments = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                if self.mode == "profit_total" and self._netting_tracker is not None:
+                    (
+                        _,
+                        tax_credit_value,
+                        adjustments,
+                    ) = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
                         delta, tax * vat_factor
                     )
                     if tax_credit_value > 0:

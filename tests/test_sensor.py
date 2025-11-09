@@ -466,9 +466,7 @@ async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
     attrs = summary.extra_state_attributes
     assert attrs["netting_enabled"] is True
     assert attrs["netting_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
-    assert attrs["netting_tax_balance_eur"] == pytest.approx(
-        0.121, rel=1e-6
-    )
+    assert attrs["netting_tax_balance_eur"] == pytest.approx(0.121, rel=1e-6)
     UTILITY_ENTITIES.clear()
 
 
