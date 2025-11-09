@@ -650,6 +650,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             "net_prices_today": self._net_today,
             "net_prices_tomorrow": self._net_tomorrow,
         }
+        # Do not write list attributes to database.
+        self._unrecorded_attributes = frozenset(
+            {"net_today", "net_tomorrow", "net_prices_today", "net_prices_tomorrow", "raw_today", "raw_tomorrow", "today", "tomorrow"}
+        )
 
         price = self._calculate_price(total_price)
         if price is None:
