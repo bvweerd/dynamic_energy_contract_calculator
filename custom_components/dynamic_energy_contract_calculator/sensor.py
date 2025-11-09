@@ -741,7 +741,7 @@ async def async_setup_entry(
                     netting_tracker
                     if netting_tracker
                     and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
-                else None
+                    else None
                 )
                 entities.append(
                     DynamicEnergySensor(

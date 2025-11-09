@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -35,8 +35,8 @@ class NettingTracker:
         self._store = store
         self._entry_id = entry_id
         self._net_consumption_kwh: float = 0.0
-        self._queue: List[_Adjustment] = []
-        self._balances: Dict[str, float] = {}
+        self._queue: list[_Adjustment] = []
+        self._balances: dict[str, float] = {}
         self._sensors: dict[str, DynamicEnergySensor] = {}
 
         if initial_state:
@@ -65,7 +65,7 @@ class NettingTracker:
                         continue
 
     @classmethod
-    async def async_create(cls, hass: HomeAssistant, entry_id: str) -> "NettingTracker":
+    async def async_create(cls, hass: HomeAssistant, entry_id: str) -> NettingTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{NETTING_STORAGE_KEY_PREFIX}_{entry_id}"
         store = Store(
@@ -117,7 +117,7 @@ class NettingTracker:
         sensor: DynamicEnergySensor,
         delta_kwh: float,
         tax_unit_price: float,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """Record consumption and return the taxable kWh and value."""
         if delta_kwh <= 0 or tax_unit_price <= 0:
             return 0.0, 0.0
@@ -141,7 +141,7 @@ class NettingTracker:
         self,
         delta_kwh: float,
         tax_unit_price: float,
-    ) -> Tuple[float, float, List[Tuple[DynamicEnergySensor, float]]]:
+    ) -> tuple[float, float, list[tuple[DynamicEnergySensor, float]]]:
         """Record production and return credited kWh/value plus adjustments."""
         if delta_kwh <= 0 or tax_unit_price <= 0:
             return 0.0, 0.0, []
@@ -158,7 +158,7 @@ class NettingTracker:
                 return credited_kwh, 0.0, []
 
             remaining = credited_value
-            adjustments: List[_Adjustment] = []
+            adjustments: list[_Adjustment] = []
 
             while remaining > 0 and self._queue:
                 entry = self._queue[0]
@@ -174,7 +174,7 @@ class NettingTracker:
                 else:
                     self._queue[0] = entry
 
-            sensor_adjustments: List[Tuple[DynamicEnergySensor, float]] = []
+            sensor_adjustments: list[tuple[DynamicEnergySensor, float]] = []
             for adj in adjustments:
                 sensor = self._sensors.get(adj.sensor_id)
                 if sensor is not None and adj.value > 0:
