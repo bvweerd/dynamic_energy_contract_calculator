@@ -433,11 +433,10 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
 
 
 class CurrentElectricityPriceSensor(BaseUtilitySensor):
-    # Do not write list attributes to database.
-    self._unrecorded_attributes = frozenset(
+    _unrecorded_attributes = frozenset(
         {"net_today", "net_tomorrow", "net_prices_today", "net_prices_tomorrow", "raw_today", "raw_tomorrow", "today", "tomorrow"}
     )
-    
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -460,6 +459,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             device=device,
             translation_key=name.lower().replace(" ", "_"),
         )
+
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self.hass = hass
         if isinstance(price_sensor, list):
