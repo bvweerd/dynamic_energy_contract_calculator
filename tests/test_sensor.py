@@ -24,6 +24,9 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
 )
+from custom_components.dynamic_energy_contract_calculator.netting import (
+    NettingTracker,
+)
 
 
 async def test_base_sensor_reset_and_set(hass: HomeAssistant):
@@ -138,9 +141,16 @@ async def test_total_cost_sensor(hass: HomeAssistant):
     UTILITY_ENTITIES.extend([cost, profit])
     cost._attr_native_value = 5
     profit._attr_native_value = 2
-    total = TotalCostSensor(hass, "Total", "t1", None)
+    total = TotalCostSensor(
+        hass,
+        "Total",
+        "t1",
+        None,
+        netting_tracker=None,
+    )
     await total.async_update()
     assert total.native_value == pytest.approx(3)
+    assert total.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_daily_gas_cost_sensor(hass: HomeAssistant):
@@ -153,6 +163,7 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
+    assert sensor.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
@@ -170,6 +181,7 @@ async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.6)
+    assert sensor.extra_state_attributes == {"netting_enabled": False}
 
 
 async def test_current_gas_consumption_price(hass: HomeAssistant):
@@ -348,6 +360,114 @@ async def test_production_price_no_vat(hass: HomeAssistant):
     hass.states.async_set("sensor.price", 1.0)
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(1.0)
+
+
+async def test_netting_applies_tax_credit(hass: HomeAssistant):
+    tracker = await NettingTracker.async_create(hass, "entry_netting_credit")
+    await tracker.async_reset_all()
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.1,
+        "vat_percentage": 21.0,
+        "production_price_include_vat": True,
+    }
+
+    consumption = DynamicEnergySensor(
+        hass,
+        "Consumption Cost",
+        "consumption_cost",
+        "sensor.consumption_energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+        netting_tracker=tracker,
+    )
+    production = DynamicEnergySensor(
+        hass,
+        "Production Profit",
+        "production_profit",
+        "sensor.production_energy",
+        SOURCE_TYPE_PRODUCTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="profit_total",
+        netting_tracker=tracker,
+    )
+
+    consumption.async_write_ha_state = lambda *args, **kwargs: None
+    production.async_write_ha_state = lambda *args, **kwargs: None
+
+    await tracker.async_register_sensor(consumption)
+
+    consumption._last_energy = 0.0
+    hass.states.async_set("sensor.consumption_energy", 1.0)
+    hass.states.async_set("sensor.price", 0.0)
+    await consumption.async_update()
+
+    assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(1.0, rel=1e-6)
+
+    production._last_energy = 0.0
+    hass.states.async_set("sensor.production_energy", 1.0)
+    await production.async_update()
+
+    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(0.0, abs=1e-6)
+
+    production._last_energy = 1.0
+    hass.states.async_set("sensor.production_energy", 2.0)
+    await production.async_update()
+
+    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
+
+
+async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
+    tracker = await NettingTracker.async_create(hass, "entry_netting_summary")
+    await tracker.async_reset_all()
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.1,
+        "vat_percentage": 21.0,
+    }
+
+    cost_sensor = DynamicEnergySensor(
+        hass,
+        "Cost",
+        "cost_uid",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+        netting_tracker=tracker,
+    )
+    cost_sensor.async_write_ha_state = lambda *args, **kwargs: None
+    await tracker.async_register_sensor(cost_sensor)
+    UTILITY_ENTITIES.clear()
+    UTILITY_ENTITIES.append(cost_sensor)
+
+    cost_sensor._last_energy = 0.0
+    hass.states.async_set("sensor.energy", 1.0)
+    hass.states.async_set("sensor.price", 0.0)
+    await cost_sensor.async_update()
+
+    summary = TotalCostSensor(
+        hass,
+        "Summary Total",
+        "summary_uid",
+        DeviceInfo(identifiers={("dec", "summary")}),
+        netting_tracker=tracker,
+    )
+    summary.async_write_ha_state = lambda *args, **kwargs: None
+    await summary.async_update()
+
+    attrs = summary.extra_state_attributes
+    assert attrs["netting_enabled"] is True
+    assert attrs["netting_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
+    assert attrs["netting_tax_balance_eur"] == pytest.approx(0.121, rel=1e-6)
+    UTILITY_ENTITIES.clear()
 
 
 async def test_missing_price_sensor_no_issue(hass: HomeAssistant):
@@ -572,6 +692,55 @@ async def test_current_price_attributes(hass: HomeAssistant):
 
     assert sensor.extra_state_attributes["net_prices_today"] == expected_today
     assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
+
+
+async def test_current_price_attributes_entsoe(hass: HomeAssistant):
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Attr Price Entsoe",
+        "attrid_entsoe",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_CONSUMPTION,
+        price_settings={"vat_percentage": 0.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "attr_entsoe")}),
+    )
+
+    prices_today = [
+        {"time": "2025-10-28 00:00:00+01:00", "price": "0.077"},
+        {"time": "2025-10-28 00:15:00+01:00", "price": 0.0551},
+    ]
+    prices_tomorrow = [
+        {"time": "2025-10-29 00:00:00+01:00", "price": 0.06591},
+        {"time": "2025-10-29 00:15:00+01:00", "price": 0.06426},
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        "0.077",
+        {"prices_today": prices_today, "prices_tomorrow": prices_tomorrow},
+    )
+
+    await sensor.async_update()
+
+    attrs_today = sensor.extra_state_attributes["net_prices_today"]
+    attrs_tomorrow = sensor.extra_state_attributes["net_prices_tomorrow"]
+
+    assert attrs_today is not None
+    assert attrs_tomorrow is not None
+    assert attrs_today[0]["time"] == prices_today[0]["time"]
+    assert attrs_today[0]["value"] == pytest.approx(0.077)
+    assert attrs_today[0]["price"] == pytest.approx(0.077)
+    assert attrs_today[1]["time"] == prices_today[1]["time"]
+    assert attrs_today[1]["value"] == pytest.approx(0.0551)
+    assert attrs_today[1]["price"] == pytest.approx(0.0551)
+    assert attrs_tomorrow[0]["time"] == prices_tomorrow[0]["time"]
+    assert attrs_tomorrow[0]["value"] == pytest.approx(0.06591)
+    assert attrs_tomorrow[0]["price"] == pytest.approx(0.06591)
+    assert attrs_tomorrow[1]["time"] == prices_tomorrow[1]["time"]
+    assert attrs_tomorrow[1]["value"] == pytest.approx(0.06426)
+    assert attrs_tomorrow[1]["price"] == pytest.approx(0.06426)
+    assert sensor.native_value == pytest.approx(0.077)
 
 
 async def test_current_price_attributes_multiple_sensors(hass: HomeAssistant):
