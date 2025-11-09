@@ -250,7 +250,7 @@ VAT) and adjust `vat_percentage` accordingly.
 
 ## Known Limitations
 
-- No support for the Dutch net metering (saldering) scheme. Feed‑in energy is compensated at the current rate and not offset against prior consumption.
+- Optional support for the Dutch netting (saldering) scheme. When enabled, the integration nets the energy tax (including VAT) against feed‑in before calculating the remaining costs.
 - The integration relies on cumulative energy sensors. If a sensor resets unexpectedly the calculated totals may become inaccurate.
 - Prices are taken from your own sensor; the integration does not fetch tariffs from suppliers.
 
@@ -297,4 +297,3 @@ source as well as summary sensors that combine the totals.
 To remove the integration open **Settings → Devices & Services**, locate
 **Dynamic Energy Contract Calculator**, choose **Delete** from the menu and
 confirm. All created sensors will be removed from Home Assistant.
-

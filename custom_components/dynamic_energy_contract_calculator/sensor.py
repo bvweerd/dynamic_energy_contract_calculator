@@ -29,6 +29,7 @@ from .const import (
     SOURCE_TYPE_GAS,
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
+from .netting import NettingTracker
 
 import logging
 
@@ -101,9 +102,37 @@ SENSOR_MODES_GAS = [
 UTILITY_ENTITIES: list[BaseUtilitySensor] = []
 
 
-class TotalCostSensor(BaseUtilitySensor):
+def _build_netting_attributes(
+    tracker: NettingTracker | None,
+) -> dict[str, float | bool]:
+    if tracker is None:
+        return {"netting_enabled": False}
+    balances = tracker.tax_balance_per_sensor
+    total_balance = round(sum(balances.values()), 8)
+    return {
+        "netting_enabled": True,
+        "netting_net_consumption_kwh": round(tracker.net_consumption_kwh, 8),
+        "netting_tax_balance_eur": total_balance,
+    }
+
+
+class NettingStatusMixin:
+    _netting_tracker: NettingTracker | None
+
+    def _update_netting_attributes(self) -> None:
+        self._attr_extra_state_attributes = _build_netting_attributes(
+            self._netting_tracker
+        )
+
+
+class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
     def __init__(
-        self, hass: HomeAssistant, name: str, unique_id: str, device: DeviceInfo
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        device: DeviceInfo,
+        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -116,6 +145,8 @@ class TotalCostSensor(BaseUtilitySensor):
             translation_key="net_total_cost",
         )
         self.hass = hass
+        self._netting_tracker = netting_tracker
+        self._update_netting_attributes()
 
     async def async_update(self):
         cost_total = 0.0
@@ -135,6 +166,7 @@ class TotalCostSensor(BaseUtilitySensor):
                         continue
         _LOGGER.debug("Aggregated cost=%s profit=%s", cost_total, profit_total)
         self._attr_native_value = round(cost_total - profit_total, 8)
+        self._update_netting_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -158,7 +190,7 @@ class TotalCostSensor(BaseUtilitySensor):
         self.async_write_ha_state()
 
 
-class DailyElectricityCostSensor(BaseUtilitySensor):
+class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -166,6 +198,7 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         unique_id: str,
         price_settings: dict[str, float],
         device: DeviceInfo,
+        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -179,6 +212,8 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         )
         self.hass = hass
         self.price_settings = price_settings
+        self._netting_tracker = netting_tracker
+        self._update_netting_attributes()
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
@@ -205,10 +240,11 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
         return round(total, 8)
 
     async def async_update(self):
-        pass
+        self._update_netting_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._update_netting_attributes()
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -228,10 +264,11 @@ class DailyElectricityCostSensor(BaseUtilitySensor):
             self.entity_id,
         )
         self._attr_native_value += addition
+        self._update_netting_attributes()
         self.async_write_ha_state()
 
 
-class DailyGasCostSensor(BaseUtilitySensor):
+class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -239,6 +276,7 @@ class DailyGasCostSensor(BaseUtilitySensor):
         unique_id: str,
         price_settings: dict[str, float],
         device: DeviceInfo,
+        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -252,6 +290,8 @@ class DailyGasCostSensor(BaseUtilitySensor):
         )
         self.hass = hass
         self.price_settings = price_settings
+        self._netting_tracker = netting_tracker
+        self._update_netting_attributes()
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
@@ -272,10 +312,11 @@ class DailyGasCostSensor(BaseUtilitySensor):
         return round(total, 8)
 
     async def async_update(self):
-        pass
+        self._update_netting_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._update_netting_attributes()
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -295,10 +336,11 @@ class DailyGasCostSensor(BaseUtilitySensor):
             self.entity_id,
         )
         self._attr_native_value += addition
+        self._update_netting_attributes()
         self.async_write_ha_state()
 
 
-class TotalEnergyCostSensor(BaseUtilitySensor):
+class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -307,6 +349,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         net_cost_unique_id: str,
         fixed_cost_unique_ids: list[str],
         device: DeviceInfo,
+        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -323,6 +366,8 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
         self.fixed_cost_unique_ids = fixed_cost_unique_ids
         self.net_cost_entity_id: str | None = None
         self.fixed_cost_entity_ids: list[str] = []
+        self._netting_tracker = netting_tracker
+        self._update_netting_attributes()
 
     async def async_update(self):
         net_cost = 0.0
@@ -353,6 +398,7 @@ class TotalEnergyCostSensor(BaseUtilitySensor):
             total,
         )
         self._attr_native_value = round(total, 8)
+        self._update_netting_attributes()
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -455,6 +501,81 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 return None
         return round(price, 8)
 
+    def _normalize_price_entries(self, entries):
+        """Return list of entries with numeric value field."""
+        if not isinstance(entries, list):
+            return None
+
+        normalized: list[dict[str, Any]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            entry_copy = entry.copy()
+            value_key = None
+            if "value" in entry_copy:
+                value_key = "value"
+            elif "price" in entry_copy:
+                value_key = "price"
+            if value_key is None:
+                continue
+            try:
+                numeric_value = float(entry_copy[value_key])
+            except (ValueError, TypeError):
+                continue
+            entry_copy["value"] = numeric_value
+            if "price" in entry_copy:
+                entry_copy["price"] = numeric_value
+            normalized.append(entry_copy)
+        return normalized if normalized else None
+
+    def _extract_price_entries(self, state, attribute_candidates):
+        """Extract normalized price entries from the provided state."""
+        if state is None:
+            return None
+        for attr_name in attribute_candidates:
+            raw_entries = state.attributes.get(attr_name)
+            normalized = self._normalize_price_entries(raw_entries)
+            if normalized:
+                return normalized
+        return None
+
+    def _merge_price_lists(
+        self,
+        existing: list[dict[str, Any]] | None,
+        additions: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        """Merge price entries by index, summing values."""
+        if not additions:
+            return existing
+        if existing is None:
+            return [entry.copy() for entry in additions]
+
+        for idx, entry in enumerate(additions):
+            if not isinstance(entry, dict):
+                continue
+            try:
+                add_val = float(entry.get("value"))
+            except (ValueError, TypeError):
+                continue
+            if idx < len(existing):
+                try:
+                    base_val = float(existing[idx].get("value"))
+                except (ValueError, TypeError):
+                    base_val = 0.0
+                new_val = base_val + add_val
+                existing[idx]["value"] = new_val
+                if "price" in existing[idx]:
+                    existing[idx]["price"] = new_val
+                elif "price" in entry:
+                    existing[idx]["price"] = new_val
+            else:
+                entry_copy = entry.copy()
+                entry_copy["value"] = add_val
+                if "price" in entry_copy:
+                    entry_copy["price"] = add_val
+                existing.append(entry_copy)
+        return existing
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
@@ -468,15 +589,25 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         converted = []
         for entry in raw_prices:
-            if not isinstance(entry, dict) or "value" not in entry:
+            if not isinstance(entry, dict):
+                continue
+            value_key = None
+            if "value" in entry:
+                value_key = "value"
+            elif "price" in entry:
+                value_key = "price"
+            if value_key is None:
                 continue
             try:
-                base = float(entry["value"])
+                base = float(entry[value_key])
             except (ValueError, TypeError):
                 continue
 
             entry_conv = entry.copy()
-            entry_conv["value"] = self._calculate_price(base)
+            calculated = self._calculate_price(base)
+            entry_conv["value"] = calculated
+            if "price" in entry_conv:
+                entry_conv["price"] = calculated
             converted.append(entry_conv)
 
         return converted
@@ -499,55 +630,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 _LOGGER.warning("Price sensor %s has invalid state", sensor)
                 continue
 
-            st_raw_today = state.attributes.get("raw_today")
-            if isinstance(st_raw_today, list):
-                if raw_today is None:
-                    raw_today = [e.copy() for e in st_raw_today if isinstance(e, dict)]
-                else:
-                    for idx, entry in enumerate(st_raw_today):
-                        if not isinstance(entry, dict) or "value" not in entry:
-                            continue
-                        try:
-                            add_val = float(entry["value"])
-                        except (ValueError, TypeError):
-                            continue
-                        if idx < len(raw_today):
-                            try:
-                                raw_today[idx]["value"] = (
-                                    float(raw_today[idx]["value"]) + add_val
-                                )
-                            except (ValueError, TypeError, KeyError):
-                                raw_today[idx]["value"] = add_val
-                        else:
-                            new_entry = entry.copy()
-                            new_entry["value"] = add_val
-                            raw_today.append(new_entry)
+            st_raw_today = self._extract_price_entries(
+                state, ("raw_today", "prices_today")
+            )
+            raw_today = self._merge_price_lists(raw_today, st_raw_today)
 
-            st_raw_tomorrow = state.attributes.get("raw_tomorrow")
-            if isinstance(st_raw_tomorrow, list):
-                if raw_tomorrow is None:
-                    raw_tomorrow = [
-                        e.copy() for e in st_raw_tomorrow if isinstance(e, dict)
-                    ]
-                else:
-                    for idx, entry in enumerate(st_raw_tomorrow):
-                        if not isinstance(entry, dict) or "value" not in entry:
-                            continue
-                        try:
-                            add_val = float(entry["value"])
-                        except (ValueError, TypeError):
-                            continue
-                        if idx < len(raw_tomorrow):
-                            try:
-                                raw_tomorrow[idx]["value"] = (
-                                    float(raw_tomorrow[idx]["value"]) + add_val
-                                )
-                            except (ValueError, TypeError, KeyError):
-                                raw_tomorrow[idx]["value"] = add_val
-                        else:
-                            new_entry = entry.copy()
-                            new_entry["value"] = add_val
-                            raw_tomorrow.append(new_entry)
+            st_raw_tomorrow = self._extract_price_entries(
+                state, ("raw_tomorrow", "prices_tomorrow")
+            )
+            raw_tomorrow = self._merge_price_lists(raw_tomorrow, st_raw_tomorrow)
         if not valid:
             self._attr_available = False
             return
@@ -607,6 +698,16 @@ async def async_setup_entry(
         price_sensor_gas = [price_sensor_gas]
     entities: list[BaseUtilitySensor] = []
 
+    netting_enabled = bool(price_settings.get("netting_enabled"))
+    netting_tracker: NettingTracker | None = None
+    if netting_enabled:
+        netting_map = hass.data[DOMAIN].setdefault("netting", {})
+        tracker = netting_map.get(entry.entry_id)
+        if tracker is None:
+            tracker = await NettingTracker.async_create(hass, entry.entry_id)
+            netting_map[entry.entry_id] = tracker
+        netting_tracker = tracker
+
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
@@ -636,6 +737,12 @@ async def async_setup_entry(
                 if not selected_price_sensor and mode not in ("kwh_total", "m3_total"):
                     continue
                 uid = f"{DOMAIN}_{base_id}_{mode}"
+                tracker_arg = (
+                    netting_tracker
+                    if netting_tracker
+                    and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
+                else None
+                )
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -650,6 +757,7 @@ async def async_setup_entry(
                         icon=mode_def["icon"],
                         visible=mode_def["visible"],
                         device=device_info,
+                        netting_tracker=tracker_arg,
                     )
                 )
 
@@ -671,6 +779,7 @@ async def async_setup_entry(
         unique_id=unique_id,
         price_settings=price_settings,
         device=device_info,
+        netting_tracker=netting_tracker,
     )
     entities.append(daily_electricity)
 
@@ -680,6 +789,7 @@ async def async_setup_entry(
         unique_id=f"{DOMAIN}_daily_gas_cost",
         price_settings=price_settings,
         device=device_info,
+        netting_tracker=netting_tracker,
     )
     entities.append(daily_gas)
 
@@ -688,6 +798,7 @@ async def async_setup_entry(
         name="Net Energy Cost (Total)",
         unique_id=f"{DOMAIN}_net_total_cost",
         device=device_info,
+        netting_tracker=netting_tracker,
     )
     entities.append(net_cost)
 
@@ -698,6 +809,7 @@ async def async_setup_entry(
         net_cost_unique_id=net_cost.unique_id,
         fixed_cost_unique_ids=[daily_electricity.unique_id, daily_gas.unique_id],
         device=device_info,
+        netting_tracker=netting_tracker,
     )
     entities.append(energy_cost)
 

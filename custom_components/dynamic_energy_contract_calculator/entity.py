@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -21,6 +21,9 @@ from .const import (
     SOURCE_TYPE_PRODUCTION,
 )
 from .repair import async_report_issue, async_clear_issue
+
+if TYPE_CHECKING:  # pragma: no cover - runtime import would create a cycle
+    from .netting import NettingTracker
 
 import logging
 
@@ -106,6 +109,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         icon: str = "mdi:flash",
         visible: bool = True,
         device: DeviceInfo | None = None,
+        netting_tracker: "NettingTracker | None" = None,
     ):
         super().__init__(
             None,
@@ -132,10 +136,19 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.mode = mode
         self.source_type = source_type
         self.price_settings = price_settings
+        self._netting_tracker = netting_tracker
         self._last_energy = None
         self._last_updated = datetime.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
+
+    @property
+    def _uses_netting(self) -> bool:
+        return (
+            self._netting_tracker is not None
+            and self.source_type == SOURCE_TYPE_CONSUMPTION
+            and self.mode == "cost_total"
+        )
 
     async def async_update(self):
         _LOGGER.debug(
@@ -266,22 +279,64 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 async_clear_issue(self.hass, f"price_invalid_{self.price_sensor}")
                 self._price_unavailable_since = None
 
-            price = total_price
-            if (
-                self.source_type == SOURCE_TYPE_CONSUMPTION
-                or self.source_type == SOURCE_TYPE_GAS
-            ):
-                price = (price + markup_consumption + tax) * vat_factor
+            adjusted_value = None
+            taxable_value = 0.0
+
+            if self.source_type == SOURCE_TYPE_GAS:
+                unit_price = (
+                    total_price + markup_consumption + tax
+                ) * vat_factor
+                value = delta * unit_price
+                adjusted_value = value
+            elif self.source_type == SOURCE_TYPE_CONSUMPTION:
+                gross_unit_price = (
+                    total_price + markup_consumption + tax
+                ) * vat_factor
+                base_unit_price = (total_price + markup_consumption) * vat_factor
+                tax_unit_price = tax * vat_factor
+                value = delta * gross_unit_price
+
+                if self._uses_netting:
+                    base_value = delta * base_unit_price
+                    _, taxable_value = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
+                        self, delta, tax_unit_price
+                    )
+                    adjusted_value = base_value + taxable_value
+                else:
+                    adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 if self.price_settings.get("production_price_include_vat", True):
-                    price = (price - markup_production) * vat_factor
+                    unit_price = (total_price - markup_production) * vat_factor
                 else:
-                    price = price - markup_production
+                    unit_price = total_price - markup_production
+                value = delta * unit_price
+                adjusted_value = value
+
+                if (
+                    self.mode == "profit_total"
+                    and self._netting_tracker is not None
+                ):
+                    _, tax_credit_value, adjustments = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                        delta, tax * vat_factor
+                    )
+                    if tax_credit_value > 0:
+                        for target_sensor, deduction in adjustments:
+                            await target_sensor.async_apply_tax_adjustment(deduction)
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
+            if adjusted_value is None:
+                adjusted_value = value
 
-            value = delta * price
+            if self.source_type == SOURCE_TYPE_CONSUMPTION:
+                unit_price_for_log = (
+                    total_price + markup_consumption + tax
+                ) * vat_factor
+            elif self.source_type == SOURCE_TYPE_GAS:
+                unit_price_for_log = unit_price
+            else:
+                unit_price_for_log = unit_price
+
             _LOGGER.debug(
                 "Calculated price for %s: base=%s markup_c=%s markup_p=%s tax=%s vat=%s -> %s",
                 self.entity_id,
@@ -290,14 +345,20 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 markup_production,
                 tax,
                 vat_factor,
-                price,
+                unit_price_for_log,
             )
-            _LOGGER.debug("Delta: %5f, Price: %5f, Value: %5f", delta, price, value)
+            _LOGGER.debug(
+                "Delta: %5f, Unit price: %5f, Raw value: %5f, Adjusted value: %5f",
+                delta,
+                unit_price_for_log,
+                value,
+                adjusted_value,
+            )
 
             if self.mode == "cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
                     if value >= 0:
-                        self._attr_native_value += value
+                        self._attr_native_value += adjusted_value
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
                     if value < 0:
                         self._attr_native_value += abs(value)
@@ -326,6 +387,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
 
+        if self._uses_netting:
+            await self._netting_tracker.async_register_sensor(self)  # type: ignore[union-attr]
+
         for entity_id in self.input_sensors:
             self.async_on_remove(
                 async_track_state_change_event(
@@ -346,6 +410,30 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 new_state.state,
             )
         await self.async_update()
+        self.async_write_ha_state()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._uses_netting:
+            await self._netting_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
+        await super().async_will_remove_from_hass()
+
+    async def async_reset(self) -> None:
+        if self._uses_netting:
+            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        await super().async_reset()
+
+    async def async_set_value(self, value: float) -> None:
+        if self._uses_netting:
+            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        await super().async_set_value(value)
+
+    async def async_apply_tax_adjustment(self, deduction: float) -> None:
+        """Reduce previously booked tax from this sensor."""
+        if deduction <= 0:
+            return
+        self._attr_native_value = round(self._attr_native_value - deduction, 8)
+        if self._attr_native_value < 0:
+            self._attr_native_value = 0.0
         self.async_write_ha_state()
 
 

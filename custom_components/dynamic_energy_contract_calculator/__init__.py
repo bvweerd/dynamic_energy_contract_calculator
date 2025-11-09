@@ -64,9 +64,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()
             ]
         hass.data[DOMAIN].pop(entry.entry_id)
+        netting_map = hass.data[DOMAIN].get("netting")
+        if isinstance(netting_map, dict):
+            netting_map.pop(entry.entry_id, None)
+            if not netting_map:
+                hass.data[DOMAIN].pop("netting")
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
         remaining = [
-            k for k in hass.data[DOMAIN] if k not in ("services_registered", "entities")
+            k
+            for k in hass.data[DOMAIN]
+            if k not in ("services_registered", "entities", "netting")
         ]
         if not remaining and hass.data[DOMAIN].get("services_registered"):
             await async_unregister_services(hass)
