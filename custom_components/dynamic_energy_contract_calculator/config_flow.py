@@ -171,6 +171,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             if state.attributes.get("device_class") == "monetary"
             or state.attributes.get("unit_of_measurement") == "€/m³"
             or state.attributes.get("unit_of_measurement") == "€/kWh"
+            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
         if isinstance(current_price_sensor, str):
@@ -355,6 +356,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             if state.attributes.get("device_class") == "monetary"
             or state.attributes.get("unit_of_measurement") == "€/m³"
             or state.attributes.get("unit_of_measurement") == "€/kWh"
+            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
         if isinstance(current_price_sensor, str):
