@@ -30,6 +30,7 @@ from .const import (
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
+from .overage_compensation import OverageCompensationTracker
 
 import logging
 
@@ -113,6 +114,25 @@ def _build_netting_attributes(
         "netting_enabled": True,
         "netting_net_consumption_kwh": round(tracker.net_consumption_kwh, 8),
         "netting_tax_balance_eur": total_balance,
+    }
+
+
+def _build_overage_compensation_attributes(
+    tracker: OverageCompensationTracker | None,
+) -> dict[str, float | bool]:
+    if tracker is None:
+        return {"overage_compensation_enabled": False}
+    return {
+        "overage_compensation_enabled": True,
+        "overage_compensation_net_consumption_kwh": round(
+            tracker.net_consumption_kwh, 8
+        ),
+        "overage_compensation_total_consumption_kwh": round(
+            tracker.total_consumption_kwh, 8
+        ),
+        "overage_compensation_total_production_kwh": round(
+            tracker.total_production_kwh, 8
+        ),
     }
 
 
@@ -722,6 +742,18 @@ async def async_setup_entry(
             netting_map[entry.entry_id] = tracker
         netting_tracker = tracker
 
+    overage_compensation_enabled = bool(
+        price_settings.get("overage_compensation_enabled")
+    )
+    overage_compensation_tracker: OverageCompensationTracker | None = None
+    if overage_compensation_enabled:
+        overage_map = hass.data[DOMAIN].setdefault("overage_compensation", {})
+        tracker = overage_map.get(entry.entry_id)
+        if tracker is None:
+            tracker = await OverageCompensationTracker.async_create(hass, entry.entry_id)
+            overage_map[entry.entry_id] = tracker
+        overage_compensation_tracker = tracker
+
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
@@ -757,6 +789,12 @@ async def async_setup_entry(
                     and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
                     else None
                 )
+                overage_tracker_arg = (
+                    overage_compensation_tracker
+                    if overage_compensation_tracker
+                    and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
+                    else None
+                )
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -772,6 +810,7 @@ async def async_setup_entry(
                         visible=mode_def["visible"],
                         device=device_info,
                         netting_tracker=tracker_arg,
+                        overage_compensation_tracker=overage_tracker_arg,
                     )
                 )
 
