@@ -302,7 +302,9 @@ def generate_yearly_summary_table():
                 yearly_production_kwh, avg_spot_price, config
             )
 
-        net_cost = yearly_fixed_cost + consumption_cost - production_profit + production_cost
+        net_cost = (
+            yearly_fixed_cost + consumption_cost - production_profit + production_cost
+        )
 
         markup = config.get("per_unit_supplier_electricity_markup", 0.0)
 
