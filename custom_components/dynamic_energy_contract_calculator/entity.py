@@ -336,12 +336,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     "production_bonus_percentage", 0.0
                 )
                 # Time window for production bonus (e.g., Zonneplan 08:00-19:00)
-                bonus_start_hour = int(self.price_settings.get(
-                    "production_bonus_start_hour", 0
-                ))
-                bonus_end_hour = int(self.price_settings.get(
-                    "production_bonus_end_hour", 24
-                ))
+                bonus_start_hour = int(
+                    self.price_settings.get("production_bonus_start_hour", 0)
+                )
+                bonus_end_hour = int(
+                    self.price_settings.get("production_bonus_end_hour", 24)
+                )
                 # Apply negative price bonus percentage (e.g., Frank Energie's 15% bonus)
                 negative_price_bonus_pct = self.price_settings.get(
                     "negative_price_production_bonus_percentage", 0.0
@@ -358,14 +358,18 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 # Apply general production bonus (percentage on top of price + surcharge)
                 # Only if within time window and price is not negative
                 if production_bonus_pct != 0.0 and in_bonus_window and total_price >= 0:
-                    effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+                    effective_price = base_for_bonus * (
+                        1 + production_bonus_pct / 100.0
+                    )
                 else:
                     effective_price = base_for_bonus
 
                 # Apply negative price bonus when price is negative
                 if total_price < 0 and negative_price_bonus_pct != 0.0:
                     # For negative prices, the bonus makes it more negative (more profit)
-                    effective_price = total_price * (1 + negative_price_bonus_pct / 100.0)
+                    effective_price = total_price * (
+                        1 + negative_price_bonus_pct / 100.0
+                    )
 
                 if self.price_settings.get("production_price_include_vat", True):
                     unit_price = (effective_price - markup_production) * vat_factor

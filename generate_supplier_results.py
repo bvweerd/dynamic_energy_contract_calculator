@@ -141,7 +141,9 @@ def calculate_expected_production_profit(kwh, spot_price, config):
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
-    negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
+    negative_price_bonus_pct = config.get(
+        "negative_price_production_bonus_percentage", 0.0
+    )
 
     # Calculate effective price with surcharge and bonuses
     # First add surcharge (before bonus calculation)
@@ -176,7 +178,9 @@ def calculate_expected_production_cost(kwh, spot_price, config):
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
-    negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
+    negative_price_bonus_pct = config.get(
+        "negative_price_production_bonus_percentage", 0.0
+    )
 
     # Calculate effective price with surcharge and bonuses
     # First add surcharge (before bonus calculation)
@@ -207,7 +211,9 @@ def calculate_expected_production_cost(kwh, spot_price, config):
 def generate_summary_table():
     """Generate a summary table showing key metrics for each supplier."""
     print("## Supplier Configuration Test Results\n")
-    print("This table shows calculated costs and profits for each supplier configuration")
+    print(
+        "This table shows calculated costs and profits for each supplier configuration"
+    )
     print("with 10 kWh consumption and 10 kWh production at various spot prices.\n")
 
     print("### Summary by Supplier and Price\n")
@@ -230,22 +236,28 @@ def generate_summary_table():
             )
             net_cost = consumption_cost - production_profit + production_cost
 
-            print(f"| {supplier_name} | {spot_price:+.2f} | "
-                  f"{consumption_cost:.2f} | {production_profit:.2f} | "
-                  f"{production_cost:.2f} | {net_cost:.2f} |")
+            print(
+                f"| {supplier_name} | {spot_price:+.2f} | "
+                f"{consumption_cost:.2f} | {production_profit:.2f} | "
+                f"{production_cost:.2f} | {net_cost:.2f} |"
+            )
 
 
 def generate_detailed_table():
     """Generate detailed results for all scenarios."""
     print("\n### Detailed Test Matrix\n")
-    print("Test scenarios: 10/5 kWh (more consumption), 5/10 kWh (more production), 10/10 kWh (equal)\n")
+    print(
+        "Test scenarios: 10/5 kWh (more consumption), 5/10 kWh (more production), 10/10 kWh (equal)\n"
+    )
 
     # Group by scenario for better readability
     for scenario_name, scenario in ENERGY_SCENARIOS.items():
         consumption_kwh = scenario["consumption_kwh"]
         production_kwh = scenario["production_kwh"]
 
-        print(f"\n#### Scenario: {scenario_name} ({consumption_kwh:.0f} kWh consumption, {production_kwh:.0f} kWh production)\n")
+        print(
+            f"\n#### Scenario: {scenario_name} ({consumption_kwh:.0f} kWh consumption, {production_kwh:.0f} kWh production)\n"
+        )
         print("| Supplier | Spot | Cons Cost | Prod Profit | Prod Cost | Net Cost |")
         print("|----------|------|-----------|-------------|-----------|----------|")
 
@@ -262,15 +274,19 @@ def generate_detailed_table():
                 )
                 net_cost = consumption_cost - production_profit + production_cost
 
-                print(f"| {supplier_name} | {spot_price:+.2f} | "
-                      f"{consumption_cost:.2f} | {production_profit:.2f} | "
-                      f"{production_cost:.2f} | {net_cost:.2f} |")
+                print(
+                    f"| {supplier_name} | {spot_price:+.2f} | "
+                    f"{consumption_cost:.2f} | {production_profit:.2f} | "
+                    f"{production_cost:.2f} | {net_cost:.2f} |"
+                )
 
 
 def generate_special_features_table():
     """Show how special features (bonuses) affect pricing."""
     print("\n### Special Features Comparison\n")
-    print("This section highlights the unique features of Zonneplan and Frank Energie.\n")
+    print(
+        "This section highlights the unique features of Zonneplan and Frank Energie.\n"
+    )
 
     print("#### Zonneplan: (price + €0.02) * 10% Bonus\n")
     print("| Spot Price | Without Bonus | With Zonneplan | Difference |")
@@ -286,7 +302,9 @@ def generate_special_features_table():
         print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} |")
 
     print("\n#### Frank Energie: 15% Production Bonus\n")
-    print("Note: With 'Slim Terugleveren', inverter is turned off during negative prices.\n")
+    print(
+        "Note: With 'Slim Terugleveren', inverter is turned off during negative prices.\n"
+    )
     print("| Spot Price | Without Bonus | With 15% Bonus | Difference |")
     print("|------------|---------------|----------------|------------|")
 

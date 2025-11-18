@@ -173,7 +173,9 @@ def calculate_expected_production_profit(
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     bonus_start_hour = int(config.get("production_bonus_start_hour", 0))
     bonus_end_hour = int(config.get("production_bonus_end_hour", 24))
-    negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
+    negative_price_bonus_pct = config.get(
+        "negative_price_production_bonus_percentage", 0.0
+    )
 
     # Check if current hour is within bonus time window
     in_bonus_window = bonus_start_hour <= current_hour < bonus_end_hour
@@ -222,7 +224,9 @@ def calculate_expected_production_cost(
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     bonus_start_hour = int(config.get("production_bonus_start_hour", 0))
     bonus_end_hour = int(config.get("production_bonus_end_hour", 24))
-    negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
+    negative_price_bonus_pct = config.get(
+        "negative_price_production_bonus_percentage", 0.0
+    )
 
     # Check if current hour is within bonus time window
     in_bonus_window = bonus_start_hour <= current_hour < bonus_end_hour
@@ -411,7 +415,9 @@ class TestZonneplanSpecific:
 class TestFrankEnergieSpecific:
     """Specific tests for Frank Energie's 15% production bonus."""
 
-    async def test_frank_energie_production_bonus_positive_price(self, hass: HomeAssistant):
+    async def test_frank_energie_production_bonus_positive_price(
+        self, hass: HomeAssistant
+    ):
         """Test Frank Energie's 15% bonus at positive price."""
         config = SUPPLIER_CONFIGS["Frank Energie"]
         spot_price = 0.10  # EUR/kWh
@@ -438,7 +444,9 @@ class TestFrankEnergieSpecific:
         expected = spot_price * 1.15 * 1.21
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
-    async def test_frank_energie_bonus_also_at_negative_price(self, hass: HomeAssistant):
+    async def test_frank_energie_bonus_also_at_negative_price(
+        self, hass: HomeAssistant
+    ):
         """Test Frank Energie's 15% bonus also applies at negative price (cost scenario)."""
         config = SUPPLIER_CONFIGS["Frank Energie"]
         spot_price = -0.10  # EUR/kWh
@@ -529,12 +537,17 @@ TIME_WINDOW_SCENARIOS = {
 class TestTimeWindowScenarios:
     """Test production bonus time windows for suppliers like Zonneplan."""
 
-    @pytest.mark.parametrize("time_name,current_hour", list(TIME_WINDOW_SCENARIOS.items()))
-    @pytest.mark.parametrize("price_name,spot_price", [
-        ("positive_high", 0.20),
-        ("positive_low", 0.05),
-        ("negative", -0.10),
-    ])
+    @pytest.mark.parametrize(
+        "time_name,current_hour", list(TIME_WINDOW_SCENARIOS.items())
+    )
+    @pytest.mark.parametrize(
+        "price_name,spot_price",
+        [
+            ("positive_high", 0.20),
+            ("positive_low", 0.05),
+            ("negative", -0.10),
+        ],
+    )
     async def test_zonneplan_time_window(
         self,
         hass: HomeAssistant,
@@ -582,9 +595,9 @@ class TestTimeWindowScenarios:
                     kwh, spot_price, config, current_hour
                 )
 
-            assert sensor.native_value == pytest.approx(expected, rel=1e-4), (
-                f"Zonneplan {time_name} {price_name}: expected {expected}, got {sensor.native_value}"
-            )
+            assert (
+                sensor.native_value == pytest.approx(expected, rel=1e-4)
+            ), f"Zonneplan {time_name} {price_name}: expected {expected}, got {sensor.native_value}"
 
     async def test_zonneplan_inside_vs_outside_window(self, hass: HomeAssistant):
         """Verify that Zonneplan bonus only applies inside the time window at positive prices."""
@@ -593,22 +606,26 @@ class TestTimeWindowScenarios:
         kwh = 1.0
 
         # Calculate expected values for inside and outside window
-        inside_expected = calculate_expected_production_profit(kwh, spot_price, config, 12)  # Inside
-        outside_expected = calculate_expected_production_profit(kwh, spot_price, config, 20)  # Outside
+        inside_expected = calculate_expected_production_profit(
+            kwh, spot_price, config, 12
+        )  # Inside
+        outside_expected = calculate_expected_production_profit(
+            kwh, spot_price, config, 20
+        )  # Outside
 
         # With bonus: (0.10 + 0.02) * 1.10 * 1.21 = 0.15972
         # Without bonus: (0.10 + 0.02) * 1.21 = 0.1452
 
         # Verify difference exists
-        assert inside_expected > outside_expected, (
-            f"Inside window ({inside_expected}) should be higher than outside ({outside_expected})"
-        )
+        assert (
+            inside_expected > outside_expected
+        ), f"Inside window ({inside_expected}) should be higher than outside ({outside_expected})"
 
         # Verify the ratio matches the 10% bonus
         ratio = inside_expected / outside_expected
-        assert ratio == pytest.approx(1.10, rel=1e-4), (
-            f"Ratio should be 1.10 (10% bonus), got {ratio}"
-        )
+        assert ratio == pytest.approx(
+            1.10, rel=1e-4
+        ), f"Ratio should be 1.10 (10% bonus), got {ratio}"
 
     async def test_frank_energie_no_time_window(self, hass: HomeAssistant):
         """Verify that Frank Energie applies bonus at all hours (no time window restriction)."""
@@ -617,9 +634,15 @@ class TestTimeWindowScenarios:
         kwh = 1.0
 
         # Frank Energie has default time window 0-24, so bonus always applies
-        morning_expected = calculate_expected_production_profit(kwh, spot_price, config, 6)
-        midday_expected = calculate_expected_production_profit(kwh, spot_price, config, 12)
-        evening_expected = calculate_expected_production_profit(kwh, spot_price, config, 20)
+        morning_expected = calculate_expected_production_profit(
+            kwh, spot_price, config, 6
+        )
+        midday_expected = calculate_expected_production_profit(
+            kwh, spot_price, config, 12
+        )
+        evening_expected = calculate_expected_production_profit(
+            kwh, spot_price, config, 20
+        )
 
         # All should be equal since no time window restriction
         assert morning_expected == pytest.approx(midday_expected, rel=1e-4)
@@ -629,11 +652,16 @@ class TestTimeWindowScenarios:
         expected_with_bonus = spot_price * 1.15 * 1.21
         assert morning_expected == pytest.approx(expected_with_bonus, rel=1e-4)
 
-    @pytest.mark.parametrize("supplier_name,config", [
-        ("Zonneplan", SUPPLIER_CONFIGS["Zonneplan"]),
-        ("Frank Energie", SUPPLIER_CONFIGS["Frank Energie"]),
-    ])
-    @pytest.mark.parametrize("time_name,current_hour", list(TIME_WINDOW_SCENARIOS.items()))
+    @pytest.mark.parametrize(
+        "supplier_name,config",
+        [
+            ("Zonneplan", SUPPLIER_CONFIGS["Zonneplan"]),
+            ("Frank Energie", SUPPLIER_CONFIGS["Frank Energie"]),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "time_name,current_hour", list(TIME_WINDOW_SCENARIOS.items())
+    )
     @pytest.mark.parametrize("scenario_name,scenario", list(ENERGY_SCENARIOS.items()))
     async def test_supplier_time_window_energy_scenarios(
         self,
@@ -679,7 +707,9 @@ class TestTimeWindowScenarios:
                 production_kwh, spot_price, config, current_hour
             )
 
-            assert production_sensor.native_value == pytest.approx(expected_profit, rel=1e-4), (
+            assert production_sensor.native_value == pytest.approx(
+                expected_profit, rel=1e-4
+            ), (
                 f"{supplier_name} {time_name} {scenario_name}: expected {expected_profit}, "
                 f"got {production_sensor.native_value}"
             )
@@ -707,18 +737,20 @@ def generate_test_results_table():
                 )
                 net_cost = consumption_cost - production_profit + production_cost
 
-                results.append({
-                    "supplier": supplier_name,
-                    "scenario": scenario_name,
-                    "price": price_name,
-                    "spot_price": spot_price,
-                    "consumption_kwh": consumption_kwh,
-                    "production_kwh": production_kwh,
-                    "consumption_cost": round(consumption_cost, 4),
-                    "production_profit": round(production_profit, 4),
-                    "production_cost": round(production_cost, 4),
-                    "net_cost": round(net_cost, 4),
-                })
+                results.append(
+                    {
+                        "supplier": supplier_name,
+                        "scenario": scenario_name,
+                        "price": price_name,
+                        "spot_price": spot_price,
+                        "consumption_kwh": consumption_kwh,
+                        "production_kwh": production_kwh,
+                        "consumption_cost": round(consumption_cost, 4),
+                        "production_profit": round(production_profit, 4),
+                        "production_cost": round(production_cost, 4),
+                        "net_cost": round(net_cost, 4),
+                    }
+                )
 
     return results
 
@@ -757,16 +789,18 @@ def generate_time_window_results_table():
                 in_window = bonus_start <= current_hour < bonus_end
                 bonus_applies = in_window and spot_price >= 0
 
-                results.append({
-                    "supplier": supplier_name,
-                    "time_scenario": time_name,
-                    "hour": current_hour,
-                    "price_scenario": price_name,
-                    "spot_price": spot_price,
-                    "production_profit": round(profit, 4),
-                    "production_cost": round(cost, 4),
-                    "bonus_applies": "Yes" if bonus_applies else "No",
-                })
+                results.append(
+                    {
+                        "supplier": supplier_name,
+                        "time_scenario": time_name,
+                        "hour": current_hour,
+                        "price_scenario": price_name,
+                        "spot_price": spot_price,
+                        "production_profit": round(profit, 4),
+                        "production_cost": round(cost, 4),
+                        "bonus_applies": "Yes" if bonus_applies else "No",
+                    }
+                )
 
     return results
 
@@ -776,22 +810,34 @@ if __name__ == "__main__":
     results = generate_test_results_table()
 
     print("## Supplier Configuration Test Results\n")
-    print("| Supplier | Scenario | Price | Spot | Cons kWh | Prod kWh | Cons Cost | Prod Profit | Prod Cost | Net Cost |")
-    print("|----------|----------|-------|------|----------|----------|-----------|-------------|-----------|----------|")
+    print(
+        "| Supplier | Scenario | Price | Spot | Cons kWh | Prod kWh | Cons Cost | Prod Profit | Prod Cost | Net Cost |"
+    )
+    print(
+        "|----------|----------|-------|------|----------|----------|-----------|-------------|-----------|----------|"
+    )
 
     for r in results:
-        print(f"| {r['supplier']} | {r['scenario']} | {r['price']} | {r['spot_price']:.2f} | "
-              f"{r['consumption_kwh']:.1f} | {r['production_kwh']:.1f} | "
-              f"{r['consumption_cost']:.4f} | {r['production_profit']:.4f} | "
-              f"{r['production_cost']:.4f} | {r['net_cost']:.4f} |")
+        print(
+            f"| {r['supplier']} | {r['scenario']} | {r['price']} | {r['spot_price']:.2f} | "
+            f"{r['consumption_kwh']:.1f} | {r['production_kwh']:.1f} | "
+            f"{r['consumption_cost']:.4f} | {r['production_profit']:.4f} | "
+            f"{r['production_cost']:.4f} | {r['net_cost']:.4f} |"
+        )
 
     # Generate time window results
     print("\n\n## Time Window Test Results (Production Bonus)\n")
-    print("| Supplier | Time Scenario | Hour | Price | Spot | Profit | Cost | Bonus Applies |")
-    print("|----------|---------------|------|-------|------|--------|------|---------------|")
+    print(
+        "| Supplier | Time Scenario | Hour | Price | Spot | Profit | Cost | Bonus Applies |"
+    )
+    print(
+        "|----------|---------------|------|-------|------|--------|------|---------------|"
+    )
 
     time_results = generate_time_window_results_table()
     for r in time_results:
-        print(f"| {r['supplier']} | {r['time_scenario']} | {r['hour']:02d}:00 | "
-              f"{r['price_scenario']} | {r['spot_price']:.2f} | "
-              f"{r['production_profit']:.4f} | {r['production_cost']:.4f} | {r['bonus_applies']} |")
+        print(
+            f"| {r['supplier']} | {r['time_scenario']} | {r['hour']:02d}:00 | "
+            f"{r['price_scenario']} | {r['spot_price']:.2f} | "
+            f"{r['production_profit']:.4f} | {r['production_cost']:.4f} | {r['bonus_applies']} |"
+        )
