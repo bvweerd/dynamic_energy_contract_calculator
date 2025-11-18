@@ -147,6 +147,11 @@ the base price from your price sensor before VAT is calculated.
 | `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
 | `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
+| `production_price_include_vat` | Apply VAT to production price (up to break-even). Default: `true`. |
+| `netting_enabled` | Enable netting (salderingsregeling) for energy tax credits. Default: `false`. |
+| `overage_compensation_enabled` | Limit production markup to break-even; use only spot price for surplus. Default: `false`. |
+| `overage_compensation_rate` | Additional reduction from spot price for surplus energy per kWh. |
+| `surplus_vat_enabled` | Apply VAT to surplus energy compensation. Default: `false`. |
 
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
@@ -242,11 +247,58 @@ integration assumes prices *excluding* VAT and adds the configured VAT
 percentage. If your price sensor already provides a price that includes VAT,
 set `vat_percentage` to `0`.
 
+### Production up to break-even
+
 Private solar panel owners do not need to pay VAT on electricity fed back to the
 grid. The supplier includes VAT in the compensation you receive. To track your
 income you can therefore use the same settings as for consumption: make sure the
 entered tariff matches the amount you receive from the supplier (with or without
 VAT) and adjust `vat_percentage` accordingly.
+
+The `production_price_include_vat` setting controls whether VAT is applied to
+production up to the break-even point (where consumption equals production).
+This is enabled by default.
+
+### Surplus energy (overschot)
+
+When you enable `overage_compensation_enabled`, the integration distinguishes
+between two types of production:
+
+1. **Production up to break-even** – This is netted against your consumption
+   (saldering). Uses the normal production price with supplier markup.
+2. **Surplus production** – Production beyond break-even that is actually sold
+   back to the grid. Uses only the spot price without markup.
+
+#### VAT on surplus energy
+
+In the Netherlands, **private consumers typically do not receive VAT** on
+surplus energy compensation. This is because you are not a VAT-registered
+business – you are simply selling excess energy to your supplier.
+
+The `surplus_vat_enabled` setting controls whether VAT is applied to surplus
+energy:
+
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `surplus_vat_enabled` = `false` | **Default** | No VAT on surplus. Use this for private consumers. |
+| `surplus_vat_enabled` = `true` | | Apply VAT to surplus. Use this if you are VAT-registered (e.g., business). |
+
+#### Example calculation
+
+With a spot price of €0.10/kWh, VAT at 21%, and no additional reductions:
+
+- **Surplus without VAT** (`surplus_vat_enabled` = `false`):
+  Compensation = €0.10/kWh
+
+- **Surplus with VAT** (`surplus_vat_enabled` = `true`):
+  Compensation = €0.10 × 1.21 = €0.121/kWh
+
+#### Important notes
+
+- `surplus_vat_enabled` only affects the surplus portion (beyond break-even)
+- `production_price_include_vat` affects all production up to break-even
+- Both settings work independently – you can have VAT on normal production but
+  not on surplus, which is the typical Dutch consumer scenario
 
 ## Known Limitations
 
