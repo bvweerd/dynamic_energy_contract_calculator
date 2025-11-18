@@ -154,6 +154,11 @@
       "current_gas_consumption_price": {
         "name": "Huidige gasverbruiksprijs"
       }
+    },
+    "binary_sensor": {
+      "return_costs_money": {
+        "name": "Teruglevering kost geld"
+      }
     }
   },
   "issues": {

@@ -128,8 +128,11 @@
       "current_consumption_price": {"name": "Current Consumption Price"},
       "current_production_price": {"name": "Current Production Price"},
       "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
-    }
     },
+    "binary_sensor": {
+      "return_costs_money": {"name": "Return Costs Money"}
+    }
+  },
     "issues": {
     "energy_source_unavailable": {
       "title": "Energy source unavailable",
