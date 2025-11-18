@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -29,7 +29,7 @@ class NettingTracker:
         hass: HomeAssistant,
         entry_id: str,
         store: Store,
-        initial_state: dict | None,
+        initial_state: dict[str, Any] | None,
     ) -> None:
         self._lock = asyncio.Lock()
         self._store = store
@@ -50,6 +50,8 @@ class NettingTracker:
                         continue
                     sid = entry.get("sensor_id")
                     value = entry.get("value")
+                    if sid is None or value is None:
+                        continue
                     try:
                         adj = _Adjustment(sensor_id=str(sid), value=float(value))
                     except (TypeError, ValueError):

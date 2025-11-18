@@ -4,7 +4,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -154,7 +154,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         unique_id: str,
         device: DeviceInfo,
         netting_tracker: NettingTracker | None = None,
-    ):
+    ) -> None:
         super().__init__(
             name=None,
             unique_id=unique_id,
@@ -169,7 +169,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self._netting_tracker = netting_tracker
         self._update_netting_attributes()
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         cost_total = 0.0
         profit_total = 0.0
 
@@ -189,7 +189,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self._attr_native_value = round(cost_total - profit_total, 8)
         self._update_netting_attributes()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         for entity in UTILITY_ENTITIES:
             self.async_on_remove(
@@ -203,7 +203,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event):
+    async def _handle_input_event(self, event: Event[Any]) -> None:
         _LOGGER.debug(
             "%s changed, updating %s", event.data.get("entity_id"), self.entity_id
         )
@@ -220,7 +220,7 @@ class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
         price_settings: dict[str, float],
         device: DeviceInfo,
         netting_tracker: NettingTracker | None = None,
-    ):
+    ) -> None:
         super().__init__(
             name=None,
             unique_id=unique_id,
@@ -260,10 +260,10 @@ class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
         )
         return round(total, 8)
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         self._update_netting_attributes()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._update_netting_attributes()
         self.async_on_remove(
@@ -276,7 +276,7 @@ class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
             )
         )
 
-    async def _handle_daily_addition(self, now):
+    async def _handle_daily_addition(self, now: Any) -> None:
         addition = self._calculate_daily_cost()
         _LOGGER.debug(
             "Adding daily electricity cost %s at %s to %s",
@@ -298,7 +298,7 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
         price_settings: dict[str, float],
         device: DeviceInfo,
         netting_tracker: NettingTracker | None = None,
-    ):
+    ) -> None:
         super().__init__(
             name=None,
             unique_id=unique_id,
@@ -332,10 +332,10 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
         )
         return round(total, 8)
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         self._update_netting_attributes()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._update_netting_attributes()
         self.async_on_remove(
@@ -348,7 +348,7 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
             )
         )
 
-    async def _handle_daily_addition(self, now):
+    async def _handle_daily_addition(self, now: Any) -> None:
         addition = self._calculate_daily_cost()
         _LOGGER.debug(
             "Adding daily gas cost %s at %s to %s",
@@ -371,7 +371,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
         fixed_cost_unique_ids: list[str],
         device: DeviceInfo,
         netting_tracker: NettingTracker | None = None,
-    ):
+    ) -> None:
         super().__init__(
             name=None,
             unique_id=unique_id,
@@ -390,7 +390,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self._netting_tracker = netting_tracker
         self._update_netting_attributes()
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         net_cost = 0.0
         fixed_cost = 0.0
 
@@ -421,7 +421,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self._attr_native_value = round(total, 8)
         self._update_netting_attributes()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         ent_reg = er.async_get(self.hass)
         self.net_cost_entity_id = ent_reg.async_get_entity_id(
@@ -445,7 +445,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event):
+    async def _handle_input_event(self, event: Event[Any]) -> None:
         _LOGGER.debug(
             "Recalculating total energy cost due to %s", event.data.get("entity_id")
         )
@@ -477,7 +477,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         price_settings: dict[str, float],
         icon: str,
         device: DeviceInfo,
-    ):
+    ) -> None:
         unit = "€/m³" if source_type == SOURCE_TYPE_GAS else "€/kWh"
         super().__init__(
             name=None,
@@ -499,14 +499,14 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         self.price_sensor = self.price_sensors[0] if self.price_sensors else None
         self.source_type = source_type
         self.price_settings = price_settings
-        self._net_today = None
-        self._net_tomorrow = None
-        self._attr_extra_state_attributes = {
+        self._net_today: list[dict[str, Any]] | None = None
+        self._net_tomorrow: list[dict[str, Any]] | None = None
+        self._attr_extra_state_attributes: dict[str, list[dict[str, Any]] | None] = {
             "net_prices_today": None,
             "net_prices_tomorrow": None,
         }
 
-    def _calculate_price(self, base_price: float) -> float:
+    def _calculate_price(self, base_price: float) -> float | None:
         if self.source_type == SOURCE_TYPE_GAS:
             markup_consumption = self.price_settings.get(
                 "per_unit_supplier_gas_markup", 0.0
@@ -536,7 +536,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 return None
         return round(price, 8)
 
-    def _normalize_price_entries(self, entries):
+    def _normalize_price_entries(self, entries: Any) -> list[dict[str, Any]] | None:
         """Return list of entries with numeric value field."""
         if not isinstance(entries, list):
             return None
@@ -563,7 +563,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             normalized.append(entry_copy)
         return normalized if normalized else None
 
-    def _extract_price_entries(self, state, attribute_candidates):
+    def _extract_price_entries(
+        self, state: Any, attribute_candidates: tuple[str, ...]
+    ) -> list[dict[str, Any]] | None:
         """Extract normalized price entries from the provided state."""
         if state is None:
             return None
@@ -587,14 +589,20 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         for idx, entry in enumerate(additions):
             if not isinstance(entry, dict):
+                continue  # type: ignore[unreachable]
+            entry_value = entry.get("value")
+            if entry_value is None:
                 continue
             try:
-                add_val = float(entry.get("value"))
+                add_val = float(entry_value)
             except (ValueError, TypeError):
                 continue
             if idx < len(existing):
+                existing_value = existing[idx].get("value")
                 try:
-                    base_val = float(existing[idx].get("value"))
+                    base_val = (
+                        float(existing_value) if existing_value is not None else 0.0
+                    )
                 except (ValueError, TypeError):
                     base_val = 0.0
                 new_val = base_val + add_val
@@ -611,7 +619,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 existing.append(entry_copy)
         return existing
 
-    def _convert_raw_prices(self, raw_prices):
+    def _convert_raw_prices(
+        self, raw_prices: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]] | None:
         """Convert raw price entries by applying price settings.
 
         The input may be a list accumulated from multiple price sensors.
@@ -622,10 +632,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if not isinstance(raw_prices, list):
             return None
 
-        converted = []
+        converted: list[dict[str, Any]] = []
         for entry in raw_prices:
             if not isinstance(entry, dict):
-                continue
+                continue  # type: ignore[unreachable]
             value_key = None
             if "value" in entry:
                 value_key = "value"
@@ -647,10 +657,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         return converted
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         total_price = 0.0
-        raw_today = None
-        raw_tomorrow = None
+        raw_today: list[dict[str, Any]] | None = None
+        raw_tomorrow: list[dict[str, Any]] | None = None
         valid = False
 
         for sensor in self.price_sensors:
@@ -691,7 +701,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             return
         self._attr_native_value = price
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         for sensor in self.price_sensors:
             self.async_on_remove(
@@ -702,7 +712,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 )
             )
 
-    async def _handle_price_change(self, event):
+    async def _handle_price_change(self, event: Event[Any]) -> None:
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             self._attr_available = False

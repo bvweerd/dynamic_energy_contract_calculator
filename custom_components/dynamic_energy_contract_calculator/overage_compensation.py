@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -35,7 +35,7 @@ class OverageCompensationTracker:
         hass: HomeAssistant,
         entry_id: str,
         store: Store,
-        initial_state: dict | None,
+        initial_state: dict[str, Any] | None,
     ) -> None:
         self._lock = asyncio.Lock()
         self._store = store
@@ -65,6 +65,8 @@ class OverageCompensationTracker:
                     sid = entry.get("sensor_id")
                     kwh = entry.get("kwh")
                     price_diff = entry.get("unit_price_diff")
+                    if sid is None or kwh is None or price_diff is None:
+                        continue
                     try:
                         pending = _PendingCompensation(
                             sensor_id=str(sid),
