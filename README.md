@@ -300,6 +300,145 @@ With a spot price of €0.10/kWh, VAT at 21%, and no additional reductions:
 - Both settings work independently – you can have VAT on normal production but
   not on surplus, which is the typical Dutch consumer scenario
 
+## Dutch Energy Supplier Settings
+
+Below is an overview of recommended settings for popular Dutch dynamic energy
+suppliers. All values are **excluding VAT** (the integration adds VAT automatically).
+
+> **Note:** Supplier rates change frequently. Always verify current rates on your
+> supplier's website. These values are based on November 2025 information.
+
+### Supplier comparison table
+
+| Supplier | Consumption markup | Production markup | Overage enabled | Overage rate | Surplus VAT | Notes |
+| -------- | ------------------ | ----------------- | --------------- | ------------ | ----------- | ----- |
+| **ANWB Energie** | €0.040 | €0.040 | Yes | €0.040 | No | No extra fees for surplus |
+| **Tibber** | €0.021 | €0.021 | Yes | €0.021 | No | End-of-year tax settlement for surplus |
+| **Zonneplan** | €0.025 | -€0.037 | No | - | - | Pays €0.02 bonus + 10% extra on production |
+| **Frank Energie** | €0.010 | €0.000 | No | - | - | 15% bonus at negative prices |
+| **easyEnergy** | €0.000 | €0.000 | Yes | €0.000 | No | Pure spot price, no markups |
+| **Vandebron** | €0.030 | €0.030 | Yes | €0.060 | No | Deducts markup twice for surplus |
+| **NextEnergy** | €0.022 | €0.022 | Yes | €0.044 | No | Deducts markup for surplus |
+
+### Understanding the columns
+
+- **Consumption markup**: Added to spot price for consumption (`per_unit_supplier_electricity_markup`)
+- **Production markup**: Subtracted from spot price for production (`per_unit_supplier_electricity_production_markup`)
+  - Positive = supplier keeps this amount
+  - Negative = supplier pays you extra (bonus)
+- **Overage enabled**: Whether to use different rates for surplus (`overage_compensation_enabled`)
+- **Overage rate**: Additional reduction for surplus beyond break-even (`overage_compensation_rate`)
+- **Surplus VAT**: Whether supplier pays VAT on surplus (`surplus_vat_enabled`)
+
+### Detailed supplier configurations
+
+#### ANWB Energie
+```
+per_unit_supplier_electricity_markup: 0.040
+per_unit_supplier_electricity_production_markup: 0.040
+overage_compensation_enabled: true
+overage_compensation_rate: 0.040
+surplus_vat_enabled: false
+```
+ANWB charges the same markup for consumption and production. For surplus (beyond
+break-even), you only receive the spot price without markup or VAT.
+
+#### Tibber
+```
+per_unit_supplier_electricity_markup: 0.021
+per_unit_supplier_electricity_production_markup: 0.021
+overage_compensation_enabled: true
+overage_compensation_rate: 0.021
+surplus_vat_enabled: false
+```
+Tibber pays out full compensation monthly but settles taxes at year-end. For
+surplus production, only the EPEX spot price applies.
+
+#### Zonneplan
+```
+per_unit_supplier_electricity_markup: 0.025
+per_unit_supplier_electricity_production_markup: -0.037
+overage_compensation_enabled: false
+surplus_vat_enabled: false
+```
+Zonneplan pays a "Zonnebonus" of €0.02/kWh plus 10% extra on all production.
+The negative production markup represents this bonus. Even for surplus, you
+receive the markup (bonus).
+
+#### Frank Energie
+```
+per_unit_supplier_electricity_markup: 0.010
+per_unit_supplier_electricity_production_markup: 0.000
+overage_compensation_enabled: false
+surplus_vat_enabled: false
+```
+Frank Energie charges a low markup and doesn't deduct anything for production.
+They offer 15% bonus at negative prices (not modeled in this integration).
+
+#### easyEnergy
+```
+per_unit_supplier_electricity_markup: 0.000
+per_unit_supplier_electricity_production_markup: 0.000
+overage_compensation_enabled: true
+overage_compensation_rate: 0.000
+surplus_vat_enabled: false
+```
+easyEnergy uses pure spot prices without any markup. For surplus, you receive
+only the spot price without VAT.
+
+#### Vandebron
+```
+per_unit_supplier_electricity_markup: 0.030
+per_unit_supplier_electricity_production_markup: 0.030
+overage_compensation_enabled: true
+overage_compensation_rate: 0.060
+surplus_vat_enabled: false
+```
+Vandebron charges both consumption and production markup. For surplus, they
+deduct both the production markup AND a "verkoopvergoeding" (sales fee), which
+equals the consumption markup.
+
+#### NextEnergy
+```
+per_unit_supplier_electricity_markup: 0.022
+per_unit_supplier_electricity_production_markup: 0.022
+overage_compensation_enabled: true
+overage_compensation_rate: 0.044
+surplus_vat_enabled: false
+```
+NextEnergy deducts the markup for production. For surplus, they deduct the
+markup twice (once as production cost, once as sales cost).
+
+### Common settings for all suppliers
+
+These settings are typically the same regardless of supplier:
+
+```
+vat_percentage: 21.0
+production_price_include_vat: true
+per_unit_government_electricity_tax: 0.1017
+```
+
+The electricity tax (energiebelasting) for 2025 is €0.1230 including VAT, which
+equals €0.1017 excluding VAT. This is added to consumption and credited back
+when netting is enabled.
+
+### Important considerations
+
+1. **Price sensor**: Your price sensor should provide the **spot price excluding
+   VAT and markups**. Most EPEX/APX integrations do this by default.
+
+2. **Netting (saldering)**: If you want the integration to handle energy tax
+   netting, enable `netting_enabled`. This credits tax back when production
+   offsets consumption.
+
+3. **Surplus handling**: Most Dutch consumers don't receive VAT on surplus
+   energy, so keep `surplus_vat_enabled` at `false`.
+
+4. **Year-end settlement**: Some suppliers (like Tibber) settle taxes at
+   year-end. The integration tracks this continuously, so your totals may
+   differ slightly from your supplier's monthly invoices.
+
 ## Known Limitations
 
 - Optional support for the Dutch netting (saldering) scheme. When enabled, the integration nets the energy tax (including VAT) against feed‑in before calculating the remaining costs.
