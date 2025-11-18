@@ -358,5 +358,3 @@ class TestReturnCostsBinarySensor:
         await sensor._handle_price_change(event)
 
         assert sensor._attr_available is False
-
-
