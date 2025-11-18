@@ -355,7 +355,20 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     overage_rate_reduction = float(
                         self.price_settings.get("overage_compensation_rate", 0.0)
                     )
-                    overage_unit_price = base_price - overage_rate_reduction
+                    # Check if VAT should be applied to surplus compensation
+                    # Default is False because most Dutch consumers don't receive VAT
+                    # on surplus energy sold back to the grid
+                    surplus_vat_enabled = self.price_settings.get(
+                        "surplus_vat_enabled", False
+                    )
+                    if surplus_vat_enabled:
+                        # Apply VAT to surplus (for businesses/VAT-registered users)
+                        overage_unit_price = (
+                            total_price - overage_rate_reduction
+                        ) * vat_factor
+                    else:
+                        # No VAT on surplus (default for Dutch consumers)
+                        overage_unit_price = total_price - overage_rate_reduction
                     (
                         compensated_kwh,
                         compensated_value,

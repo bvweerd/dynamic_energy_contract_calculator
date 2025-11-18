@@ -43,6 +43,7 @@ PRICE_SETTINGS_KEYS = [
     "netting_enabled",
     "overage_compensation_enabled",
     "overage_compensation_rate",
+    "surplus_vat_enabled",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -61,6 +62,7 @@ DEFAULT_PRICE_SETTINGS = {
     "netting_enabled": False,
     "overage_compensation_enabled": False,
     "overage_compensation_rate": 0.0,
+    "surplus_vat_enabled": False,
 }
 
 NETTING_STORAGE_VERSION = 1
