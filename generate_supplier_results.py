@@ -234,7 +234,7 @@ def generate_yearly_summary_table():
     print("- **Government electricity tax**: €0.1017/kWh")
     print("- **VAT**: 21%")
     print(
-        f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio*100:.0f}%"
+        f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio * 100:.0f}%"
     )
     print("- **Spot price assumed non-negative** (bonuses apply)")
     print("- **Fixed costs include VAT**")

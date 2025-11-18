@@ -373,10 +373,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 if self.price_settings.get("production_price_include_vat", True):
                     unit_price = (effective_price - markup_production) * vat_factor
-                    base_price = effective_price * vat_factor  # Price without markup
+                    _base_price = (
+                        effective_price * vat_factor
+                    )  # Price without markup  # noqa: F841
                 else:
                     unit_price = effective_price - markup_production
-                    base_price = effective_price  # Price without markup
+                    _base_price = effective_price  # Price without markup  # noqa: F841
                 value = delta * unit_price
                 adjusted_value = value
 

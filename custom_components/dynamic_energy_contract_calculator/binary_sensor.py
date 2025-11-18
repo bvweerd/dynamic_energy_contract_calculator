@@ -1,4 +1,5 @@
 """Binary sensor platform for Dynamic Energy Contract Calculator."""
+
 from __future__ import annotations
 
 from homeassistant.components.binary_sensor import (
@@ -18,7 +19,6 @@ from .const import (
     DOMAIN_ABBREVIATION,
     CONF_PRICE_SENSOR,
     CONF_PRICE_SETTINGS,
-    SOURCE_TYPE_PRODUCTION,
 )
 
 import logging

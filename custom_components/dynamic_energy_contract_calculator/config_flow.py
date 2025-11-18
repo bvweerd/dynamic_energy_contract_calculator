@@ -5,7 +5,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowContext, ConfigFlowResult
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import selector
 
@@ -49,7 +49,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
     def __init__(self) -> None:
         super().__init__()
 
-        self.context: ConfigFlowContext = {}
+        self.context: dict[str, Any] = {}
         self.configs: list[dict] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
@@ -57,7 +57,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
-    ) -> ConfigFlowResult:
+    ) -> FlowResult:
         await self.async_set_unique_id(DOMAIN)
         if self._async_current_entries():
             return self.async_abort(reason="already_configured")
@@ -108,7 +108,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             }
         )
 
-    async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_select_sources(self, user_input=None) -> FlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
 
@@ -160,7 +160,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
-    async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_price_settings(self, user_input=None) -> FlowResult:
         if user_input is not None:
             self.price_settings = dict(user_input)
             return await self.async_step_user()

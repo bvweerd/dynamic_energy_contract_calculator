@@ -146,13 +146,23 @@ PRICE_SCENARIOS = {
 def calculate_expected_consumption_cost(
     kwh: float, spot_price: float, config: dict
 ) -> float:
-    """Calculate expected consumption cost based on supplier config."""
+    """Calculate expected consumption cost based on supplier config.
+
+    Note: Cost is only counted when unit_price >= 0. When price is negative,
+    the cost is 0 (the credit would be tracked in profit_total mode instead).
+    """
     markup = config.get("per_unit_supplier_electricity_markup", 0.0)
     tax = config.get("per_unit_government_electricity_tax", 0.0)
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
 
     unit_price = (spot_price + markup + tax) * vat
-    return kwh * unit_price
+    value = kwh * unit_price
+
+    # Cost only counted when value >= 0
+    if value >= 0:
+        return value
+    else:
+        return 0.0
 
 
 def calculate_expected_production_profit(
@@ -406,9 +416,9 @@ class TestZonneplanSpecific:
 
         await sensor.async_update()
 
-        # Expected: (-0.10 + 0.02) * 1.10 * 1.21 = -0.1065 -> cost = 0.1065
-        # Note: In practice, Zonneplan bonus doesn't apply during negative prices
-        expected = abs((spot_price + 0.02) * 1.10 * 1.21)
+        # Expected: (-0.10 + 0.02) * 1.21 = -0.0968 -> cost = 0.0968
+        # Note: Production bonus doesn't apply during negative prices (bonus only when price >= 0)
+        expected = abs((spot_price + 0.02) * 1.21)
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
 
@@ -469,9 +479,9 @@ class TestFrankEnergieSpecific:
 
         await sensor.async_update()
 
-        # Expected: -0.10 * 1.15 (15% bonus) * 1.21 (VAT) = -0.13915 -> cost = 0.13915
-        # Note: In practice, Slim Terugleveren would prevent production at negative prices
-        expected = abs(spot_price * 1.15 * 1.21)
+        # Expected: -0.10 * 1.21 (VAT) = -0.121 -> cost = 0.121
+        # Note: Production bonus doesn't apply during negative prices (bonus only when price >= 0)
+        expected = abs(spot_price * 1.21)
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
 
@@ -675,7 +685,7 @@ class TestTimeWindowScenarios:
     ):
         """Test suppliers with time windows combined with energy scenarios."""
         spot_price = 0.15  # Positive price for bonus to apply
-        consumption_kwh = scenario["consumption_kwh"]
+        _consumption_kwh = scenario["consumption_kwh"]  # noqa: F841
         production_kwh = scenario["production_kwh"]
 
         mock_datetime = datetime(2024, 6, 15, current_hour, 30, 0)
