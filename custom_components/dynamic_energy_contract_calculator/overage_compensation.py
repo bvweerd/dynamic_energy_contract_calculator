@@ -122,9 +122,7 @@ class OverageCompensationTracker:
         async with self._lock:
             uid = sensor.unique_id
             self._sensors.pop(uid, None)
-            self._pending_queue = [
-                p for p in self._pending_queue if p.sensor_id != uid
-            ]
+            self._pending_queue = [p for p in self._pending_queue if p.sensor_id != uid]
             await self._async_save_state()
 
     async def async_record_consumption(

@@ -133,9 +133,7 @@ def _build_overage_compensation_attributes(
         "overage_compensation_total_production_kwh": round(
             tracker.total_production_kwh, 8
         ),
-        "overage_compensation_pending_kwh": round(
-            tracker.pending_compensation_kwh, 8
-        ),
+        "overage_compensation_pending_kwh": round(tracker.pending_compensation_kwh, 8),
     }
 
 
@@ -753,7 +751,9 @@ async def async_setup_entry(
         overage_map = hass.data[DOMAIN].setdefault("overage_compensation", {})
         tracker = overage_map.get(entry.entry_id)
         if tracker is None:
-            tracker = await OverageCompensationTracker.async_create(hass, entry.entry_id)
+            tracker = await OverageCompensationTracker.async_create(
+                hass, entry.entry_id
+            )
             overage_map[entry.entry_id] = tracker
         overage_compensation_tracker = tracker
 
