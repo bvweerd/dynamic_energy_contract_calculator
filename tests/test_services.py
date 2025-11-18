@@ -91,3 +91,54 @@ async def test_services_removed_after_unload(hass: HomeAssistant):
         assert await async_unload_entry(hass, entry)
 
     assert not hass.services.has_service(DOMAIN, "reset_all_meters")
+
+
+async def test_service_handlers_with_netting_trackers(hass: HomeAssistant):
+    """Test that service handlers also reset netting trackers."""
+    from unittest.mock import MagicMock, AsyncMock
+
+    called = {
+        "reset": False,
+        "netting_reset": False,
+    }
+
+    class Dummy(BaseUtilitySensor):
+        def __init__(self):
+            super().__init__("Test", "uid", "€", None, "mdi:flash", True)
+            self.hass = hass
+            self.async_write_ha_state = lambda *a, **k: None
+
+        async def async_reset(self):
+            called["reset"] = True
+
+    # Mock netting tracker
+    mock_tracker = MagicMock()
+    mock_tracker.async_reset_all = AsyncMock(
+        side_effect=lambda: called.update(netting_reset=True)
+    )
+
+    # Register services first
+    await async_setup(hass, {})
+
+    hass.data[DOMAIN] = {
+        "entities": {"dynamic_energy_contract_calculator.test": Dummy()},
+        "netting": {"entry1": mock_tracker},
+    }
+    hass.states.async_set("dynamic_energy_contract_calculator.test", 1)
+
+    await hass.services.async_call(DOMAIN, "reset_all_meters", {}, blocking=True)
+    assert called["reset"]
+    assert called["netting_reset"]
+
+    # Reset flags
+    called["reset"] = False
+    called["netting_reset"] = False
+
+    await hass.services.async_call(
+        DOMAIN,
+        "reset_selected_meters",
+        {"entity_ids": ["dynamic_energy_contract_calculator.test"]},
+        blocking=True,
+    )
+    assert called["reset"]
+    assert called["netting_reset"]
