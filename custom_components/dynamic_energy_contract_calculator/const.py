@@ -30,6 +30,7 @@ CONF_CONFIGS = "configurations"
 PRICE_SETTINGS_KEYS = [
     "per_unit_supplier_electricity_markup",
     "per_unit_supplier_electricity_production_markup",
+    "per_unit_supplier_electricity_production_surcharge",
     "per_unit_government_electricity_tax",
     "per_unit_supplier_gas_markup",
     "per_unit_government_gas_tax",
@@ -51,6 +52,7 @@ PRICE_SETTINGS_KEYS = [
 DEFAULT_PRICE_SETTINGS = {
     "per_unit_supplier_electricity_markup": 0.02,
     "per_unit_supplier_electricity_production_markup": 0.0,
+    "per_unit_supplier_electricity_production_surcharge": 0.0,
     "per_unit_government_electricity_tax": 0.1088,
     "per_unit_supplier_gas_markup": 0.0,
     "per_unit_government_gas_tax": 0.0,

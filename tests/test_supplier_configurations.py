@@ -48,14 +48,15 @@ SUPPLIER_CONFIGS = {
     },
     "Zonneplan": {
         "per_unit_supplier_electricity_markup": 0.025,
-        "per_unit_supplier_electricity_production_markup": 0.0,  # No markup deduction
+        "per_unit_supplier_electricity_production_markup": 0.0,
+        "per_unit_supplier_electricity_production_surcharge": 0.02,  # €0.02 surcharge before bonus
         "per_unit_government_electricity_tax": 0.1017,
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": False,
         "overage_compensation_rate": 0.0,
         "surplus_vat_enabled": False,
-        "production_bonus_percentage": 10.0,  # 10% extra on production
+        "production_bonus_percentage": 10.0,  # 10% on (price + surcharge)
         "negative_price_production_bonus_percentage": 0.0,
     },
     "Frank Energie": {
@@ -67,8 +68,8 @@ SUPPLIER_CONFIGS = {
         "overage_compensation_enabled": False,
         "overage_compensation_rate": 0.0,
         "surplus_vat_enabled": False,
-        "production_bonus_percentage": 0.0,
-        "negative_price_production_bonus_percentage": 15.0,  # 15% bonus at negative prices
+        "production_bonus_percentage": 15.0,  # 15% bonus on all production
+        "negative_price_production_bonus_percentage": 0.0,
     },
     "easyEnergy": {
         "per_unit_supplier_electricity_markup": 0.0,
@@ -154,17 +155,21 @@ def calculate_expected_production_profit(
 ) -> float:
     """Calculate expected production profit based on supplier config."""
     markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
+    surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
 
-    # Calculate effective price with bonuses
-    effective_price = spot_price
+    # Calculate effective price with surcharge and bonuses
+    # First add surcharge (before bonus calculation)
+    base_for_bonus = spot_price + surcharge
 
     # Apply general production bonus
     if production_bonus_pct != 0.0:
-        effective_price = spot_price * (1 + production_bonus_pct / 100.0)
+        effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+    else:
+        effective_price = base_for_bonus
 
     # Apply negative price bonus when price is negative
     if spot_price < 0 and negative_price_bonus_pct != 0.0:
@@ -187,17 +192,21 @@ def calculate_expected_production_cost(
 ) -> float:
     """Calculate expected production cost (when price is negative)."""
     markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
+    surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
 
-    # Calculate effective price with bonuses
-    effective_price = spot_price
+    # Calculate effective price with surcharge and bonuses
+    # First add surcharge (before bonus calculation)
+    base_for_bonus = spot_price + surcharge
 
     # Apply general production bonus
     if production_bonus_pct != 0.0:
-        effective_price = spot_price * (1 + production_bonus_pct / 100.0)
+        effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+    else:
+        effective_price = base_for_bonus
 
     # Apply negative price bonus when price is negative
     if spot_price < 0 and negative_price_bonus_pct != 0.0:
@@ -312,10 +321,10 @@ class TestSupplierConfigurations:
 
 
 class TestZonneplanSpecific:
-    """Specific tests for Zonneplan's 10% production bonus."""
+    """Specific tests for Zonneplan's 10% production bonus with €0.02 surcharge."""
 
     async def test_zonneplan_production_bonus_positive_price(self, hass: HomeAssistant):
-        """Test Zonneplan's 10% production bonus at positive price."""
+        """Test Zonneplan's formula: (price + €0.02) * 1.10 at positive price."""
         config = SUPPLIER_CONFIGS["Zonneplan"]
         spot_price = 0.10  # EUR/kWh
         kwh = 1.0
@@ -337,12 +346,12 @@ class TestZonneplanSpecific:
 
         await sensor.async_update()
 
-        # Expected: 0.10 * 1.10 (10% bonus) * 1.21 (VAT) = 0.1331
-        expected = spot_price * 1.10 * 1.21
+        # Expected: (0.10 + 0.02) * 1.10 (10% bonus) * 1.21 (VAT) = 0.15972
+        expected = (spot_price + 0.02) * 1.10 * 1.21
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
     async def test_zonneplan_production_bonus_negative_price(self, hass: HomeAssistant):
-        """Test Zonneplan's 10% production bonus at negative price."""
+        """Test Zonneplan's formula at negative price (with surcharge still applied)."""
         config = SUPPLIER_CONFIGS["Zonneplan"]
         spot_price = -0.10  # EUR/kWh
         kwh = 1.0
@@ -364,24 +373,52 @@ class TestZonneplanSpecific:
 
         await sensor.async_update()
 
-        # Expected: -0.10 * 1.10 (10% bonus) * 1.21 (VAT) = -0.1331 -> cost = 0.1331
-        expected = abs(spot_price * 1.10 * 1.21)
+        # Expected: (-0.10 + 0.02) * 1.10 * 1.21 = -0.1065 -> cost = 0.1065
+        # Note: In practice, Zonneplan bonus doesn't apply during negative prices
+        expected = abs((spot_price + 0.02) * 1.10 * 1.21)
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
 
 class TestFrankEnergieSpecific:
-    """Specific tests for Frank Energie's 15% negative price bonus."""
+    """Specific tests for Frank Energie's 15% production bonus."""
 
-    async def test_frank_energie_negative_price_bonus(self, hass: HomeAssistant):
-        """Test Frank Energie's 15% bonus at negative price."""
+    async def test_frank_energie_production_bonus_positive_price(self, hass: HomeAssistant):
+        """Test Frank Energie's 15% bonus at positive price."""
         config = SUPPLIER_CONFIGS["Frank Energie"]
-        spot_price = -0.10  # EUR/kWh
+        spot_price = 0.10  # EUR/kWh
         kwh = 1.0
 
         sensor = DynamicEnergySensor(
             hass,
             "Frank Energie Production",
             "frank_prod_bonus",
+            "sensor.production_energy",
+            SOURCE_TYPE_PRODUCTION,
+            config,
+            price_sensor="sensor.price",
+            mode="profit_total",
+        )
+        sensor._last_energy = 0
+
+        hass.states.async_set("sensor.production_energy", kwh)
+        hass.states.async_set("sensor.price", spot_price)
+
+        await sensor.async_update()
+
+        # Expected: 0.10 * 1.15 (15% bonus) * 1.21 (VAT) = 0.13915
+        expected = spot_price * 1.15 * 1.21
+        assert sensor.native_value == pytest.approx(expected, rel=1e-4)
+
+    async def test_frank_energie_bonus_also_at_negative_price(self, hass: HomeAssistant):
+        """Test Frank Energie's 15% bonus also applies at negative price (cost scenario)."""
+        config = SUPPLIER_CONFIGS["Frank Energie"]
+        spot_price = -0.10  # EUR/kWh
+        kwh = 1.0
+
+        sensor = DynamicEnergySensor(
+            hass,
+            "Frank Energie Production Neg",
+            "frank_prod_bonus_neg",
             "sensor.production_energy",
             SOURCE_TYPE_PRODUCTION,
             config,
@@ -396,34 +433,8 @@ class TestFrankEnergieSpecific:
         await sensor.async_update()
 
         # Expected: -0.10 * 1.15 (15% bonus) * 1.21 (VAT) = -0.13915 -> cost = 0.13915
+        # Note: In practice, Slim Terugleveren would prevent production at negative prices
         expected = abs(spot_price * 1.15 * 1.21)
-        assert sensor.native_value == pytest.approx(expected, rel=1e-4)
-
-    async def test_frank_energie_no_bonus_positive_price(self, hass: HomeAssistant):
-        """Test Frank Energie has no bonus at positive price."""
-        config = SUPPLIER_CONFIGS["Frank Energie"]
-        spot_price = 0.10  # EUR/kWh
-        kwh = 1.0
-
-        sensor = DynamicEnergySensor(
-            hass,
-            "Frank Energie Production Pos",
-            "frank_prod_no_bonus",
-            "sensor.production_energy",
-            SOURCE_TYPE_PRODUCTION,
-            config,
-            price_sensor="sensor.price",
-            mode="profit_total",
-        )
-        sensor._last_energy = 0
-
-        hass.states.async_set("sensor.production_energy", kwh)
-        hass.states.async_set("sensor.price", spot_price)
-
-        await sensor.async_update()
-
-        # Expected: 0.10 * 1.21 (VAT) = 0.121 (no bonus at positive price)
-        expected = spot_price * 1.21
         assert sensor.native_value == pytest.approx(expected, rel=1e-4)
 
 

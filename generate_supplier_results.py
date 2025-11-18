@@ -35,13 +35,14 @@ SUPPLIER_CONFIGS = {
     "Zonneplan": {
         "per_unit_supplier_electricity_markup": 0.025,
         "per_unit_supplier_electricity_production_markup": 0.0,
+        "per_unit_supplier_electricity_production_surcharge": 0.02,  # €0.02 surcharge before bonus
         "per_unit_government_electricity_tax": 0.1017,
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": False,
         "overage_compensation_rate": 0.0,
         "surplus_vat_enabled": False,
-        "production_bonus_percentage": 10.0,  # 10% extra on production
+        "production_bonus_percentage": 10.0,  # 10% on (price + surcharge)
         "negative_price_production_bonus_percentage": 0.0,
     },
     "Frank Energie": {
@@ -53,8 +54,8 @@ SUPPLIER_CONFIGS = {
         "overage_compensation_enabled": False,
         "overage_compensation_rate": 0.0,
         "surplus_vat_enabled": False,
-        "production_bonus_percentage": 0.0,
-        "negative_price_production_bonus_percentage": 15.0,  # 15% bonus at negative prices
+        "production_bonus_percentage": 15.0,  # 15% bonus on all production
+        "negative_price_production_bonus_percentage": 0.0,
     },
     "easyEnergy": {
         "per_unit_supplier_electricity_markup": 0.0,
@@ -136,17 +137,21 @@ def calculate_expected_consumption_cost(kwh, spot_price, config):
 def calculate_expected_production_profit(kwh, spot_price, config):
     """Calculate expected production profit based on supplier config."""
     markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
+    surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
 
-    # Calculate effective price with bonuses
-    effective_price = spot_price
+    # Calculate effective price with surcharge and bonuses
+    # First add surcharge (before bonus calculation)
+    base_for_bonus = spot_price + surcharge
 
     # Apply general production bonus
     if production_bonus_pct != 0.0:
-        effective_price = spot_price * (1 + production_bonus_pct / 100.0)
+        effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+    else:
+        effective_price = base_for_bonus
 
     # Apply negative price bonus when price is negative
     if spot_price < 0 and negative_price_bonus_pct != 0.0:
@@ -167,17 +172,21 @@ def calculate_expected_production_profit(kwh, spot_price, config):
 def calculate_expected_production_cost(kwh, spot_price, config):
     """Calculate expected production cost (when price is negative)."""
     markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
+    surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
     vat = config.get("vat_percentage", 21.0) / 100.0 + 1.0
     include_vat = config.get("production_price_include_vat", True)
     production_bonus_pct = config.get("production_bonus_percentage", 0.0)
     negative_price_bonus_pct = config.get("negative_price_production_bonus_percentage", 0.0)
 
-    # Calculate effective price with bonuses
-    effective_price = spot_price
+    # Calculate effective price with surcharge and bonuses
+    # First add surcharge (before bonus calculation)
+    base_for_bonus = spot_price + surcharge
 
     # Apply general production bonus
     if production_bonus_pct != 0.0:
-        effective_price = spot_price * (1 + production_bonus_pct / 100.0)
+        effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+    else:
+        effective_price = base_for_bonus
 
     # Apply negative price bonus when price is negative
     if spot_price < 0 and negative_price_bonus_pct != 0.0:
@@ -263,35 +272,32 @@ def generate_special_features_table():
     print("\n### Special Features Comparison\n")
     print("This section highlights the unique features of Zonneplan and Frank Energie.\n")
 
-    print("#### Zonneplan: 10% Production Bonus\n")
-    print("| Spot Price | Without Bonus | With 10% Bonus | Difference |")
+    print("#### Zonneplan: (price + €0.02) * 10% Bonus\n")
+    print("| Spot Price | Without Bonus | With Zonneplan | Difference |")
     print("|------------|---------------|----------------|------------|")
 
     for spot_price in [0.20, 0.10, 0.05, -0.05, -0.10]:
         # Without bonus (like easyEnergy)
         without = spot_price * 1.21 * 10  # 10 kWh
-        # With 10% bonus
-        with_bonus = spot_price * 1.10 * 1.21 * 10
+        # With surcharge + 10% bonus: (price + 0.02) * 1.10 * VAT
+        with_bonus = (spot_price + 0.02) * 1.10 * 1.21 * 10
         diff = with_bonus - without
 
         print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} |")
 
-    print("\n#### Frank Energie: 15% Negative Price Bonus\n")
+    print("\n#### Frank Energie: 15% Production Bonus\n")
+    print("Note: With 'Slim Terugleveren', inverter is turned off during negative prices.\n")
     print("| Spot Price | Without Bonus | With 15% Bonus | Difference |")
     print("|------------|---------------|----------------|------------|")
 
-    for spot_price in [0.10, 0.00, -0.05, -0.10, -0.20]:
-        # Without bonus
+    for spot_price in [0.20, 0.10, 0.05, -0.05, -0.10]:
+        # Without bonus (like easyEnergy)
         without = spot_price * 1.21 * 10  # 10 kWh
-        # With 15% bonus (only at negative prices)
-        if spot_price < 0:
-            with_bonus = spot_price * 1.15 * 1.21 * 10
-        else:
-            with_bonus = spot_price * 1.21 * 10
+        # With 15% bonus on all production
+        with_bonus = spot_price * 1.15 * 1.21 * 10
         diff = with_bonus - without
 
-        bonus_text = "Yes" if spot_price < 0 else "No"
-        print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} ({bonus_text}) |")
+        print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} |")
 
 
 if __name__ == "__main__":

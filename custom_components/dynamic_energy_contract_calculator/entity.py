@@ -327,6 +327,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
                                 compensation
                             )
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                # Get production surcharge (added before bonus, e.g., Zonneplan's €0.02)
+                production_surcharge = self.price_settings.get(
+                    "per_unit_supplier_electricity_production_surcharge", 0.0
+                )
                 # Apply production bonus percentage (e.g., Zonneplan's 10% extra)
                 production_bonus_pct = self.price_settings.get(
                     "production_bonus_percentage", 0.0
@@ -336,12 +340,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     "negative_price_production_bonus_percentage", 0.0
                 )
 
-                # Calculate effective price with bonuses
-                effective_price = total_price
+                # Calculate effective price with surcharge and bonuses
+                # First add surcharge (before bonus calculation)
+                base_for_bonus = total_price + production_surcharge
 
-                # Apply general production bonus (percentage on top of price)
+                # Apply general production bonus (percentage on top of price + surcharge)
                 if production_bonus_pct != 0.0:
-                    effective_price = total_price * (1 + production_bonus_pct / 100.0)
+                    effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+                else:
+                    effective_price = base_for_bonus
 
                 # Apply negative price bonus when price is negative
                 if total_price < 0 and negative_price_bonus_pct != 0.0:
