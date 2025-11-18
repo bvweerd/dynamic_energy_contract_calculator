@@ -208,6 +208,65 @@ def calculate_expected_production_cost(kwh, spot_price, config):
         return 0.0
 
 
+def generate_yearly_summary_table():
+    """Generate a yearly summary table showing estimated costs for each supplier."""
+    # Yearly assumptions
+    yearly_consumption_kwh = 3500.0  # Average Dutch household consumption
+    yearly_production_kwh = 3000.0   # Typical solar panel production
+    avg_spot_price = 0.08            # Average spot price EUR/kWh
+
+    print("## Yearly Supplier Cost Comparison\n")
+    print("### Assumptions\n")
+    print(f"- **Yearly consumption**: {yearly_consumption_kwh:.0f} kWh")
+    print(f"- **Yearly production**: {yearly_production_kwh:.0f} kWh")
+    print(f"- **Average spot price**: €{avg_spot_price:.2f}/kWh")
+    print(f"- **Government electricity tax**: €0.1017/kWh")
+    print(f"- **VAT**: 21%")
+    print("")
+
+    print("### Estimated Yearly Costs by Supplier\n")
+    print("| Supplier | Markup (€/kWh) | Production Markup | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |")
+    print("|----------|----------------|-------------------|------------------|--------------------|-----------------:|")
+
+    results = []
+    for supplier_name, config in SUPPLIER_CONFIGS.items():
+        consumption_cost = calculate_expected_consumption_cost(
+            yearly_consumption_kwh, avg_spot_price, config
+        )
+        production_profit = calculate_expected_production_profit(
+            yearly_production_kwh, avg_spot_price, config
+        )
+        production_cost = calculate_expected_production_cost(
+            yearly_production_kwh, avg_spot_price, config
+        )
+        net_cost = consumption_cost - production_profit + production_cost
+
+        markup = config.get("per_unit_supplier_electricity_markup", 0.0)
+        prod_markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
+        bonus_pct = config.get("production_bonus_percentage", 0.0)
+
+        # Format production markup info
+        if bonus_pct > 0:
+            prod_markup_str = f"+{bonus_pct:.0f}% bonus"
+        else:
+            prod_markup_str = f"€{prod_markup:.3f}"
+
+        results.append((supplier_name, markup, prod_markup_str, consumption_cost,
+                       production_profit, net_cost))
+
+    # Sort by net cost (lowest first)
+    results.sort(key=lambda x: x[5])
+
+    for supplier_name, markup, prod_markup_str, consumption_cost, production_profit, net_cost in results:
+        print(
+            f"| {supplier_name} | €{markup:.3f} | {prod_markup_str} | "
+            f"€{consumption_cost:.2f} | €{production_profit:.2f} | €{net_cost:.2f} |"
+        )
+
+    print("\n*Table sorted by estimated yearly cost (lowest first)*\n")
+    print("---\n")
+
+
 def generate_summary_table():
     """Generate a summary table showing key metrics for each supplier."""
     print("## Supplier Configuration Test Results\n")
@@ -319,6 +378,7 @@ def generate_special_features_table():
 
 
 if __name__ == "__main__":
+    generate_yearly_summary_table()
     generate_summary_table()
     generate_detailed_table()
     generate_special_features_table()
