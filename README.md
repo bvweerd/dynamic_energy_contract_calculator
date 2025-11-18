@@ -63,6 +63,23 @@ In addition a few summary sensors are created:
 - `sensor.current_production_price`
 - `sensor.current_gas_consumption_price`
 
+A binary sensor is also provided:
+
+- `binary_sensor.return_costs_money` – indicates when returning energy to the grid costs money
+
+### Return Costs Money Binary Sensor
+
+The `binary_sensor.return_costs_money` sensor indicates whether returning energy to the grid currently costs money. This happens when the production price is negative, meaning you would have to pay to feed energy back into the grid.
+
+**Important:** This sensor only looks at the instantaneous return price. It does **not** account for netting (salderingsregeling), because the net effect of saldering can only be determined after your annual energy settlement. During the year, you may receive compensation for returned energy that will later be offset against your consumption. The true cost or profit of returning energy depends on your total annual balance.
+
+Use this sensor in automations to:
+- Turn off your inverter or battery discharge during negative prices
+- Postpone energy-intensive tasks when it's profitable to do so
+- Get notifications when returning energy costs money
+
+The sensor has an attribute `current_production_price` that shows the actual production price in €/kWh.
+
 These sensors can be used in the [Energy dashboard](https://www.home-assistant.io/docs/energy/) or in your own automations.
 
 ## Services
