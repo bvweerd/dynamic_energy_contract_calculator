@@ -6,12 +6,13 @@ This script calculates expected costs and profits for all Dutch energy suppliers
 against various price and energy scenarios.
 """
 
-# Supplier configurations based on current documentation
+# Supplier configurations based on current documentation (November 2025)
 SUPPLIER_CONFIGS = {
     "ANWB Energie": {
         "per_unit_supplier_electricity_markup": 0.040,
         "per_unit_supplier_electricity_production_markup": 0.040,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.2301,  # ~€7.00/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
@@ -21,22 +22,24 @@ SUPPLIER_CONFIGS = {
         "negative_price_production_bonus_percentage": 0.0,
     },
     "Tibber": {
-        "per_unit_supplier_electricity_markup": 0.021,
-        "per_unit_supplier_electricity_production_markup": 0.021,
+        "per_unit_supplier_electricity_markup": 0.0248,  # Updated Nov 2025
+        "per_unit_supplier_electricity_production_markup": 0.0248,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.1970,  # €5.99/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
-        "overage_compensation_rate": 0.021,
+        "overage_compensation_rate": 0.0248,
         "surplus_vat_enabled": False,
         "production_bonus_percentage": 0.0,
         "negative_price_production_bonus_percentage": 0.0,
     },
     "Zonneplan": {
-        "per_unit_supplier_electricity_markup": 0.025,
+        "per_unit_supplier_electricity_markup": 0.0200,  # Updated Nov 2025
         "per_unit_supplier_electricity_production_markup": 0.0,
         "per_unit_supplier_electricity_production_surcharge": 0.02,  # €0.02 surcharge before bonus
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.2055,  # €6.25/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": False,
@@ -46,9 +49,10 @@ SUPPLIER_CONFIGS = {
         "negative_price_production_bonus_percentage": 0.0,
     },
     "Frank Energie": {
-        "per_unit_supplier_electricity_markup": 0.010,
+        "per_unit_supplier_electricity_markup": 0.0182,  # Updated Nov 2025
         "per_unit_supplier_electricity_production_markup": 0.0,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.2301,  # €7.00/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": False,
@@ -58,13 +62,14 @@ SUPPLIER_CONFIGS = {
         "negative_price_production_bonus_percentage": 0.0,
     },
     "easyEnergy": {
-        "per_unit_supplier_electricity_markup": 0.0,
-        "per_unit_supplier_electricity_production_markup": 0.0,
+        "per_unit_supplier_electricity_markup": 0.0218,  # Updated Nov 2025
+        "per_unit_supplier_electricity_production_markup": 0.0218,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.2301,  # €7.00/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
-        "overage_compensation_rate": 0.0,
+        "overage_compensation_rate": 0.0218,
         "surplus_vat_enabled": False,
         "production_bonus_percentage": 0.0,
         "negative_price_production_bonus_percentage": 0.0,
@@ -73,6 +78,7 @@ SUPPLIER_CONFIGS = {
         "per_unit_supplier_electricity_markup": 0.017,
         "per_unit_supplier_electricity_production_markup": 0.017,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.1973,  # ~€6.00/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
@@ -85,6 +91,7 @@ SUPPLIER_CONFIGS = {
         "per_unit_supplier_electricity_markup": 0.030,
         "per_unit_supplier_electricity_production_markup": 0.030,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.2466,  # ~€7.50/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
@@ -94,9 +101,10 @@ SUPPLIER_CONFIGS = {
         "negative_price_production_bonus_percentage": 0.0,
     },
     "NextEnergy": {
-        "per_unit_supplier_electricity_markup": 0.022,
-        "per_unit_supplier_electricity_production_markup": 0.022,
+        "per_unit_supplier_electricity_markup": 0.0219,  # Updated Nov 2025
+        "per_unit_supplier_electricity_production_markup": 0.0219,
         "per_unit_government_electricity_tax": 0.1017,
+        "per_day_supplier_electricity_standing_charge": 0.1970,  # €5.99/month
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
         "overage_compensation_enabled": True,
@@ -214,6 +222,7 @@ def generate_yearly_summary_table():
     yearly_consumption_kwh = 3500.0  # Average Dutch household consumption
     yearly_production_kwh = 3000.0  # Typical solar panel production
     avg_spot_price = 0.08  # Average spot price EUR/kWh
+    days_per_year = 365
     # Assume 90% of production happens during Zonneplan bonus hours (08:00-19:00)
     zonneplan_bonus_production_ratio = 0.90
 
@@ -228,6 +237,7 @@ def generate_yearly_summary_table():
         f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio*100:.0f}%"
     )
     print("- **Spot price assumed non-negative** (bonuses apply)")
+    print("- **Fixed costs include VAT**")
     print("")
 
     print("### Special Conditions by Supplier\n")
@@ -245,10 +255,10 @@ def generate_yearly_summary_table():
 
     print("### Estimated Yearly Costs by Supplier\n")
     print(
-        "| Supplier | Markup | Special Features | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |"
+        "| Supplier | Fixed/yr | Markup | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |"
     )
     print(
-        "|----------|--------|------------------|------------------|--------------------|-----------------:|"
+        "|----------|----------|--------|------------------|--------------------|-----------------:|"
     )
 
     results = []
@@ -256,6 +266,11 @@ def generate_yearly_summary_table():
         consumption_cost = calculate_expected_consumption_cost(
             yearly_consumption_kwh, avg_spot_price, config
         )
+
+        # Calculate fixed yearly cost (including VAT)
+        daily_fixed = config.get("per_day_supplier_electricity_standing_charge", 0.0)
+        vat_multiplier = 1 + config.get("vat_percentage", 21.0) / 100.0
+        yearly_fixed_cost = daily_fixed * days_per_year * vat_multiplier
 
         # Calculate production profit with time-bound bonus consideration
         if supplier_name == "Zonneplan":
@@ -287,37 +302,17 @@ def generate_yearly_summary_table():
                 yearly_production_kwh, avg_spot_price, config
             )
 
-        net_cost = consumption_cost - production_profit + production_cost
+        net_cost = (
+            yearly_fixed_cost + consumption_cost - production_profit + production_cost
+        )
 
         markup = config.get("per_unit_supplier_electricity_markup", 0.0)
-        prod_markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
-        bonus_pct = config.get("production_bonus_percentage", 0.0)
-        surcharge = config.get(
-            "per_unit_supplier_electricity_production_surcharge", 0.0
-        )
-        overage_rate = config.get("overage_compensation_rate", 0.0)
-
-        # Format special features info
-        features = []
-        if bonus_pct > 0:
-            if supplier_name == "Zonneplan":
-                features.append(f"+{bonus_pct:.0f}% (08-19h)")
-            else:
-                features.append(f"+{bonus_pct:.0f}% bonus")
-        if surcharge > 0:
-            features.append(f"+€{surcharge:.2f} surcharge")
-        if overage_rate > 0:
-            features.append(f"overage €{overage_rate:.3f}")
-        if prod_markup > 0 and bonus_pct == 0:
-            features.append(f"prod markup €{prod_markup:.3f}")
-
-        features_str = ", ".join(features) if features else "None"
 
         results.append(
             (
                 supplier_name,
+                yearly_fixed_cost,
                 markup,
-                features_str,
                 consumption_cost,
                 production_profit,
                 net_cost,
@@ -329,14 +324,14 @@ def generate_yearly_summary_table():
 
     for (
         supplier_name,
+        yearly_fixed_cost,
         markup,
-        features_str,
         consumption_cost,
         production_profit,
         net_cost,
     ) in results:
         print(
-            f"| {supplier_name} | €{markup:.3f} | {features_str} | "
+            f"| {supplier_name} | €{yearly_fixed_cost:.2f} | €{markup:.4f} | "
             f"€{consumption_cost:.2f} | €{production_profit:.2f} | €{net_cost:.2f} |"
         )
 
