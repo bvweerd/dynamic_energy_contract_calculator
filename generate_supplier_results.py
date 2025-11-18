@@ -212,8 +212,8 @@ def generate_yearly_summary_table():
     """Generate a yearly summary table showing estimated costs for each supplier."""
     # Yearly assumptions
     yearly_consumption_kwh = 3500.0  # Average Dutch household consumption
-    yearly_production_kwh = 3000.0   # Typical solar panel production
-    avg_spot_price = 0.08            # Average spot price EUR/kWh
+    yearly_production_kwh = 3000.0  # Typical solar panel production
+    avg_spot_price = 0.08  # Average spot price EUR/kWh
     # Assume 90% of production happens during Zonneplan bonus hours (08:00-19:00)
     zonneplan_bonus_production_ratio = 0.90
 
@@ -224,7 +224,9 @@ def generate_yearly_summary_table():
     print(f"- **Average spot price**: €{avg_spot_price:.2f}/kWh")
     print("- **Government electricity tax**: €0.1017/kWh")
     print("- **VAT**: 21%")
-    print(f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio*100:.0f}%")
+    print(
+        f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio*100:.0f}%"
+    )
     print("- **Spot price assumed non-negative** (bonuses apply)")
     print("")
 
@@ -242,8 +244,12 @@ def generate_yearly_summary_table():
     print("")
 
     print("### Estimated Yearly Costs by Supplier\n")
-    print("| Supplier | Markup | Special Features | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |")
-    print("|----------|--------|------------------|------------------|--------------------|-----------------:|")
+    print(
+        "| Supplier | Markup | Special Features | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |"
+    )
+    print(
+        "|----------|--------|------------------|------------------|--------------------|-----------------:|"
+    )
 
     results = []
     for supplier_name, config in SUPPLIER_CONFIGS.items():
@@ -255,7 +261,9 @@ def generate_yearly_summary_table():
         if supplier_name == "Zonneplan":
             # Split production: 90% during bonus hours, 10% outside
             bonus_production = yearly_production_kwh * zonneplan_bonus_production_ratio
-            non_bonus_production = yearly_production_kwh * (1 - zonneplan_bonus_production_ratio)
+            non_bonus_production = yearly_production_kwh * (
+                1 - zonneplan_bonus_production_ratio
+            )
 
             # Profit during bonus hours (with 10% bonus)
             bonus_profit = calculate_expected_production_profit(
@@ -284,7 +292,9 @@ def generate_yearly_summary_table():
         markup = config.get("per_unit_supplier_electricity_markup", 0.0)
         prod_markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
         bonus_pct = config.get("production_bonus_percentage", 0.0)
-        surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
+        surcharge = config.get(
+            "per_unit_supplier_electricity_production_surcharge", 0.0
+        )
         overage_rate = config.get("overage_compensation_rate", 0.0)
 
         # Format special features info
@@ -303,13 +313,28 @@ def generate_yearly_summary_table():
 
         features_str = ", ".join(features) if features else "None"
 
-        results.append((supplier_name, markup, features_str, consumption_cost,
-                       production_profit, net_cost))
+        results.append(
+            (
+                supplier_name,
+                markup,
+                features_str,
+                consumption_cost,
+                production_profit,
+                net_cost,
+            )
+        )
 
     # Sort by net cost (lowest first)
     results.sort(key=lambda x: x[5])
 
-    for supplier_name, markup, features_str, consumption_cost, production_profit, net_cost in results:
+    for (
+        supplier_name,
+        markup,
+        features_str,
+        consumption_cost,
+        production_profit,
+        net_cost,
+    ) in results:
         print(
             f"| {supplier_name} | €{markup:.3f} | {features_str} | "
             f"€{consumption_cost:.2f} | €{production_profit:.2f} | €{net_cost:.2f} |"
