@@ -49,3 +49,42 @@ async def test_diagnostics_redaction_and_structure(hass: HomeAssistant):
     assert result["sources"][0]["state"]["state"] == "1"
     assert result["sources"][0]["state"]["attributes"] == {"attr": "val"}
     assert result["netting"] == {"enabled": False}
+
+
+async def test_diagnostics_with_netting_tracker(hass: HomeAssistant):
+    """Test diagnostics when netting tracker is present."""
+    from unittest.mock import MagicMock
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_CONFIGS: [
+                {
+                    CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
+                    CONF_SOURCES: ["sensor.energy"],
+                }
+            ]
+        },
+        options={},
+        entry_id="test_entry",
+    )
+    entry.add_to_hass(hass)
+    hass.states.async_set("sensor.energy", 1, {"attr": "val"})
+
+    # Mock netting tracker
+    mock_tracker = MagicMock()
+    mock_tracker.net_consumption_kwh = 5.0
+    mock_tracker.tax_balance_per_sensor = {"sensor1": 0.5}
+
+    # Add tracker to hass.data
+    hass.data[DOMAIN] = {
+        "netting": {entry.entry_id: mock_tracker},
+    }
+
+    from custom_components.dynamic_energy_contract_calculator import diagnostics
+
+    result = await diagnostics.async_get_config_entry_diagnostics(hass, entry)
+
+    assert result["netting"]["enabled"] is True
+    assert result["netting"]["net_consumption_kwh"] == 5.0
+    assert result["netting"]["tax_balance_per_sensor"] == {"sensor1": 0.5}
