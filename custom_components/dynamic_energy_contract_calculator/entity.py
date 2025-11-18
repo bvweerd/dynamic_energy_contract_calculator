@@ -335,17 +335,29 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 production_bonus_pct = self.price_settings.get(
                     "production_bonus_percentage", 0.0
                 )
+                # Time window for production bonus (e.g., Zonneplan 08:00-19:00)
+                bonus_start_hour = int(self.price_settings.get(
+                    "production_bonus_start_hour", 0
+                ))
+                bonus_end_hour = int(self.price_settings.get(
+                    "production_bonus_end_hour", 24
+                ))
                 # Apply negative price bonus percentage (e.g., Frank Energie's 15% bonus)
                 negative_price_bonus_pct = self.price_settings.get(
                     "negative_price_production_bonus_percentage", 0.0
                 )
+
+                # Check if current hour is within bonus time window
+                current_hour = datetime.now().hour
+                in_bonus_window = bonus_start_hour <= current_hour < bonus_end_hour
 
                 # Calculate effective price with surcharge and bonuses
                 # First add surcharge (before bonus calculation)
                 base_for_bonus = total_price + production_surcharge
 
                 # Apply general production bonus (percentage on top of price + surcharge)
-                if production_bonus_pct != 0.0:
+                # Only if within time window and price is not negative
+                if production_bonus_pct != 0.0 and in_bonus_window and total_price >= 0:
                     effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
                 else:
                     effective_price = base_for_bonus

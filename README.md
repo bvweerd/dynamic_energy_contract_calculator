@@ -154,6 +154,8 @@ the base price from your price sensor before VAT is calculated.
 | `overage_compensation_rate` | Additional reduction from spot price for surplus energy per kWh. |
 | `surplus_vat_enabled` | Apply VAT to surplus energy compensation. Default: `false`. |
 | `production_bonus_percentage` | Percentage bonus on all production (e.g., 10 for Zonneplan's 10% extra). Default: `0`. |
+| `production_bonus_start_hour` | Start hour for production bonus (0-23). Default: `0`. |
+| `production_bonus_end_hour` | End hour for production bonus (1-24). Default: `24`. |
 | `negative_price_production_bonus_percentage` | Percentage bonus when spot price is negative (e.g., 15 for Frank Energie). Default: `0`. |
 
 If your price sensors already provide prices **including** VAT, set
@@ -361,14 +363,15 @@ per_unit_supplier_electricity_markup: 0.025
 per_unit_supplier_electricity_production_markup: 0.000
 per_unit_supplier_electricity_production_surcharge: 0.020
 production_bonus_percentage: 10.0
+production_bonus_start_hour: 8
+production_bonus_end_hour: 19
 overage_compensation_enabled: false
 surplus_vat_enabled: false
 ```
 Zonneplan pays a "Zonnebonus" of 10% on top of (market price + €0.02). The formula is:
-`(spot_price + 0.02) * 1.10 * VAT`. The `production_surcharge` is added before the
-percentage bonus is calculated. Note: The bonus only applies during daytime (08:00-19:00)
-and when prices are positive - these time-based conditions are not modeled in this
-integration.
+`(spot_price + 0.02) * 1.10 * VAT`. The bonus only applies:
+- During daytime hours (08:00-19:00) - configured via `production_bonus_start_hour` and `production_bonus_end_hour`
+- When prices are positive (automatically handled)
 
 #### Frank Energie
 ```

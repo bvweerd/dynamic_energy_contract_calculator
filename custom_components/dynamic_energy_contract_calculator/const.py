@@ -46,6 +46,8 @@ PRICE_SETTINGS_KEYS = [
     "overage_compensation_rate",
     "surplus_vat_enabled",
     "production_bonus_percentage",
+    "production_bonus_start_hour",
+    "production_bonus_end_hour",
     "negative_price_production_bonus_percentage",
 ]
 
@@ -68,6 +70,8 @@ DEFAULT_PRICE_SETTINGS = {
     "overage_compensation_rate": 0.0,
     "surplus_vat_enabled": False,
     "production_bonus_percentage": 0.0,
+    "production_bonus_start_hour": 0,
+    "production_bonus_end_hour": 24,
     "negative_price_production_bonus_percentage": 0.0,
 }
 
