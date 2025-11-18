@@ -317,9 +317,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 # Record consumption for overage compensation tracking
                 if self._overage_compensation_tracker is not None:
-                    await self._overage_compensation_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    adjustments = await self._overage_compensation_tracker.async_record_consumption(  # type: ignore[union-attr]
                         delta
                     )
+                    # Apply retroactive compensation to production sensors
+                    if adjustments:
+                        for target_sensor, compensation in adjustments:
+                            await target_sensor.async_apply_overage_compensation(
+                                compensation
+                            )
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 if self.price_settings.get("production_price_include_vat", True):
                     unit_price = (total_price - markup_production) * vat_factor
@@ -351,7 +357,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         overage_kwh,
                         overage_value,
                     ) = await self._overage_compensation_tracker.async_record_production(  # type: ignore[union-attr]
-                        delta, unit_price, overage_rate
+                        self, delta, unit_price, overage_rate
                     )
                     # Adjust the value to use split compensation
                     adjusted_value = compensated_value + overage_value
@@ -423,6 +429,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if self._uses_netting:
             await self._netting_tracker.async_register_sensor(self)  # type: ignore[union-attr]
 
+        if self._uses_overage_compensation:
+            await self._overage_compensation_tracker.async_register_sensor(self)  # type: ignore[union-attr]
+
         for entity_id in self.input_sensors:
             self.async_on_remove(
                 async_track_state_change_event(
@@ -448,16 +457,22 @@ class DynamicEnergySensor(BaseUtilitySensor):
     async def async_will_remove_from_hass(self) -> None:
         if self._uses_netting:
             await self._netting_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
+        if self._uses_overage_compensation:
+            await self._overage_compensation_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
         await super().async_will_remove_from_hass()
 
     async def async_reset(self) -> None:
         if self._uses_netting:
             await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        if self._uses_overage_compensation:
+            await self._overage_compensation_tracker.async_reset_all()  # type: ignore[union-attr]
         await super().async_reset()
 
     async def async_set_value(self, value: float) -> None:
         if self._uses_netting:
             await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        if self._uses_overage_compensation:
+            await self._overage_compensation_tracker.async_reset_all()  # type: ignore[union-attr]
         await super().async_set_value(value)
 
     async def async_apply_tax_adjustment(self, deduction: float) -> None:
@@ -467,6 +482,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._attr_native_value = round(self._attr_native_value - deduction, 8)
         if self._attr_native_value < 0:
             self._attr_native_value = 0.0
+        self.async_write_ha_state()
+
+    async def async_apply_overage_compensation(self, compensation: float) -> None:
+        """Add retroactive compensation to this production sensor."""
+        if compensation <= 0:
+            return
+        self._attr_native_value = round(self._attr_native_value + compensation, 8)
         self.async_write_ha_state()
 
 

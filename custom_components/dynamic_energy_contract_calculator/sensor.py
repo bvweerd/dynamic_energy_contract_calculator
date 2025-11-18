@@ -133,6 +133,9 @@ def _build_overage_compensation_attributes(
         "overage_compensation_total_production_kwh": round(
             tracker.total_production_kwh, 8
         ),
+        "overage_compensation_pending_kwh": round(
+            tracker.pending_compensation_kwh, 8
+        ),
     }
 
 
