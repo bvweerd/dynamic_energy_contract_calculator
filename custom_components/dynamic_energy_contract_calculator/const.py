@@ -41,6 +41,8 @@ PRICE_SETTINGS_KEYS = [
     "vat_percentage",
     "production_price_include_vat",
     "netting_enabled",
+    "overage_compensation_enabled",
+    "overage_compensation_rate",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -57,7 +59,12 @@ DEFAULT_PRICE_SETTINGS = {
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
     "netting_enabled": False,
+    "overage_compensation_enabled": False,
+    "overage_compensation_rate": 0.0,
 }
 
 NETTING_STORAGE_VERSION = 1
 NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"
+
+OVERAGE_COMPENSATION_STORAGE_VERSION = 1
+OVERAGE_COMPENSATION_STORAGE_KEY_PREFIX = f"{DOMAIN}_overage_compensation"
