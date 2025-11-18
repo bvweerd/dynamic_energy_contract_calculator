@@ -424,14 +424,26 @@ equals the consumption markup.
 
 #### NextEnergy
 ```
-per_unit_supplier_electricity_markup: 0.022
-per_unit_supplier_electricity_production_markup: 0.022
+per_unit_supplier_electricity_markup: 0.0219
+per_unit_supplier_electricity_production_markup: 0.0219
 overage_compensation_enabled: true
 overage_compensation_rate: 0.044
 surplus_vat_enabled: false
 ```
-NextEnergy deducts the markup for production. For surplus, they deduct the
-markup twice (once as production cost, once as sales cost).
+NextEnergy charges costs for both consuming and feeding back electricity.
+
+**Consumption**: spot price + €0.0219 markup + €0.1017 tax, then 21% VAT
+
+**Production (up to break-even)**: spot price - €0.0219 markup, then 21% VAT
+
+**Feed-in/surplus (beyond break-even)**: NextEnergy deducts €0.044/kWh from the
+spot price, which breaks down as:
+- €0.0219: production markup (inkoopvergoeding)
+- €0.0221: sales fee (verkoopvergoeding)
+
+No VAT is applied to surplus compensation. This makes NextEnergy competitive for
+users who produce more than they consume, as the total deduction (€0.044) is
+lower than some other suppliers.
 
 ### Common settings for all suppliers
 
