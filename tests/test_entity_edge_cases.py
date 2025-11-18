@@ -194,3 +194,199 @@ async def test_issue_removed_on_recovery(hass: HomeAssistant):
         await sensor.async_update()
         assert cleared.get("called")
         assert sensor.available
+
+
+async def test_base_utility_sensor_device_class_string(hass: HomeAssistant):
+    """Test device class conversion from string."""
+    from custom_components.dynamic_energy_contract_calculator.entity import (
+        BaseUtilitySensor,
+    )
+
+    sensor = BaseUtilitySensor(
+        name="Test",
+        unique_id="uid",
+        unit="kWh",
+        device_class="energy",  # string instead of SensorDeviceClass
+        icon="mdi:flash",
+        visible=True,
+    )
+    from homeassistant.components.sensor import SensorDeviceClass
+    assert sensor._attr_device_class == SensorDeviceClass.ENERGY
+
+
+async def test_base_utility_sensor_async_reset(hass: HomeAssistant):
+    """Test async_reset method."""
+    from custom_components.dynamic_energy_contract_calculator.entity import (
+        BaseUtilitySensor,
+    )
+
+    sensor = BaseUtilitySensor(
+        name="Test",
+        unique_id="uid",
+        unit="kWh",
+        device_class=None,
+        icon="mdi:flash",
+        visible=True,
+    )
+    sensor.hass = hass
+    sensor._attr_native_value = 10.0
+    sensor.async_write_ha_state = lambda: None
+
+    await sensor.async_reset()
+    assert sensor._attr_native_value == 0.0
+
+
+async def test_base_utility_sensor_async_set_value(hass: HomeAssistant):
+    """Test async_set_value method."""
+    from custom_components.dynamic_energy_contract_calculator.entity import (
+        BaseUtilitySensor,
+    )
+
+    sensor = BaseUtilitySensor(
+        name="Test",
+        unique_id="uid",
+        unit="kWh",
+        device_class=None,
+        icon="mdi:flash",
+        visible=True,
+    )
+    sensor.hass = hass
+    sensor.async_write_ha_state = lambda: None
+
+    await sensor.async_set_value(25.5)
+    assert sensor._attr_native_value == 25.5
+
+
+async def test_production_sensor_update(hass: HomeAssistant):
+    """Test production sensor update."""
+    from custom_components.dynamic_energy_contract_calculator.const import (
+        SOURCE_TYPE_PRODUCTION,
+    )
+
+    sensor = await _make_sensor(
+        hass,
+        source_type=SOURCE_TYPE_PRODUCTION,
+        mode="cost_total",
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 5.0)
+    hass.states.async_set("sensor.price", 0.10)
+
+    await sensor.async_update()
+    # Should update with production calculation
+    assert sensor._last_energy == 5.0
+
+
+async def test_gas_sensor_update(hass: HomeAssistant):
+    """Test gas sensor update."""
+    from custom_components.dynamic_energy_contract_calculator.const import (
+        SOURCE_TYPE_GAS,
+    )
+
+    sensor = await _make_sensor(
+        hass,
+        source_type=SOURCE_TYPE_GAS,
+        mode="cost_total",
+        price_settings={
+            "per_unit_supplier_gas_consumption_markup": 0.05,
+            "per_unit_gas_tax": 0.40,
+            "vat_percentage": 21.0,
+        },
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 5.0)
+    hass.states.async_set("sensor.price", 0.50)
+
+    await sensor.async_update()
+    assert sensor._last_energy == 5.0
+
+
+async def test_production_with_netting(hass: HomeAssistant):
+    """Test production sensor with netting enabled."""
+    from unittest.mock import MagicMock, AsyncMock
+    from custom_components.dynamic_energy_contract_calculator.const import (
+        SOURCE_TYPE_PRODUCTION,
+    )
+
+    sensor = await _make_sensor(
+        hass,
+        source_type=SOURCE_TYPE_PRODUCTION,
+        mode="profit_total",  # netting only works in profit_total mode
+        price_settings={
+            "netting_enabled": True,
+            "per_unit_electricity_tax": 0.10,
+            "vat_percentage": 21.0,
+        },
+    )
+
+    # Mock the netting tracker
+    tracker = MagicMock()
+    tracker.async_record_production = AsyncMock(return_value=(5.0, 0.5, []))
+    sensor._netting_tracker = tracker
+
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 5.0)
+    hass.states.async_set("sensor.price", 0.10)
+
+    await sensor.async_update()
+    tracker.async_record_production.assert_called_once()
+
+
+async def test_production_with_price_settings(hass: HomeAssistant):
+    """Test production sensor with various price settings."""
+    from custom_components.dynamic_energy_contract_calculator.const import (
+        SOURCE_TYPE_PRODUCTION,
+    )
+
+    sensor = await _make_sensor(
+        hass,
+        source_type=SOURCE_TYPE_PRODUCTION,
+        mode="cost_total",
+        price_settings={
+            "per_unit_supplier_electricity_production_markup": 0.02,
+            "production_price_include_vat": True,
+            "vat_percentage": 21.0,
+        },
+    )
+
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 5.0)
+    hass.states.async_set("sensor.price", 0.10)
+
+    await sensor.async_update()
+    assert sensor._last_energy == 5.0
+
+
+async def test_production_without_vat(hass: HomeAssistant):
+    """Test production sensor without VAT."""
+    from custom_components.dynamic_energy_contract_calculator.const import (
+        SOURCE_TYPE_PRODUCTION,
+    )
+
+    sensor = await _make_sensor(
+        hass,
+        source_type=SOURCE_TYPE_PRODUCTION,
+        mode="cost_total",
+        price_settings={
+            "per_unit_supplier_electricity_production_markup": 0.02,
+            "production_price_include_vat": False,
+            "vat_percentage": 21.0,
+        },
+    )
+
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 5.0)
+    hass.states.async_set("sensor.price", 0.10)
+
+    await sensor.async_update()
+    assert sensor._last_energy == 5.0
+
+
+async def test_sensor_apply_tax_adjustment(hass: HomeAssistant):
+    """Test applying tax adjustment."""
+    sensor = await _make_sensor(hass, mode="cost_total")
+    sensor._attr_native_value = 10.0
+    sensor.async_write_ha_state = lambda: None
+
+    await sensor.async_apply_tax_adjustment(0.5)
+    assert sensor._attr_native_value == 9.5

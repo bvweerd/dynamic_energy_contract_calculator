@@ -119,3 +119,51 @@ async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
     assert result
     assert dummy not in UTILITY_ENTITIES
     assert "entities" not in hass.data[DOMAIN]
+
+
+async def test_async_unload_entry_removes_netting(hass: HomeAssistant):
+    """Test that unloading entry also removes netting tracker."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+
+    hass.data[DOMAIN] = {
+        entry.entry_id: {},
+        "services_registered": True,
+        "netting": {entry.entry_id: "mock_tracker"},
+    }
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        result = await async_unload_entry(hass, entry)
+
+    assert result
+    assert "netting" not in hass.data[DOMAIN]
+
+
+async def test_async_unload_entry_keeps_netting_with_other_entries(hass: HomeAssistant):
+    """Test that netting map is kept if other entries exist."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    entry.add_to_hass(hass)
+
+    hass.data[DOMAIN] = {
+        entry.entry_id: {},
+        "services_registered": True,
+        "netting": {entry.entry_id: "tracker1", "other_entry": "tracker2"},
+    }
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        result = await async_unload_entry(hass, entry)
+
+    assert result
+    assert "netting" in hass.data[DOMAIN]
+    assert entry.entry_id not in hass.data[DOMAIN]["netting"]
+    assert "other_entry" in hass.data[DOMAIN]["netting"]
