@@ -214,52 +214,104 @@ def generate_yearly_summary_table():
     yearly_consumption_kwh = 3500.0  # Average Dutch household consumption
     yearly_production_kwh = 3000.0   # Typical solar panel production
     avg_spot_price = 0.08            # Average spot price EUR/kWh
+    # Assume 90% of production happens during Zonneplan bonus hours (08:00-19:00)
+    zonneplan_bonus_production_ratio = 0.90
 
     print("## Yearly Supplier Cost Comparison\n")
     print("### Assumptions\n")
     print(f"- **Yearly consumption**: {yearly_consumption_kwh:.0f} kWh")
     print(f"- **Yearly production**: {yearly_production_kwh:.0f} kWh")
     print(f"- **Average spot price**: €{avg_spot_price:.2f}/kWh")
-    print(f"- **Government electricity tax**: €0.1017/kWh")
-    print(f"- **VAT**: 21%")
+    print("- **Government electricity tax**: €0.1017/kWh")
+    print("- **VAT**: 21%")
+    print(f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio*100:.0f}%")
+    print("- **Spot price assumed non-negative** (bonuses apply)")
+    print("")
+
+    print("### Special Conditions by Supplier\n")
+    print("| Supplier | Bonus | Bonus Hours | Surcharge | Overage Rate | Notes |")
+    print("|----------|-------|-------------|-----------|--------------|-------|")
+    print("| ANWB Energie | - | - | - | €0.040 | Standard overage compensation |")
+    print("| Tibber | - | - | - | €0.021 | Lower overage rate |")
+    print("| Zonneplan | 10% | 08:00-19:00 | €0.02 | - | Bonus only during daylight |")
+    print("| Frank Energie | 15% | All hours | - | - | Best bonus, all day |")
+    print("| easyEnergy | - | - | - | €0.000 | No markup, no extras |")
+    print("| Budget Energie | - | - | - | €0.017 | Balanced rates |")
+    print("| Vandebron | - | - | - | €0.060 | High overage deduction |")
+    print("| NextEnergy | - | - | - | €0.044 | High overage deduction |")
     print("")
 
     print("### Estimated Yearly Costs by Supplier\n")
-    print("| Supplier | Markup (€/kWh) | Production Markup | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |")
-    print("|----------|----------------|-------------------|------------------|--------------------|-----------------:|")
+    print("| Supplier | Markup | Special Features | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |")
+    print("|----------|--------|------------------|------------------|--------------------|-----------------:|")
 
     results = []
     for supplier_name, config in SUPPLIER_CONFIGS.items():
         consumption_cost = calculate_expected_consumption_cost(
             yearly_consumption_kwh, avg_spot_price, config
         )
-        production_profit = calculate_expected_production_profit(
-            yearly_production_kwh, avg_spot_price, config
-        )
-        production_cost = calculate_expected_production_cost(
-            yearly_production_kwh, avg_spot_price, config
-        )
+
+        # Calculate production profit with time-bound bonus consideration
+        if supplier_name == "Zonneplan":
+            # Split production: 90% during bonus hours, 10% outside
+            bonus_production = yearly_production_kwh * zonneplan_bonus_production_ratio
+            non_bonus_production = yearly_production_kwh * (1 - zonneplan_bonus_production_ratio)
+
+            # Profit during bonus hours (with 10% bonus)
+            bonus_profit = calculate_expected_production_profit(
+                bonus_production, avg_spot_price, config
+            )
+
+            # Profit outside bonus hours (no bonus, just surcharge)
+            config_no_bonus = config.copy()
+            config_no_bonus["production_bonus_percentage"] = 0.0
+            non_bonus_profit = calculate_expected_production_profit(
+                non_bonus_production, avg_spot_price, config_no_bonus
+            )
+
+            production_profit = bonus_profit + non_bonus_profit
+            production_cost = 0.0  # Price is positive
+        else:
+            production_profit = calculate_expected_production_profit(
+                yearly_production_kwh, avg_spot_price, config
+            )
+            production_cost = calculate_expected_production_cost(
+                yearly_production_kwh, avg_spot_price, config
+            )
+
         net_cost = consumption_cost - production_profit + production_cost
 
         markup = config.get("per_unit_supplier_electricity_markup", 0.0)
         prod_markup = config.get("per_unit_supplier_electricity_production_markup", 0.0)
         bonus_pct = config.get("production_bonus_percentage", 0.0)
+        surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
+        overage_rate = config.get("overage_compensation_rate", 0.0)
 
-        # Format production markup info
+        # Format special features info
+        features = []
         if bonus_pct > 0:
-            prod_markup_str = f"+{bonus_pct:.0f}% bonus"
-        else:
-            prod_markup_str = f"€{prod_markup:.3f}"
+            if supplier_name == "Zonneplan":
+                features.append(f"+{bonus_pct:.0f}% (08-19h)")
+            else:
+                features.append(f"+{bonus_pct:.0f}% bonus")
+        if surcharge > 0:
+            features.append(f"+€{surcharge:.2f} surcharge")
+        if overage_rate > 0:
+            features.append(f"overage €{overage_rate:.3f}")
+        if prod_markup > 0 and bonus_pct == 0:
+            features.append(f"prod markup €{prod_markup:.3f}")
 
-        results.append((supplier_name, markup, prod_markup_str, consumption_cost,
+        features_str = ", ".join(features) if features else "None"
+
+        results.append((supplier_name, markup, features_str, consumption_cost,
                        production_profit, net_cost))
 
     # Sort by net cost (lowest first)
     results.sort(key=lambda x: x[5])
 
-    for supplier_name, markup, prod_markup_str, consumption_cost, production_profit, net_cost in results:
+    for supplier_name, markup, features_str, consumption_cost, production_profit, net_cost in results:
         print(
-            f"| {supplier_name} | €{markup:.3f} | {prod_markup_str} | "
+            f"| {supplier_name} | €{markup:.3f} | {features_str} | "
             f"€{consumption_cost:.2f} | €{production_profit:.2f} | €{net_cost:.2f} |"
         )
 
