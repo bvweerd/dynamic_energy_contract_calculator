@@ -317,6 +317,7 @@ suppliers. All values are **excluding VAT** (the integration adds VAT automatica
 | **Zonneplan** | €0.025 | -€0.037 | No | - | - | Pays €0.02 bonus + 10% extra on production |
 | **Frank Energie** | €0.010 | €0.000 | No | - | - | 15% bonus at negative prices |
 | **easyEnergy** | €0.000 | €0.000 | Yes | €0.000 | No | Pure spot price, no markups |
+| **Budget Energie** | €0.017 | €0.017 | Yes | €0.017 | No | No markup for surplus, only spot price |
 | **Vandebron** | €0.030 | €0.030 | Yes | €0.060 | No | Deducts markup twice for surplus |
 | **NextEnergy** | €0.022 | €0.022 | Yes | €0.044 | No | Deducts markup for surplus |
 
@@ -385,6 +386,18 @@ surplus_vat_enabled: false
 ```
 easyEnergy uses pure spot prices without any markup. For surplus, you receive
 only the spot price without VAT.
+
+#### Budget Energie
+```
+per_unit_supplier_electricity_markup: 0.017
+per_unit_supplier_electricity_production_markup: 0.017
+overage_compensation_enabled: true
+overage_compensation_rate: 0.017
+surplus_vat_enabled: false
+```
+Budget Energie charges a markup for both consumption and production. For surplus
+(beyond break-even), you receive only the spot price - they don't pay out the
+markup for overage. This makes them similar to ANWB but with a lower markup.
 
 #### Vandebron
 ```
