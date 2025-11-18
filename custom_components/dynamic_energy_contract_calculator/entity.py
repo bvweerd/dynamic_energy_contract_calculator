@@ -329,8 +329,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 if self.price_settings.get("production_price_include_vat", True):
                     unit_price = (total_price - markup_production) * vat_factor
+                    base_price = total_price * vat_factor  # Price without markup
                 else:
                     unit_price = total_price - markup_production
+                    base_price = total_price  # Price without markup
                 value = delta * unit_price
                 adjusted_value = value
 
@@ -348,16 +350,19 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 # Apply overage compensation if enabled
                 if self._uses_overage_compensation:
-                    overage_rate = float(
+                    # For overage: use base price (spot) without markup
+                    # The overage_compensation_rate can further reduce this if needed
+                    overage_rate_reduction = float(
                         self.price_settings.get("overage_compensation_rate", 0.0)
                     )
+                    overage_unit_price = base_price - overage_rate_reduction
                     (
                         compensated_kwh,
                         compensated_value,
                         overage_kwh,
                         overage_value,
                     ) = await self._overage_compensation_tracker.async_record_production(  # type: ignore[union-attr]
-                        self, delta, unit_price, overage_rate
+                        self, delta, unit_price, overage_unit_price
                     )
                     # Adjust the value to use split compensation
                     adjusted_value = compensated_value + overage_value
