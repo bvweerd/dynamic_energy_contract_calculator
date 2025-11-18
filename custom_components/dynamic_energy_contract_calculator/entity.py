@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE_GRACE_SECONDS = 60
 
 
-class BaseUtilitySensor(SensorEntity, RestoreEntity):
+class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
     def __init__(
         self,
         name: str | None,
@@ -64,9 +64,9 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     @property
     def native_value(self) -> float:
-        return float(round(float(cast(float, self._attr_native_value or 0.0)), 8))
+        return round(float(self._attr_native_value or 0.0), 8)
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (
             "unknown",
@@ -77,11 +77,11 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
             except ValueError:
                 self._attr_native_value = 0.0
 
-    def reset(self):
+    def reset(self) -> None:
         self._attr_native_value = 0.0
         self.async_write_ha_state()
 
-    def set_value(self, value: float):
+    def set_value(self, value: float) -> None:
         self._attr_native_value = round(value, 8)
         self.async_write_ha_state()
 
@@ -140,7 +140,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.price_settings = price_settings
         self._netting_tracker = netting_tracker
         self._overage_compensation_tracker = overage_compensation_tracker
-        self._last_energy = None
+        self._last_energy: float | None = None
         self._last_updated = datetime.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
@@ -161,7 +161,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             and self.mode == "profit_total"
         )
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         _LOGGER.debug(
             "Updating %s (mode=%s) using %s",
             self.entity_id,
@@ -317,7 +317,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 # Record consumption for overage compensation tracking
                 if self._overage_compensation_tracker is not None:
-                    adjustments = await self._overage_compensation_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    adjustments = await self._overage_compensation_tracker.async_record_consumption(
                         delta
                     )
                     # Apply retroactive compensation to production sensors
@@ -387,7 +387,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         _,
                         tax_credit_value,
                         adjustments,
-                    ) = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                    ) = await self._netting_tracker.async_record_production(
                         delta, tax * vat_factor
                     )
                     if tax_credit_value > 0:
@@ -487,7 +487,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     if value >= 0:
                         self._attr_native_value += delta
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
         if self._uses_netting:
@@ -505,7 +505,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 )
             )
 
-    async def _handle_input_event(self, event):
+    async def _handle_input_event(self, event: Event[Any]) -> None:
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             self._attr_available = False

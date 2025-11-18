@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorDeviceClass,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.config_entries import ConfigEntry
@@ -26,7 +28,7 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 
-class ReturnCostsBinarySensor(BinarySensorEntity, RestoreEntity):
+class ReturnCostsBinarySensor(BinarySensorEntity, RestoreEntity):  # type: ignore[misc]
     """Binary sensor that indicates if returning energy costs money.
 
     This sensor is True when the current production price is negative,
@@ -84,7 +86,7 @@ class ReturnCostsBinarySensor(BinarySensorEntity, RestoreEntity):
 
         return round(price, 8)
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Update the binary sensor state."""
         total_price = 0.0
         valid = False
@@ -111,7 +113,7 @@ class ReturnCostsBinarySensor(BinarySensorEntity, RestoreEntity):
         # Return costs money when the production price is negative
         self._attr_is_on = self._current_price < 0
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Handle entity being added to hass."""
         await super().async_added_to_hass()
 
@@ -134,7 +136,7 @@ class ReturnCostsBinarySensor(BinarySensorEntity, RestoreEntity):
                 )
             )
 
-    async def _handle_price_change(self, event):
+    async def _handle_price_change(self, event: Event[Any]) -> None:
         """Handle price sensor state changes."""
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):

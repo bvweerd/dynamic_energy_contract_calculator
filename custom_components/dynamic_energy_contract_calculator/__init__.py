@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import config_validation as cv
@@ -10,15 +13,13 @@ from .const import DOMAIN, PLATFORMS
 from .services import async_register_services, async_unregister_services
 from .sensor import UTILITY_ENTITIES
 
-import logging
-
 _LOGGER = logging.getLogger(__name__)
 
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the base integration (no YAML)."""
     hass.data.setdefault(DOMAIN, {})
     if not hass.data[DOMAIN].get("services_registered"):
@@ -80,4 +81,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.data[DOMAIN]["services_registered"] = False
     else:
         _LOGGER.warning("Failed to unload entry %s", entry.entry_id)
-    return unload_ok
+    return bool(unload_ok)
