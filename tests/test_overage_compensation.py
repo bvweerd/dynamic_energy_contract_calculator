@@ -1,5 +1,5 @@
 """Tests for overage_compensation module."""
-import pytest
+
 from unittest.mock import MagicMock, AsyncMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -55,7 +55,11 @@ class TestOverageCompensationTracker:
                 {"kwh": 1.0, "unit_price_diff": 0.03},  # missing sensor_id
                 {"sensor_id": "sensor3", "kwh": 0, "unit_price_diff": 0.05},  # zero kwh
                 "not_a_dict",  # not a dict
-                {"sensor_id": "sensor4", "kwh": "invalid", "unit_price_diff": 0.05},  # invalid type
+                {
+                    "sensor_id": "sensor4",
+                    "kwh": "invalid",
+                    "unit_price_diff": 0.05,
+                },  # invalid type
             ],
         }
         tracker = OverageCompensationTracker(hass, "entry1", store, initial_state)
@@ -84,15 +88,20 @@ class TestOverageCompensationTracker:
     async def test_properties(self, hass: HomeAssistant):
         """Test tracker properties."""
         store = MagicMock(spec=Store)
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "total_consumption_kwh": 10.0,
-            "total_production_kwh": 8.0,
-            "pending_queue": [
-                {"sensor_id": "s1", "kwh": 2.0, "unit_price_diff": 0.05},
-                {"sensor_id": "s2", "kwh": 3.0, "unit_price_diff": 0.03},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "total_consumption_kwh": 10.0,
+                "total_production_kwh": 8.0,
+                "pending_queue": [
+                    {"sensor_id": "s1", "kwh": 2.0, "unit_price_diff": 0.05},
+                    {"sensor_id": "s2", "kwh": 3.0, "unit_price_diff": 0.03},
+                ],
+            },
+        )
 
         assert tracker.net_consumption_kwh == 5.0
         assert tracker.total_consumption_kwh == 10.0
@@ -155,7 +164,9 @@ class TestOverageCompensationTracker:
         assert tracker._net_consumption_kwh == 5.0
         assert tracker._total_consumption_kwh == 5.0
 
-    async def test_async_record_consumption_with_compensation(self, hass: HomeAssistant):
+    async def test_async_record_consumption_with_compensation(
+        self, hass: HomeAssistant
+    ):
         """Test recording consumption that triggers compensation."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
@@ -165,14 +176,19 @@ class TestOverageCompensationTracker:
         sensor.unique_id = "sensor_uid"
 
         # Initialize tracker in overage state (net < 0)
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -3.0,
-            "total_consumption_kwh": 0.0,
-            "total_production_kwh": 3.0,
-            "pending_queue": [
-                {"sensor_id": "sensor_uid", "kwh": 2.0, "unit_price_diff": 0.10},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -3.0,
+                "total_consumption_kwh": 0.0,
+                "total_production_kwh": 3.0,
+                "pending_queue": [
+                    {"sensor_id": "sensor_uid", "kwh": 2.0, "unit_price_diff": 0.10},
+                ],
+            },
+        )
         tracker._sensors["sensor_uid"] = sensor
 
         # Consume 5 kWh - brings net from -3 to +2
@@ -194,12 +210,17 @@ class TestOverageCompensationTracker:
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
 
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -5.0,
-            "pending_queue": [
-                {"sensor_id": "sensor_uid", "kwh": 10.0, "unit_price_diff": 0.10},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -5.0,
+                "pending_queue": [
+                    {"sensor_id": "sensor_uid", "kwh": 10.0, "unit_price_diff": 0.10},
+                ],
+            },
+        )
         tracker._sensors["sensor_uid"] = sensor
 
         # Consume 3 kWh - brings net from -5 to -2
@@ -233,10 +254,15 @@ class TestOverageCompensationTracker:
         sensor.unique_id = "sensor_uid"
 
         # Start with positive net consumption
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 10.0,
-            "total_production_kwh": 0.0,
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 10.0,
+                "total_production_kwh": 0.0,
+            },
+        )
 
         # Produce 5 kWh with net at 10 - all compensated at normal rate
         result = await tracker.async_record_production(sensor, 5.0, 0.15, 0.05)
@@ -258,10 +284,15 @@ class TestOverageCompensationTracker:
         sensor.unique_id = "sensor_uid"
 
         # Start with negative net (already in overage)
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -2.0,
-            "total_production_kwh": 2.0,
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -2.0,
+                "total_production_kwh": 2.0,
+            },
+        )
 
         # Produce 3 kWh - all at overage rate
         result = await tracker.async_record_production(sensor, 3.0, 0.15, 0.05)
@@ -273,7 +304,9 @@ class TestOverageCompensationTracker:
         assert tracker._net_consumption_kwh == -5.0
         assert len(tracker._pending_queue) == 1
         assert tracker._pending_queue[0].kwh == 3.0
-        assert abs(tracker._pending_queue[0].unit_price_diff - 0.10) < 0.0001  # 0.15 - 0.05
+        assert (
+            abs(tracker._pending_queue[0].unit_price_diff - 0.10) < 0.0001
+        )  # 0.15 - 0.05
 
     async def test_async_record_production_mixed(self, hass: HomeAssistant):
         """Test production that's partly compensated and partly overage."""
@@ -284,9 +317,14 @@ class TestOverageCompensationTracker:
         sensor.unique_id = "sensor_uid"
 
         # Start with net of 3 kWh consumption
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 3.0,
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 3.0,
+            },
+        )
 
         # Produce 5 kWh - 3 compensated, 2 overage
         result = await tracker.async_record_production(sensor, 5.0, 0.15, 0.05)
@@ -307,9 +345,14 @@ class TestOverageCompensationTracker:
         sensor.unique_id = "sensor_uid"
 
         # Start with zero net
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 0.0,
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 0.0,
+            },
+        )
 
         # Produce with same normal and overage prices
         result = await tracker.async_record_production(sensor, 5.0, 0.10, 0.10)
@@ -323,14 +366,19 @@ class TestOverageCompensationTracker:
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
 
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "total_consumption_kwh": 10.0,
-            "total_production_kwh": 5.0,
-            "pending_queue": [
-                {"sensor_id": "s1", "kwh": 2.0, "unit_price_diff": 0.05},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "total_consumption_kwh": 10.0,
+                "total_production_kwh": 5.0,
+                "pending_queue": [
+                    {"sensor_id": "s1", "kwh": 2.0, "unit_price_diff": 0.05},
+                ],
+            },
+        )
 
         await tracker.async_reset_all()
 
@@ -382,13 +430,18 @@ class TestOverageCompensationTracker:
         sensor2 = MagicMock()
         sensor2.unique_id = "sensor2"
 
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -10.0,
-            "pending_queue": [
-                {"sensor_id": "sensor1", "kwh": 3.0, "unit_price_diff": 0.10},
-                {"sensor_id": "sensor2", "kwh": 5.0, "unit_price_diff": 0.08},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -10.0,
+                "pending_queue": [
+                    {"sensor_id": "sensor1", "kwh": 3.0, "unit_price_diff": 0.10},
+                    {"sensor_id": "sensor2", "kwh": 5.0, "unit_price_diff": 0.08},
+                ],
+            },
+        )
         tracker._sensors["sensor1"] = sensor1
         tracker._sensors["sensor2"] = sensor2
 
@@ -408,12 +461,21 @@ class TestOverageCompensationTracker:
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
 
-        tracker = OverageCompensationTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -5.0,
-            "pending_queue": [
-                {"sensor_id": "unknown_sensor", "kwh": 3.0, "unit_price_diff": 0.10},
-            ],
-        })
+        tracker = OverageCompensationTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -5.0,
+                "pending_queue": [
+                    {
+                        "sensor_id": "unknown_sensor",
+                        "kwh": 3.0,
+                        "unit_price_diff": 0.10,
+                    },
+                ],
+            },
+        )
 
         # Consume - should process queue but not return adjustment for unknown sensor
         result = await tracker.async_record_consumption(5.0)

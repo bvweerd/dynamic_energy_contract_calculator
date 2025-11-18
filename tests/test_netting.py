@@ -1,5 +1,5 @@
 """Tests for netting module."""
-import pytest
+
 from unittest.mock import MagicMock, AsyncMock, patch
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -123,11 +123,16 @@ class TestNettingTracker:
     async def test_properties(self, hass: HomeAssistant):
         """Test tracker properties."""
         store = MagicMock(spec=Store)
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "queue": [],
-            "balances": {"sensor1": 1.5, "sensor2": 2.5},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "queue": [],
+                "balances": {"sensor1": 1.5, "sensor2": 2.5},
+            },
+        )
 
         assert tracker.net_consumption_kwh == 5.0
         assert tracker.tax_balance_per_sensor == {"sensor1": 1.5, "sensor2": 2.5}
@@ -150,9 +155,14 @@ class TestNettingTracker:
         """Test registering a sensor with existing balance."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
-        tracker = NettingTracker(hass, "entry1", store, {
-            "balances": {"sensor_uid": 5.0},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "balances": {"sensor_uid": 5.0},
+            },
+        )
 
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
@@ -186,13 +196,18 @@ class TestNettingTracker:
         """Test resetting a sensor's balance."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
-        tracker = NettingTracker(hass, "entry1", store, {
-            "balances": {"sensor_uid": 5.0},
-            "queue": [
-                {"sensor_id": "sensor_uid", "value": 2.0},
-                {"sensor_id": "other", "value": 1.0},
-            ],
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "balances": {"sensor_uid": 5.0},
+                "queue": [
+                    {"sensor_id": "sensor_uid", "value": 2.0},
+                    {"sensor_id": "other", "value": 1.0},
+                ],
+            },
+        )
 
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
@@ -239,9 +254,14 @@ class TestNettingTracker:
         """Test recording consumption when net is negative."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -3.0,
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -3.0,
+            },
+        )
 
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
@@ -272,9 +292,14 @@ class TestNettingTracker:
         """Test recording production with no queue to credit."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+            },
+        )
 
         # Produce 3 kWh, brings net to 2
         result = await tracker.async_record_production(3.0, 0.10)
@@ -292,13 +317,18 @@ class TestNettingTracker:
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "queue": [
-                {"sensor_id": "sensor_uid", "value": 0.3},
-            ],
-            "balances": {"sensor_uid": 0.3},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "queue": [
+                    {"sensor_id": "sensor_uid", "value": 0.3},
+                ],
+                "balances": {"sensor_uid": 0.3},
+            },
+        )
         tracker._sensors["sensor_uid"] = sensor
 
         # Produce 3 kWh, brings net to 2
@@ -321,13 +351,18 @@ class TestNettingTracker:
         sensor = MagicMock()
         sensor.unique_id = "sensor_uid"
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "queue": [
-                {"sensor_id": "sensor_uid", "value": 1.0},
-            ],
-            "balances": {"sensor_uid": 1.0},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "queue": [
+                    {"sensor_id": "sensor_uid", "value": 1.0},
+                ],
+                "balances": {"sensor_uid": 1.0},
+            },
+        )
         tracker._sensors["sensor_uid"] = sensor
 
         # Produce 3 kWh, brings net to 2
@@ -342,7 +377,9 @@ class TestNettingTracker:
         assert len(tracker._queue) == 1
         assert tracker._queue[0].value == 0.7
 
-    async def test_async_record_production_multiple_queue_entries(self, hass: HomeAssistant):
+    async def test_async_record_production_multiple_queue_entries(
+        self, hass: HomeAssistant
+    ):
         """Test production that spans multiple queue entries."""
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
@@ -352,14 +389,19 @@ class TestNettingTracker:
         sensor2 = MagicMock()
         sensor2.unique_id = "sensor2"
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 10.0,
-            "queue": [
-                {"sensor_id": "sensor1", "value": 0.2},
-                {"sensor_id": "sensor2", "value": 0.5},
-            ],
-            "balances": {"sensor1": 0.2, "sensor2": 0.5},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 10.0,
+                "queue": [
+                    {"sensor_id": "sensor1", "value": 0.2},
+                    {"sensor_id": "sensor2", "value": 0.5},
+                ],
+                "balances": {"sensor1": 0.2, "sensor2": 0.5},
+            },
+        )
         tracker._sensors["sensor1"] = sensor1
         tracker._sensors["sensor2"] = sensor2
 
@@ -379,9 +421,14 @@ class TestNettingTracker:
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": -2.0,  # already in overage
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": -2.0,  # already in overage
+            },
+        )
 
         # Produce 3 kWh, stays in overage
         result = await tracker.async_record_production(3.0, 0.10)
@@ -397,13 +444,18 @@ class TestNettingTracker:
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "queue": [
-                {"sensor_id": "unknown", "value": 0.3},
-            ],
-            "balances": {"unknown": 0.3},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "queue": [
+                    {"sensor_id": "unknown", "value": 0.3},
+                ],
+                "balances": {"unknown": 0.3},
+            },
+        )
 
         result = await tracker.async_record_production(3.0, 0.10)
 
@@ -416,13 +468,18 @@ class TestNettingTracker:
         store = MagicMock(spec=Store)
         store.async_save = AsyncMock()
 
-        tracker = NettingTracker(hass, "entry1", store, {
-            "net_consumption_kwh": 5.0,
-            "queue": [
-                {"sensor_id": "s1", "value": 1.0},
-            ],
-            "balances": {"s1": 1.0, "s2": 2.0},
-        })
+        tracker = NettingTracker(
+            hass,
+            "entry1",
+            store,
+            {
+                "net_consumption_kwh": 5.0,
+                "queue": [
+                    {"sensor_id": "s1", "value": 1.0},
+                ],
+                "balances": {"s1": 1.0, "s2": 2.0},
+            },
+        )
 
         await tracker.async_reset_all()
 

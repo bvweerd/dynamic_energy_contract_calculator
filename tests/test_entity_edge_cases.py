@@ -211,6 +211,7 @@ async def test_base_utility_sensor_device_class_string(hass: HomeAssistant):
         visible=True,
     )
     from homeassistant.components.sensor import SensorDeviceClass
+
     assert sensor._attr_device_class == SensorDeviceClass.ENERGY
 
 
