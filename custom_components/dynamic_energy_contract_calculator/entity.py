@@ -327,12 +327,33 @@ class DynamicEnergySensor(BaseUtilitySensor):
                                 compensation
                             )
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                # Apply production bonus percentage (e.g., Zonneplan's 10% extra)
+                production_bonus_pct = self.price_settings.get(
+                    "production_bonus_percentage", 0.0
+                )
+                # Apply negative price bonus percentage (e.g., Frank Energie's 15% bonus)
+                negative_price_bonus_pct = self.price_settings.get(
+                    "negative_price_production_bonus_percentage", 0.0
+                )
+
+                # Calculate effective price with bonuses
+                effective_price = total_price
+
+                # Apply general production bonus (percentage on top of price)
+                if production_bonus_pct != 0.0:
+                    effective_price = total_price * (1 + production_bonus_pct / 100.0)
+
+                # Apply negative price bonus when price is negative
+                if total_price < 0 and negative_price_bonus_pct != 0.0:
+                    # For negative prices, the bonus makes it more negative (more profit)
+                    effective_price = total_price * (1 + negative_price_bonus_pct / 100.0)
+
                 if self.price_settings.get("production_price_include_vat", True):
-                    unit_price = (total_price - markup_production) * vat_factor
-                    base_price = total_price * vat_factor  # Price without markup
+                    unit_price = (effective_price - markup_production) * vat_factor
+                    base_price = effective_price * vat_factor  # Price without markup
                 else:
-                    unit_price = total_price - markup_production
-                    base_price = total_price  # Price without markup
+                    unit_price = effective_price - markup_production
+                    base_price = effective_price  # Price without markup
                 value = delta * unit_price
                 adjusted_value = value
 

@@ -44,6 +44,8 @@ PRICE_SETTINGS_KEYS = [
     "overage_compensation_enabled",
     "overage_compensation_rate",
     "surplus_vat_enabled",
+    "production_bonus_percentage",
+    "negative_price_production_bonus_percentage",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -63,6 +65,8 @@ DEFAULT_PRICE_SETTINGS = {
     "overage_compensation_enabled": False,
     "overage_compensation_rate": 0.0,
     "surplus_vat_enabled": False,
+    "production_bonus_percentage": 0.0,
+    "negative_price_production_bonus_percentage": 0.0,
 }
 
 NETTING_STORAGE_VERSION = 1
