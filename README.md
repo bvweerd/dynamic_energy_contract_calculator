@@ -137,7 +137,8 @@ the base price from your price sensor before VAT is calculated.
 | Setting | Description |
 | ------- | ----------- |
 | `per_unit_supplier_electricity_markup` | Additional cost per kWh for electricity consumption. |
-| `per_unit_supplier_electricity_production_markup` | Additional revenue per kWh for produced electricity. |
+| `per_unit_supplier_electricity_production_markup` | Cost deducted per kWh for produced electricity. |
+| `per_unit_supplier_electricity_production_surcharge` | Surcharge added before bonus calculation (e.g., Zonneplan's €0.02). Default: `0`. |
 | `per_unit_government_electricity_tax` | Government tax per kWh for consumption. |
 | `per_day_grid_operator_electricity_connection_fee` | Daily electricity network fees. |
 | `per_day_supplier_electricity_standing_charge` | Fixed daily cost charged by your supplier. |
@@ -152,6 +153,10 @@ the base price from your price sensor before VAT is calculated.
 | `overage_compensation_enabled` | Limit production markup to break-even; use only spot price for surplus. Default: `false`. |
 | `overage_compensation_rate` | Additional reduction from spot price for surplus energy per kWh. |
 | `surplus_vat_enabled` | Apply VAT to surplus energy compensation. Default: `false`. |
+| `production_bonus_percentage` | Percentage bonus on all production (e.g., 10 for Zonneplan's 10% extra). Default: `0`. |
+| `production_bonus_start_hour` | Start hour for production bonus (0-23). Default: `0`. |
+| `production_bonus_end_hour` | End hour for production bonus (1-24). Default: `24`. |
+| `negative_price_production_bonus_percentage` | Percentage bonus when spot price is negative (e.g., 15 for Frank Energie). Default: `0`. |
 
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
@@ -310,26 +315,23 @@ suppliers. All values are **excluding VAT** (the integration adds VAT automatica
 
 ### Supplier comparison table
 
-| Supplier | Consumption markup | Production markup | Overage enabled | Overage rate | Surplus VAT | Notes |
-| -------- | ------------------ | ----------------- | --------------- | ------------ | ----------- | ----- |
-| **ANWB Energie** | €0.040 | €0.040 | Yes | €0.040 | No | No extra fees for surplus |
-| **Tibber** | €0.021 | €0.021 | Yes | €0.021 | No | End-of-year tax settlement for surplus |
-| **Zonneplan** | €0.025 | -€0.037 | No | - | - | Pays €0.02 bonus + 10% extra on production |
-| **Frank Energie** | €0.010 | €0.000 | No | - | - | 15% bonus at negative prices |
-| **easyEnergy** | €0.000 | €0.000 | Yes | €0.000 | No | Pure spot price, no markups |
-| **Budget Energie** | €0.017 | €0.017 | Yes | €0.017 | No | No markup for surplus, only spot price |
-| **Vandebron** | €0.030 | €0.030 | Yes | €0.060 | No | Deducts markup twice for surplus |
-| **NextEnergy** | €0.022 | €0.022 | Yes | €0.044 | No | Deducts markup for surplus |
+| Supplier | Cons markup | Prod surcharge | Prod bonus % | Overage | Notes |
+| -------- | ----------- | -------------- | ------------ | ------- | ----- |
+| **ANWB Energie** | €0.040 | €0.000 | 0 | €0.040 | Markup deducted for surplus |
+| **Tibber** | €0.021 | €0.000 | 0 | €0.021 | End-of-year tax settlement |
+| **Zonneplan** | €0.025 | €0.020 | 10 | - | 10% bonus on (price + €0.02) |
+| **Frank Energie** | €0.010 | €0.000 | 15 | - | 15% bonus on all production |
+| **easyEnergy** | €0.000 | €0.000 | 0 | €0.000 | Pure spot price |
+| **Budget Energie** | €0.017 | €0.000 | 0 | €0.017 | No markup for surplus |
+| **Vandebron** | €0.030 | €0.000 | 0 | €0.060 | Double markup for surplus |
+| **NextEnergy** | €0.022 | €0.000 | 0 | €0.044 | Deducts markup for surplus |
 
 ### Understanding the columns
 
-- **Consumption markup**: Added to spot price for consumption (`per_unit_supplier_electricity_markup`)
-- **Production markup**: Subtracted from spot price for production (`per_unit_supplier_electricity_production_markup`)
-  - Positive = supplier keeps this amount
-  - Negative = supplier pays you extra (bonus)
-- **Overage enabled**: Whether to use different rates for surplus (`overage_compensation_enabled`)
-- **Overage rate**: Additional reduction for surplus beyond break-even (`overage_compensation_rate`)
-- **Surplus VAT**: Whether supplier pays VAT on surplus (`surplus_vat_enabled`)
+- **Cons markup**: Added to spot price for consumption (`per_unit_supplier_electricity_markup`)
+- **Prod surcharge**: Added to spot price before bonus calculation (`per_unit_supplier_electricity_production_surcharge`)
+- **Prod bonus %**: Percentage bonus on (price + surcharge) (`production_bonus_percentage`)
+- **Overage**: Rate reduction for surplus beyond break-even (`overage_compensation_rate`), `-` means overage disabled
 
 ### Detailed supplier configurations
 
@@ -358,23 +360,32 @@ surplus production, only the EPEX spot price applies.
 #### Zonneplan
 ```
 per_unit_supplier_electricity_markup: 0.025
-per_unit_supplier_electricity_production_markup: -0.037
+per_unit_supplier_electricity_production_markup: 0.000
+per_unit_supplier_electricity_production_surcharge: 0.020
+production_bonus_percentage: 10.0
+production_bonus_start_hour: 8
+production_bonus_end_hour: 19
 overage_compensation_enabled: false
 surplus_vat_enabled: false
 ```
-Zonneplan pays a "Zonnebonus" of €0.02/kWh plus 10% extra on all production.
-The negative production markup represents this bonus. Even for surplus, you
-receive the markup (bonus).
+Zonneplan pays a "Zonnebonus" of 10% on top of (market price + €0.02). The formula is:
+`(spot_price + 0.02) * 1.10 * VAT`. The bonus only applies:
+- During daytime hours (08:00-19:00) - configured via `production_bonus_start_hour` and `production_bonus_end_hour`
+- When prices are positive (automatically handled)
 
 #### Frank Energie
 ```
 per_unit_supplier_electricity_markup: 0.010
 per_unit_supplier_electricity_production_markup: 0.000
+production_bonus_percentage: 15.0
 overage_compensation_enabled: false
 surplus_vat_enabled: false
 ```
 Frank Energie charges a low markup and doesn't deduct anything for production.
-They offer 15% bonus at negative prices (not modeled in this integration).
+They offer a 15% bonus on all production through the `production_bonus_percentage`
+setting. Combined with their "Slim Terugleveren" service that automatically turns
+off your inverter during negative prices, you only feed back during positive
+prices and receive 15% extra for that energy.
 
 #### easyEnergy
 ```

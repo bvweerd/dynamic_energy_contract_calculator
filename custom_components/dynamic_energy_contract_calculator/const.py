@@ -30,6 +30,7 @@ CONF_CONFIGS = "configurations"
 PRICE_SETTINGS_KEYS = [
     "per_unit_supplier_electricity_markup",
     "per_unit_supplier_electricity_production_markup",
+    "per_unit_supplier_electricity_production_surcharge",
     "per_unit_government_electricity_tax",
     "per_unit_supplier_gas_markup",
     "per_unit_government_gas_tax",
@@ -44,11 +45,16 @@ PRICE_SETTINGS_KEYS = [
     "overage_compensation_enabled",
     "overage_compensation_rate",
     "surplus_vat_enabled",
+    "production_bonus_percentage",
+    "production_bonus_start_hour",
+    "production_bonus_end_hour",
+    "negative_price_production_bonus_percentage",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
     "per_unit_supplier_electricity_markup": 0.02,
     "per_unit_supplier_electricity_production_markup": 0.0,
+    "per_unit_supplier_electricity_production_surcharge": 0.0,
     "per_unit_government_electricity_tax": 0.1088,
     "per_unit_supplier_gas_markup": 0.0,
     "per_unit_government_gas_tax": 0.0,
@@ -63,6 +69,10 @@ DEFAULT_PRICE_SETTINGS = {
     "overage_compensation_enabled": False,
     "overage_compensation_rate": 0.0,
     "surplus_vat_enabled": False,
+    "production_bonus_percentage": 0.0,
+    "production_bonus_start_hour": 0,
+    "production_bonus_end_hour": 24,
+    "negative_price_production_bonus_percentage": 0.0,
 }
 
 NETTING_STORAGE_VERSION = 1

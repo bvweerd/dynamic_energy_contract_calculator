@@ -1,0 +1,177 @@
+name: PR Test Results
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  generate-results:
+    name: "Generate Test Results Table"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Generate test results
+        id: generate
+        run: |
+          # Run the standalone generator script
+          python generate_supplier_results.py > results.md
+
+          # Also add time window results from the test file
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+
+          # Import supplier configs and helper functions
+          SUPPLIER_CONFIGS = {
+              'Zonneplan': {
+                  'per_unit_supplier_electricity_markup': 0.025,
+                  'per_unit_supplier_electricity_production_markup': 0.0,
+                  'per_unit_supplier_electricity_production_surcharge': 0.02,
+                  'per_unit_government_electricity_tax': 0.1017,
+                  'vat_percentage': 21.0,
+                  'production_price_include_vat': True,
+                  'production_bonus_percentage': 10.0,
+                  'production_bonus_start_hour': 8,
+                  'production_bonus_end_hour': 19,
+              },
+              'Frank Energie': {
+                  'per_unit_supplier_electricity_markup': 0.010,
+                  'per_unit_supplier_electricity_production_markup': 0.0,
+                  'per_unit_government_electricity_tax': 0.1017,
+                  'vat_percentage': 21.0,
+                  'production_price_include_vat': True,
+                  'production_bonus_percentage': 15.0,
+                  'production_bonus_start_hour': 0,
+                  'production_bonus_end_hour': 24,
+              },
+          }
+
+          TIME_WINDOW_SCENARIOS = {
+              'inside_window': 12,
+              'outside_window_morning': 6,
+              'outside_window_evening': 20,
+          }
+
+          def calculate_expected_production_profit(kwh, spot_price, config, current_hour=12):
+              markup = config.get('per_unit_supplier_electricity_production_markup', 0.0)
+              surcharge = config.get('per_unit_supplier_electricity_production_surcharge', 0.0)
+              vat = config.get('vat_percentage', 21.0) / 100.0 + 1.0
+              include_vat = config.get('production_price_include_vat', True)
+              production_bonus_pct = config.get('production_bonus_percentage', 0.0)
+              bonus_start_hour = int(config.get('production_bonus_start_hour', 0))
+              bonus_end_hour = int(config.get('production_bonus_end_hour', 24))
+
+              in_bonus_window = bonus_start_hour <= current_hour < bonus_end_hour
+              base_for_bonus = spot_price + surcharge
+
+              if production_bonus_pct != 0.0 and in_bonus_window and spot_price >= 0:
+                  effective_price = base_for_bonus * (1 + production_bonus_pct / 100.0)
+              else:
+                  effective_price = base_for_bonus
+
+              if include_vat:
+                  unit_price = (effective_price - markup) * vat
+              else:
+                  unit_price = effective_price - markup
+
+              if unit_price >= 0:
+                  return kwh * unit_price
+              else:
+                  return 0.0
+
+          def calculate_expected_production_cost(kwh, spot_price, config, current_hour=12):
+              markup = config.get('per_unit_supplier_electricity_production_markup', 0.0)
+              surcharge = config.get('per_unit_supplier_electricity_production_surcharge', 0.0)
+              vat = config.get('vat_percentage', 21.0) / 100.0 + 1.0
+              include_vat = config.get('production_price_include_vat', True)
+
+              base_for_bonus = spot_price + surcharge
+              effective_price = base_for_bonus
+
+              if include_vat:
+                  unit_price = (effective_price - markup) * vat
+              else:
+                  unit_price = effective_price - markup
+
+              if unit_price < 0:
+                  return kwh * abs(unit_price)
+              else:
+                  return 0.0
+
+          # Generate time window results
+          print('\\n\\n## Time Window Test Results (Production Bonus)\\n')
+          print('| Supplier | Time Scenario | Hour | Price | Spot | Profit | Cost | Bonus Applies |')
+          print('|----------|---------------|------|-------|------|--------|------|---------------|')
+
+          for supplier_name in ['Zonneplan', 'Frank Energie']:
+              config = SUPPLIER_CONFIGS[supplier_name]
+              for time_name, current_hour in TIME_WINDOW_SCENARIOS.items():
+                  for price_name, spot_price in [('positive_high', 0.20), ('positive_low', 0.05), ('negative', -0.10)]:
+                      kwh = 1.0
+                      if spot_price >= 0:
+                          profit = calculate_expected_production_profit(kwh, spot_price, config, current_hour)
+                          cost = 0.0
+                      else:
+                          profit = 0.0
+                          cost = calculate_expected_production_cost(kwh, spot_price, config, current_hour)
+
+                      bonus_start = int(config.get('production_bonus_start_hour', 0))
+                      bonus_end = int(config.get('production_bonus_end_hour', 24))
+                      in_window = bonus_start <= current_hour < bonus_end
+                      bonus_applies = 'Yes' if in_window and spot_price >= 0 else 'No'
+
+                      print(f'| {supplier_name} | {time_name} | {current_hour:02d}:00 | {price_name} | {spot_price:.2f} | {profit:.4f} | {cost:.4f} | {bonus_applies} |')
+          " >> results.md
+
+      - name: Post results to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = fs.readFileSync('results.md', 'utf8');
+
+            // Find existing comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('## Supplier Configuration Test Results')
+            );
+
+            const body = `## Supplier Configuration Test Results\n\n<details>\n<summary>Click to expand test results</summary>\n\n${results}\n\n</details>`;
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
