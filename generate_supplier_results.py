@@ -115,6 +115,7 @@ SUPPLIER_CONFIGS = {
     },
 }
 
+
 def calculate_expected_consumption_cost(kwh, spot_price, config):
     """Calculate expected consumption cost based on supplier config."""
     markup = config.get("per_unit_supplier_electricity_markup", 0.0)
@@ -202,19 +203,17 @@ def calculate_expected_production_cost(kwh, spot_price, config):
 def generate_supplier_overview_table():
     """Generate a consolidated overview table of all supplier configurations."""
     print("## Supplier Configuration Overview\n")
-    print(
-        "| Supplier | Markup | Fixed/month | Bonus | Bonus Hours | Overage Rate |"
-    )
-    print(
-        "|----------|--------|-------------|-------|-------------|--------------|"
-    )
+    print("| Supplier | Markup | Fixed/month | Bonus | Bonus Hours | Overage Rate |")
+    print("|----------|--------|-------------|-------|-------------|--------------|")
 
     for supplier_name, config in SUPPLIER_CONFIGS.items():
         markup = config.get("per_unit_supplier_electricity_markup", 0.0)
         daily_fixed = config.get("per_day_supplier_electricity_standing_charge", 0.0)
         monthly_fixed = daily_fixed * 30.44 * 1.21  # Including VAT
         bonus_pct = config.get("production_bonus_percentage", 0.0)
-        surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
+        surcharge = config.get(
+            "per_unit_supplier_electricity_production_surcharge", 0.0
+        )
         overage_rate = config.get("overage_compensation_rate", 0.0)
         overage_enabled = config.get("overage_compensation_enabled", False)
 
@@ -272,12 +271,8 @@ def generate_yearly_cost_comparison_table():
     print("- **Spot price assumed non-negative** (bonuses apply)")
     print("")
 
-    print(
-        "| Supplier | Fixed/yr | Cons Cost | Prod Profit | Est. Yearly Cost |"
-    )
-    print(
-        "|----------|----------|-----------|-------------|------------------:|"
-    )
+    print("| Supplier | Fixed/yr | Cons Cost | Prod Profit | Est. Yearly Cost |")
+    print("|----------|----------|-----------|-------------|------------------:|")
 
     results = []
     for supplier_name, config in SUPPLIER_CONFIGS.items():
