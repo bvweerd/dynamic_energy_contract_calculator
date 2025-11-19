@@ -115,23 +115,6 @@ SUPPLIER_CONFIGS = {
     },
 }
 
-# Test scenarios
-ENERGY_SCENARIOS = {
-    "more_consumption": {"consumption_kwh": 10.0, "production_kwh": 5.0},
-    "more_production": {"consumption_kwh": 5.0, "production_kwh": 10.0},
-    "equal": {"consumption_kwh": 10.0, "production_kwh": 10.0},
-}
-
-# Price scenarios (spot prices in EUR/kWh)
-PRICE_SCENARIOS = {
-    "positive_high": 0.20,
-    "positive_low": 0.05,
-    "zero": 0.00,
-    "negative_low": -0.05,
-    "negative_high": -0.20,
-}
-
-
 def calculate_expected_consumption_cost(kwh, spot_price, config):
     """Calculate expected consumption cost based on supplier config."""
     markup = config.get("per_unit_supplier_electricity_markup", 0.0)
@@ -216,8 +199,58 @@ def calculate_expected_production_cost(kwh, spot_price, config):
         return 0.0
 
 
-def generate_yearly_summary_table():
-    """Generate a yearly summary table showing estimated costs for each supplier."""
+def generate_supplier_overview_table():
+    """Generate a consolidated overview table of all supplier configurations."""
+    print("## Supplier Configuration Overview\n")
+    print(
+        "| Supplier | Markup | Fixed/month | Bonus | Bonus Hours | Overage Rate |"
+    )
+    print(
+        "|----------|--------|-------------|-------|-------------|--------------|"
+    )
+
+    for supplier_name, config in SUPPLIER_CONFIGS.items():
+        markup = config.get("per_unit_supplier_electricity_markup", 0.0)
+        daily_fixed = config.get("per_day_supplier_electricity_standing_charge", 0.0)
+        monthly_fixed = daily_fixed * 30.44 * 1.21  # Including VAT
+        bonus_pct = config.get("production_bonus_percentage", 0.0)
+        surcharge = config.get("per_unit_supplier_electricity_production_surcharge", 0.0)
+        overage_rate = config.get("overage_compensation_rate", 0.0)
+        overage_enabled = config.get("overage_compensation_enabled", False)
+
+        # Format bonus info
+        if bonus_pct > 0:
+            if supplier_name == "Zonneplan":
+                bonus_str = f"{bonus_pct:.0f}% (+€{surcharge:.2f})"
+            else:
+                bonus_str = f"{bonus_pct:.0f}%"
+        else:
+            bonus_str = "-"
+
+        # Format bonus hours
+        if supplier_name == "Zonneplan":
+            hours_str = "08:00-19:00"
+        elif supplier_name == "Frank Energie":
+            hours_str = "All hours"
+        else:
+            hours_str = "-"
+
+        # Format overage rate
+        if overage_enabled and overage_rate > 0:
+            overage_str = f"€{overage_rate:.3f}"
+        else:
+            overage_str = "-"
+
+        print(
+            f"| {supplier_name} | €{markup:.4f} | €{monthly_fixed:.2f} | "
+            f"{bonus_str} | {hours_str} | {overage_str} |"
+        )
+
+    print("")
+
+
+def generate_yearly_cost_comparison_table():
+    """Generate a yearly cost comparison table showing estimated costs for each supplier."""
     # Yearly assumptions
     yearly_consumption_kwh = 3500.0  # Average Dutch household consumption
     yearly_production_kwh = 3000.0  # Typical solar panel production
@@ -226,7 +259,7 @@ def generate_yearly_summary_table():
     # Assume 90% of production happens during Zonneplan bonus hours (08:00-19:00)
     zonneplan_bonus_production_ratio = 0.90
 
-    print("## Yearly Supplier Cost Comparison\n")
+    print("## Yearly Cost Comparison\n")
     print("### Assumptions\n")
     print(f"- **Yearly consumption**: {yearly_consumption_kwh:.0f} kWh")
     print(f"- **Yearly production**: {yearly_production_kwh:.0f} kWh")
@@ -234,31 +267,16 @@ def generate_yearly_summary_table():
     print("- **Government electricity tax**: €0.1017/kWh")
     print("- **VAT**: 21%")
     print(
-        f"- **Production during Zonneplan bonus hours (08-19)**: {zonneplan_bonus_production_ratio * 100:.0f}%"
+        f"- **Production during bonus hours (08-19)**: {zonneplan_bonus_production_ratio * 100:.0f}%"
     )
     print("- **Spot price assumed non-negative** (bonuses apply)")
-    print("- **Fixed costs include VAT**")
     print("")
 
-    print("### Special Conditions by Supplier\n")
-    print("| Supplier | Bonus | Bonus Hours | Surcharge | Overage Rate | Notes |")
-    print("|----------|-------|-------------|-----------|--------------|-------|")
-    print("| ANWB Energie | - | - | - | €0.040 | Standard overage compensation |")
-    print("| Tibber | - | - | - | €0.021 | Lower overage rate |")
-    print("| Zonneplan | 10% | 08:00-19:00 | €0.02 | - | Bonus only during daylight |")
-    print("| Frank Energie | 15% | All hours | - | - | Best bonus, all day |")
-    print("| easyEnergy | - | - | - | €0.000 | No markup, no extras |")
-    print("| Budget Energie | - | - | - | €0.017 | Balanced rates |")
-    print("| Vandebron | - | - | - | €0.060 | High overage deduction |")
-    print("| NextEnergy | - | - | - | €0.044 | High overage deduction |")
-    print("")
-
-    print("### Estimated Yearly Costs by Supplier\n")
     print(
-        "| Supplier | Fixed/yr | Markup | Yearly Cons Cost | Yearly Prod Profit | Est. Yearly Cost |"
+        "| Supplier | Fixed/yr | Cons Cost | Prod Profit | Est. Yearly Cost |"
     )
     print(
-        "|----------|----------|--------|------------------|--------------------|-----------------:|"
+        "|----------|----------|-----------|-------------|------------------:|"
     )
 
     results = []
@@ -306,13 +324,10 @@ def generate_yearly_summary_table():
             yearly_fixed_cost + consumption_cost - production_profit + production_cost
         )
 
-        markup = config.get("per_unit_supplier_electricity_markup", 0.0)
-
         results.append(
             (
                 supplier_name,
                 yearly_fixed_cost,
-                markup,
                 consumption_cost,
                 production_profit,
                 net_cost,
@@ -320,137 +335,23 @@ def generate_yearly_summary_table():
         )
 
     # Sort by net cost (lowest first)
-    results.sort(key=lambda x: x[5])
+    results.sort(key=lambda x: x[4])
 
     for (
         supplier_name,
         yearly_fixed_cost,
-        markup,
         consumption_cost,
         production_profit,
         net_cost,
     ) in results:
         print(
-            f"| {supplier_name} | €{yearly_fixed_cost:.2f} | €{markup:.4f} | "
+            f"| {supplier_name} | €{yearly_fixed_cost:.2f} | "
             f"€{consumption_cost:.2f} | €{production_profit:.2f} | €{net_cost:.2f} |"
         )
 
     print("\n*Table sorted by estimated yearly cost (lowest first)*\n")
-    print("---\n")
-
-
-def generate_summary_table():
-    """Generate a summary table showing key metrics for each supplier."""
-    print("## Supplier Configuration Test Results\n")
-    print(
-        "This table shows calculated costs and profits for each supplier configuration"
-    )
-    print("with 10 kWh consumption and 10 kWh production at various spot prices.\n")
-
-    print("### Summary by Supplier and Price\n")
-    print("| Supplier | Spot Price | Cons Cost | Prod Profit | Prod Cost | Net Cost |")
-    print("|----------|------------|-----------|-------------|-----------|----------|")
-
-    for supplier_name, config in SUPPLIER_CONFIGS.items():
-        for price_name, spot_price in PRICE_SCENARIOS.items():
-            consumption_kwh = 10.0
-            production_kwh = 10.0
-
-            consumption_cost = calculate_expected_consumption_cost(
-                consumption_kwh, spot_price, config
-            )
-            production_profit = calculate_expected_production_profit(
-                production_kwh, spot_price, config
-            )
-            production_cost = calculate_expected_production_cost(
-                production_kwh, spot_price, config
-            )
-            net_cost = consumption_cost - production_profit + production_cost
-
-            print(
-                f"| {supplier_name} | {spot_price:+.2f} | "
-                f"{consumption_cost:.2f} | {production_profit:.2f} | "
-                f"{production_cost:.2f} | {net_cost:.2f} |"
-            )
-
-
-def generate_detailed_table():
-    """Generate detailed results for all scenarios."""
-    print("\n### Detailed Test Matrix\n")
-    print(
-        "Test scenarios: 10/5 kWh (more consumption), 5/10 kWh (more production), 10/10 kWh (equal)\n"
-    )
-
-    # Group by scenario for better readability
-    for scenario_name, scenario in ENERGY_SCENARIOS.items():
-        consumption_kwh = scenario["consumption_kwh"]
-        production_kwh = scenario["production_kwh"]
-
-        print(
-            f"\n#### Scenario: {scenario_name} ({consumption_kwh:.0f} kWh consumption, {production_kwh:.0f} kWh production)\n"
-        )
-        print("| Supplier | Spot | Cons Cost | Prod Profit | Prod Cost | Net Cost |")
-        print("|----------|------|-----------|-------------|-----------|----------|")
-
-        for supplier_name, config in SUPPLIER_CONFIGS.items():
-            for price_name, spot_price in PRICE_SCENARIOS.items():
-                consumption_cost = calculate_expected_consumption_cost(
-                    consumption_kwh, spot_price, config
-                )
-                production_profit = calculate_expected_production_profit(
-                    production_kwh, spot_price, config
-                )
-                production_cost = calculate_expected_production_cost(
-                    production_kwh, spot_price, config
-                )
-                net_cost = consumption_cost - production_profit + production_cost
-
-                print(
-                    f"| {supplier_name} | {spot_price:+.2f} | "
-                    f"{consumption_cost:.2f} | {production_profit:.2f} | "
-                    f"{production_cost:.2f} | {net_cost:.2f} |"
-                )
-
-
-def generate_special_features_table():
-    """Show how special features (bonuses) affect pricing."""
-    print("\n### Special Features Comparison\n")
-    print(
-        "This section highlights the unique features of Zonneplan and Frank Energie.\n"
-    )
-
-    print("#### Zonneplan: (price + €0.02) * 10% Bonus\n")
-    print("| Spot Price | Without Bonus | With Zonneplan | Difference |")
-    print("|------------|---------------|----------------|------------|")
-
-    for spot_price in [0.20, 0.10, 0.05, -0.05, -0.10]:
-        # Without bonus (like easyEnergy)
-        without = spot_price * 1.21 * 10  # 10 kWh
-        # With surcharge + 10% bonus: (price + 0.02) * 1.10 * VAT
-        with_bonus = (spot_price + 0.02) * 1.10 * 1.21 * 10
-        diff = with_bonus - without
-
-        print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} |")
-
-    print("\n#### Frank Energie: 15% Production Bonus\n")
-    print(
-        "Note: With 'Slim Terugleveren', inverter is turned off during negative prices.\n"
-    )
-    print("| Spot Price | Without Bonus | With 15% Bonus | Difference |")
-    print("|------------|---------------|----------------|------------|")
-
-    for spot_price in [0.20, 0.10, 0.05, -0.05, -0.10]:
-        # Without bonus (like easyEnergy)
-        without = spot_price * 1.21 * 10  # 10 kWh
-        # With 15% bonus on all production
-        with_bonus = spot_price * 1.15 * 1.21 * 10
-        diff = with_bonus - without
-
-        print(f"| {spot_price:+.2f} | {without:.2f} | {with_bonus:.2f} | {diff:+.2f} |")
 
 
 if __name__ == "__main__":
-    generate_yearly_summary_table()
-    generate_summary_table()
-    generate_detailed_table()
-    generate_special_features_table()
+    generate_supplier_overview_table()
+    generate_yearly_cost_comparison_table()
