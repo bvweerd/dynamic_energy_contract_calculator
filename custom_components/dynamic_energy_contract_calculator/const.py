@@ -70,19 +70,22 @@ DEFAULT_PRICE_SETTINGS = {
 }
 
 # Preset configurations for common suppliers
+# Zonneplan 2025: All values are EXCLUSIVE of VAT (21%)
+# The integration will add VAT on top of these values
+# Contract values (inclusive VAT) converted: value_incl_vat / 1.21
 PRESET_ZONNEPLAN_2025 = {
-    "per_unit_supplier_electricity_markup": 0.02,
-    "per_unit_supplier_electricity_production_markup": 0.02,
-    "per_unit_government_electricity_tax": 0.13165,
+    "per_unit_supplier_electricity_markup": 0.01653,  # €0.02 incl. VAT / 1.21
+    "per_unit_supplier_electricity_production_markup": 0.01653,  # €0.02 incl. VAT / 1.21
+    "per_unit_government_electricity_tax": 0.10880,  # €0.13165 incl. VAT / 1.21
     "per_unit_supplier_gas_markup": 0.0,
     "per_unit_government_gas_tax": 0.0,
-    "per_day_grid_operator_electricity_connection_fee": 1.30,
-    "per_day_supplier_electricity_standing_charge": 0.21,
-    "per_day_government_electricity_tax_rebate": 1.73,
+    "per_day_grid_operator_electricity_connection_fee": 1.07438,  # €1.30 incl. VAT / 1.21 (€39.48/month)
+    "per_day_supplier_electricity_standing_charge": 0.17355,  # €0.21 incl. VAT / 1.21 (€6.25/month)
+    "per_day_government_electricity_tax_rebate": 1.42975,  # €1.73 incl. VAT / 1.21 (€52.62/month)
     "per_day_grid_operator_gas_connection_fee": 0.0,
     "per_day_supplier_gas_standing_charge": 0.0,
-    "vat_percentage": 0.0,
-    "production_price_include_vat": False,
+    "vat_percentage": 21.0,  # VAT will be calculated by integration
+    "production_price_include_vat": True,  # Production compensation already includes VAT per Dutch law
     "netting_enabled": True,
     "solar_bonus_enabled": True,
     "solar_bonus_percentage": 10.0,
