@@ -59,5 +59,26 @@ DEFAULT_PRICE_SETTINGS = {
     "netting_enabled": False,
 }
 
+# Preset configurations for common suppliers
+PRESET_ZONNEPLAN_2025 = {
+    "per_unit_supplier_electricity_markup": 0.02,
+    "per_unit_supplier_electricity_production_markup": 0.02,
+    "per_unit_government_electricity_tax": 0.13165,
+    "per_unit_supplier_gas_markup": 0.0,
+    "per_unit_government_gas_tax": 0.0,
+    "per_day_grid_operator_electricity_connection_fee": 1.30,
+    "per_day_supplier_electricity_standing_charge": 0.21,
+    "per_day_government_electricity_tax_rebate": 1.73,
+    "per_day_grid_operator_gas_connection_fee": 0.0,
+    "per_day_supplier_gas_standing_charge": 0.0,
+    "vat_percentage": 0.0,
+    "production_price_include_vat": False,
+    "netting_enabled": True,
+}
+
+SUPPLIER_PRESETS = {
+    "zonneplan_2025": PRESET_ZONNEPLAN_2025,
+}
+
 NETTING_STORAGE_VERSION = 1
 NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"

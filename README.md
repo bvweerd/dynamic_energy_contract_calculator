@@ -283,6 +283,55 @@ on top of the base price reported by your price sensor.
 
 The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2025 with gas consumption <500m3 per year and electricity <10.000kWh per year.
 
+## Supplier Presets
+
+The integration includes preset configurations for common energy suppliers. These presets can be manually applied or used as a reference.
+
+### Zonneplan 2025
+
+For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configuration available in `const.py`. This preset includes:
+
+**Consumption costs:**
+- Inkoopvergoeding: €0.02 per kWh
+- Energiebelasting: €0.13165 per kWh
+- Vaste leveringskosten: €6.25 per maand (€0.21 per dag)
+- Netbeheerkosten: €39.48 per maand (€1.30 per dag)
+- Vermindering energiebelasting: -€52.62 per maand (-€1.73 per dag)
+
+**Production revenue:**
+- Vaste terugleververgoeding: €0.02 per kWh
+- Salderingsregeling: enabled (until 2027)
+
+**Important notes:**
+- All prices are **inclusive of VAT** (VAT percentage is set to 0%)
+- Use an EPEX Day Ahead price sensor for dynamic hourly pricing
+- The 10% solar bonus (zonnebonus) is **not automatically calculated** by this integration and must be tracked separately
+- Powerplay feed-in has separate compensation rules not covered by this preset
+
+**Manual configuration:**
+
+To apply these settings manually during setup or via the options flow:
+
+```yaml
+per_unit_supplier_electricity_markup: 0.02
+per_unit_supplier_electricity_production_markup: 0.02
+per_unit_government_electricity_tax: 0.13165
+per_day_grid_operator_electricity_connection_fee: 1.30
+per_day_supplier_electricity_standing_charge: 0.21
+per_day_government_electricity_tax_rebate: 1.73
+vat_percentage: 0.0
+production_price_include_vat: false
+netting_enabled: true
+```
+
+**Price sensor setup:**
+
+For Zonneplan you'll need an EPEX Day Ahead price sensor. You can use integrations like:
+- [EPEX Spot](https://github.com/TheFes/epex-spot-sensor) custom integration
+- [Nordpool](https://github.com/custom-components/nordpool) (includes EPEX data)
+
+More information about Zonneplan tariffs: [www.zonneplan.nl/energie](https://www.zonneplan.nl/energie)
+
 ### 4. Resulting sensors
 
 ![Example production sensor](assets/readme/example_production_sensor.png)
