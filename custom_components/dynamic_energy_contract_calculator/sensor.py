@@ -542,10 +542,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 price = (base_price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                # For production: markup is the return compensation (added, not subtracted)
                 if self.price_settings.get("production_price_include_vat", True):
-                    price = (base_price - markup_production) * vat_factor
+                    price = (base_price + markup_production) * vat_factor
                 else:
-                    price = base_price - markup_production
+                    price = base_price + markup_production
             else:
                 return None
         return round(price, 8)
