@@ -166,11 +166,15 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             # Check if a preset was selected
             selected_preset = user_input.get("supplier_preset", "none")
             if selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Load preset values
-                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
-                # Remove the preset key as it's not a price setting
-                if "supplier_preset" in user_input:
-                    del user_input["supplier_preset"]
+                # Merge preset values with current price_settings, then with user_input
+                # This ensures preset values are applied but user can still override
+                preset_values = SUPPLIER_PRESETS[selected_preset].copy()
+                preset_values.update(user_input)
+                user_input = preset_values
+
+            # Remove the preset key as it's not a price setting
+            if "supplier_preset" in user_input:
+                del user_input["supplier_preset"]
 
             self.price_settings = dict(user_input)
             return await self.async_step_user()
@@ -384,11 +388,15 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             # Check if a preset was selected
             selected_preset = user_input.get("supplier_preset", "none")
             if selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Load preset values
-                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
-                # Remove the preset key as it's not a price setting
-                if "supplier_preset" in user_input:
-                    del user_input["supplier_preset"]
+                # Merge preset values with current price_settings, then with user_input
+                # This ensures preset values are applied but user can still override
+                preset_values = SUPPLIER_PRESETS[selected_preset].copy()
+                preset_values.update(user_input)
+                user_input = preset_values
+
+            # Remove the preset key as it's not a price setting
+            if "supplier_preset" in user_input:
+                del user_input["supplier_preset"]
 
             self.price_settings = dict(user_input)
             return await self.async_step_user()
