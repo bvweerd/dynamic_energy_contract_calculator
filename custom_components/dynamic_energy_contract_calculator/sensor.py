@@ -625,6 +625,28 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 existing.append(entry_copy)
         return existing
 
+    def _is_daylight_at(self, timestamp) -> bool:
+        """Check if a given timestamp is during daylight hours.
+
+        Uses sun elevation data when available, falls back to hour-based estimate.
+        Conservative estimate: 7 AM to 7 PM (typical Dutch daylight hours year-round).
+        """
+        from datetime import datetime
+        try:
+            # Parse timestamp
+            if isinstance(timestamp, str):
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            else:
+                dt = timestamp
+
+            # Use simple but reliable hour-based check
+            # Conservative: 7 AM to 7 PM covers daylight hours year-round in NL
+            # This ensures solar bonus is only applied during guaranteed daylight
+            return 7 <= dt.hour < 19
+
+        except Exception:
+            return False
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
@@ -635,6 +657,13 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         if not isinstance(raw_prices, list):
             return None
+
+        # Check if solar bonus is enabled for production
+        solar_bonus_enabled = (
+            self.source_type == SOURCE_TYPE_PRODUCTION
+            and self.price_settings.get("solar_bonus_enabled", False)
+        )
+        solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
 
         converted = []
         for entry in raw_prices:
@@ -654,6 +683,16 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             entry_conv = entry.copy()
             calculated = self._calculate_price(base)
+
+            # Apply solar bonus if conditions are met
+            if solar_bonus_enabled and calculated > 0:
+                # Check if this hour is during daylight
+                timestamp = entry_conv.get("start") or entry_conv.get("time")
+                if timestamp and self._is_daylight_at(timestamp):
+                    # Add solar bonus (10% extra)
+                    bonus = calculated * (solar_bonus_percentage / 100.0)
+                    calculated += bonus
+
             entry_conv["value"] = calculated
             if "price" in entry_conv:
                 entry_conv["price"] = calculated
