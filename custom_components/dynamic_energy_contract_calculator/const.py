@@ -41,6 +41,9 @@ PRICE_SETTINGS_KEYS = [
     "vat_percentage",
     "production_price_include_vat",
     "netting_enabled",
+    "solar_bonus_enabled",
+    "solar_bonus_percentage",
+    "solar_bonus_annual_kwh_limit",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -57,6 +60,9 @@ DEFAULT_PRICE_SETTINGS = {
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
     "netting_enabled": False,
+    "solar_bonus_enabled": False,
+    "solar_bonus_percentage": 10.0,
+    "solar_bonus_annual_kwh_limit": 7500.0,
 }
 
 # Preset configurations for common suppliers
@@ -74,6 +80,9 @@ PRESET_ZONNEPLAN_2025 = {
     "vat_percentage": 0.0,
     "production_price_include_vat": False,
     "netting_enabled": True,
+    "solar_bonus_enabled": True,
+    "solar_bonus_percentage": 10.0,
+    "solar_bonus_annual_kwh_limit": 7500.0,
 }
 
 SUPPLIER_PRESETS = {
@@ -82,3 +91,6 @@ SUPPLIER_PRESETS = {
 
 NETTING_STORAGE_VERSION = 1
 NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"
+
+SOLAR_BONUS_STORAGE_VERSION = 1
+SOLAR_BONUS_STORAGE_KEY_PREFIX = f"{DOMAIN}_solar_bonus"

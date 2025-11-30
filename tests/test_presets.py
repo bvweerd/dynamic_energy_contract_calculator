@@ -32,6 +32,11 @@ def test_zonneplan_preset_structure():
     # Test netting is enabled
     assert preset["netting_enabled"] is True
 
+    # Test solar bonus settings
+    assert preset["solar_bonus_enabled"] is True
+    assert preset["solar_bonus_percentage"] == 10.0
+    assert preset["solar_bonus_annual_kwh_limit"] == 7500.0
+
     # Test gas settings (not used for Zonneplan electricity)
     assert preset["per_unit_supplier_gas_markup"] == 0.0
     assert preset["per_unit_government_gas_tax"] == 0.0
