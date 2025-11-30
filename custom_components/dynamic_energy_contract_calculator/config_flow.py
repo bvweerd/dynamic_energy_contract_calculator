@@ -25,6 +25,7 @@ from .const import (
 
 STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
+STEP_LOAD_PRESET = "load_preset"
 
 
 async def _get_energy_sensors(
@@ -82,6 +83,8 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
+            elif choice == "load_preset":
+                return await self.async_step_load_preset()
             elif choice == "price_settings":
                 return await self.async_step_price_settings()
 
@@ -92,6 +95,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
     def _schema_user(self) -> vol.Schema:
         options = [{"value": t, "label": t.title()} for t in SOURCE_TYPES]
+        options.append({"value": "load_preset", "label": "Load Supplier Preset"})
         options.append({"value": "price_settings", "label": "Price Settings"})
         options.append({"value": "finish", "label": "Finish"})
 
@@ -161,21 +165,37 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
+    async def async_step_load_preset(self, user_input=None) -> ConfigFlowResult:
+        """Handle loading a supplier preset."""
+        if user_input is not None:
+            selected_preset = user_input.get("supplier_preset")
+            if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
+                # Load preset values into price_settings
+                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
+            return await self.async_step_user()
+
+        # Create preset options
+        preset_options = [{"value": "none", "label": "None (keep current settings)"}]
+        for preset_key in SUPPLIER_PRESETS:
+            preset_options.append({
+                "value": preset_key,
+                "label": preset_key.replace("_", " ").title()
+            })
+
+        return self.async_show_form(
+            step_id=STEP_LOAD_PRESET,
+            data_schema=vol.Schema({
+                vol.Required("supplier_preset", default="none"): selector({
+                    "select": {
+                        "options": preset_options,
+                        "mode": "dropdown",
+                    }
+                })
+            }),
+        )
+
     async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
         if user_input is not None:
-            # Check if a preset was selected
-            selected_preset = user_input.get("supplier_preset", "none")
-            if selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Merge preset values with current price_settings, then with user_input
-                # This ensures preset values are applied but user can still override
-                preset_values = SUPPLIER_PRESETS[selected_preset].copy()
-                preset_values.update(user_input)
-                user_input = preset_values
-
-            # Remove the preset key as it's not a price setting
-            if "supplier_preset" in user_input:
-                del user_input["supplier_preset"]
-
             self.price_settings = dict(user_input)
             return await self.async_step_user()
 
@@ -194,23 +214,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         if isinstance(current_price_sensor_gas, str):
             current_price_sensor_gas = [current_price_sensor_gas]
 
-        # Create preset options
-        preset_options = [{"value": "none", "label": "None (manual configuration)"}]
-        for preset_key in SUPPLIER_PRESETS:
-            preset_options.append({
-                "value": preset_key,
-                "label": preset_key.replace("_", " ").title()
-            })
-
         schema_fields: dict[Any, Any] = {
-            vol.Optional("supplier_preset", default="none"): selector(
-                {
-                    "select": {
-                        "options": preset_options,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
                     "select": {
@@ -304,6 +308,8 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
+            elif choice == "load_preset":
+                return await self.async_step_load_preset()
             elif choice == "price_settings":
                 return await self.async_step_price_settings()
             self.source_type = choice
@@ -313,6 +319,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
 
     def _schema_user(self) -> vol.Schema:
         options = [{"value": t, "label": t.title()} for t in SOURCE_TYPES]
+        options.append({"value": "load_preset", "label": "Load Supplier Preset"})
         options.append({"value": "price_settings", "label": "Price Settings"})
         options.append({"value": "finish", "label": "Finish"})
 
@@ -383,21 +390,37 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
+    async def async_step_load_preset(self, user_input=None):
+        """Handle loading a supplier preset."""
+        if user_input is not None:
+            selected_preset = user_input.get("supplier_preset")
+            if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
+                # Load preset values into price_settings
+                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
+            return await self.async_step_user()
+
+        # Create preset options
+        preset_options = [{"value": "none", "label": "None (keep current settings)"}]
+        for preset_key in SUPPLIER_PRESETS:
+            preset_options.append({
+                "value": preset_key,
+                "label": preset_key.replace("_", " ").title()
+            })
+
+        return self.async_show_form(
+            step_id=STEP_LOAD_PRESET,
+            data_schema=vol.Schema({
+                vol.Required("supplier_preset", default="none"): selector({
+                    "select": {
+                        "options": preset_options,
+                        "mode": "dropdown",
+                    }
+                })
+            }),
+        )
+
     async def async_step_price_settings(self, user_input=None):
         if user_input is not None:
-            # Check if a preset was selected
-            selected_preset = user_input.get("supplier_preset", "none")
-            if selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Merge preset values with current price_settings, then with user_input
-                # This ensures preset values are applied but user can still override
-                preset_values = SUPPLIER_PRESETS[selected_preset].copy()
-                preset_values.update(user_input)
-                user_input = preset_values
-
-            # Remove the preset key as it's not a price setting
-            if "supplier_preset" in user_input:
-                del user_input["supplier_preset"]
-
             self.price_settings = dict(user_input)
             return await self.async_step_user()
 
@@ -416,23 +439,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         if isinstance(current_price_sensor_gas, str):
             current_price_sensor_gas = [current_price_sensor_gas]
 
-        # Create preset options
-        preset_options = [{"value": "none", "label": "None (manual configuration)"}]
-        for preset_key in SUPPLIER_PRESETS:
-            preset_options.append({
-                "value": preset_key,
-                "label": preset_key.replace("_", " ").title()
-            })
-
         schema_fields = {
-            vol.Optional("supplier_preset", default="none"): selector(
-                {
-                    "select": {
-                        "options": preset_options,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
             vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
                 {
                     "select": {
