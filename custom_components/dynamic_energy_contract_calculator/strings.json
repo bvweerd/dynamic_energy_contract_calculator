@@ -3,8 +3,9 @@
     "step": {
       "user": {
         "title": "Dynamic Energy Contract Calculator",
+        "description": "Configure energy sources and price settings. Add sensors, load presets, or configure prices.",
         "data": {
-          "source_type": "Source type"
+          "source_type": "Select option: Electricity/Gas sensors, Load Preset, Price Settings, or Finish"
         }
       },
       "select_sources": {
@@ -15,6 +16,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
+        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2025' to load Zonneplan contract terms, or 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -53,8 +55,9 @@
     "step": {
       "user": {
         "title": "Dynamic Energy Contract Calculator",
+        "description": "Update energy sources and price settings. Add/remove sensors, reload presets, or modify prices.",
         "data": {
-          "source_type": "Source type"
+          "source_type": "Select option: Electricity/Gas sensors, Load Preset, Price Settings, or Finish"
         }
       },
       "select_sources": {
@@ -65,6 +68,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
+        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2025' to load Zonneplan contract terms, or 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }

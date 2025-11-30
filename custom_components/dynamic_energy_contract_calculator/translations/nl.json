@@ -3,8 +3,9 @@
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
+        "description": "Configureer energiebronnen en prijsinstellingen. Voeg sensoren toe, laad een leverancier preset, of configureer prijzen.",
         "data": {
-          "source_type": "Type bron"
+          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "select_sources": {
@@ -15,6 +16,7 @@
       },
       "load_preset": {
         "title": "Leverancier Preset Laden",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
         "data": {
           "supplier_preset": "Leverancier preset"
         }
@@ -53,8 +55,9 @@
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
+        "description": "Wijzig energiebronnen en prijsinstellingen. Voeg sensoren toe/verwijder, herlaad presets, of pas prijzen aan.",
         "data": {
-          "source_type": "Type bron"
+          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "select_sources": {
@@ -65,6 +68,7 @@
       },
       "load_preset": {
         "title": "Leverancier Preset Laden",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
         "data": {
           "supplier_preset": "Leverancier preset"
         }
