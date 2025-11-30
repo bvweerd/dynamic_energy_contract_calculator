@@ -255,11 +255,14 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
 
         all_prices = [
             state.entity_id
-            for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "monetary"
-            or state.attributes.get("unit_of_measurement") == "€/m³"
-            or state.attributes.get("unit_of_measurement") == "€/kWh"
-            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+            for state in self.hass.states.async_all()
+            if (state.domain in ["sensor", "input_number"])
+            and (
+                state.attributes.get("device_class") == "monetary"
+                or state.attributes.get("unit_of_measurement") == "€/m³"
+                or state.attributes.get("unit_of_measurement") == "€/kWh"
+                or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+            )
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
         if isinstance(current_price_sensor, str):
@@ -511,11 +514,14 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
 
         all_prices = [
             state.entity_id
-            for state in self.hass.states.async_all("sensor")
-            if state.attributes.get("device_class") == "monetary"
-            or state.attributes.get("unit_of_measurement") == "€/m³"
-            or state.attributes.get("unit_of_measurement") == "€/kWh"
-            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+            for state in self.hass.states.async_all()
+            if (state.domain in ["sensor", "input_number"])
+            and (
+                state.attributes.get("device_class") == "monetary"
+                or state.attributes.get("unit_of_measurement") == "€/m³"
+                or state.attributes.get("unit_of_measurement") == "€/kWh"
+                or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+            )
         ]
         current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
         if isinstance(current_price_sensor, str):
