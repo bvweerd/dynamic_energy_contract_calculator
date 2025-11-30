@@ -73,10 +73,17 @@ When enabled, the integration automatically calculates solar bonus (zonnebonus) 
 - Applies a configurable bonus percentage (default 10%)
 - Respects annual kWh limits (default 7,500 kWh)
 - Only applies when production compensation is positive
-- Automatically resets each calendar year
+- Automatically resets on contract anniversary (when contract start date is configured)
+- Falls back to calendar year reset if no contract start date is set
 
-The `sensor.solar_bonus_total` shows the total bonus earned this year and has attributes for:
-- `year_production_kwh`: Total eligible production this year
+**Contract Anniversary Reset:**
+- Configure `contract_start_date` (format: YYYY-MM-DD) to track limits from your contract start date
+- Enable `reset_on_contract_anniversary` to automatically reset all meters on the anniversary
+- The annual kWh limit is calculated from the contract start date, not the calendar year
+- Example: Contract starting 2024-07-01 will track limits from July 1 to June 30 each year
+
+The `sensor.solar_bonus_total` shows the total bonus earned this contract year and has attributes for:
+- `year_production_kwh`: Total eligible production this contract year
 - `total_bonus_euro`: Total bonus amount earned
 
 ## Services
@@ -164,6 +171,8 @@ the base price from your price sensor before VAT is calculated.
 | `solar_bonus_enabled` | Enable solar bonus calculation for production. |
 | `solar_bonus_percentage` | Bonus percentage applied to production (default 10%). |
 | `solar_bonus_annual_kwh_limit` | Annual kWh limit for solar bonus (default 7500). |
+| `contract_start_date` | Contract start date in YYYY-MM-DD format for anniversary tracking. |
+| `reset_on_contract_anniversary` | Automatically reset all meters on contract anniversary. |
 
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
@@ -322,9 +331,14 @@ For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configur
 **Solar bonus (zonnebonus):**
 - **Automatically calculated** when enabled (10% of base price + production markup)
 - Only applied between sunrise and sunset (uses Home Assistant sun integration)
-- Limited to first 7,500 kWh per calendar year
+- Limited to first 7,500 kWh per contract year
 - Only when (base_price + production_markup) is positive
-- Automatically resets each calendar year
+- Automatically resets on contract anniversary when configured
+
+**Contract management:**
+- Set `contract_start_date` to your actual contract start date for accurate year tracking
+- Enable `reset_on_contract_anniversary` to automatically reset all meters yearly
+- Leave `contract_start_date` empty to use calendar year tracking
 
 **Important notes:**
 - All prices are **inclusive of VAT** (VAT percentage is set to 0%)
@@ -348,6 +362,8 @@ netting_enabled: true
 solar_bonus_enabled: true
 solar_bonus_percentage: 10.0
 solar_bonus_annual_kwh_limit: 7500.0
+contract_start_date: "2024-01-01"  # Set your actual contract start date
+reset_on_contract_anniversary: true
 ```
 
 **Price sensor setup:**

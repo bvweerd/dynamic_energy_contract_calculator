@@ -44,6 +44,8 @@ PRICE_SETTINGS_KEYS = [
     "solar_bonus_enabled",
     "solar_bonus_percentage",
     "solar_bonus_annual_kwh_limit",
+    "contract_start_date",
+    "reset_on_contract_anniversary",
 ]
 
 DEFAULT_PRICE_SETTINGS = {
@@ -63,6 +65,8 @@ DEFAULT_PRICE_SETTINGS = {
     "solar_bonus_enabled": False,
     "solar_bonus_percentage": 10.0,
     "solar_bonus_annual_kwh_limit": 7500.0,
+    "contract_start_date": "",
+    "reset_on_contract_anniversary": False,
 }
 
 # Preset configurations for common suppliers
@@ -83,6 +87,8 @@ PRESET_ZONNEPLAN_2025 = {
     "solar_bonus_enabled": True,
     "solar_bonus_percentage": 10.0,
     "solar_bonus_annual_kwh_limit": 7500.0,
+    "contract_start_date": "",
+    "reset_on_contract_anniversary": True,
 }
 
 SUPPLIER_PRESETS = {

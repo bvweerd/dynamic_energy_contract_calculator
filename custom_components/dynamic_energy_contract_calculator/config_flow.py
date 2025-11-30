@@ -208,6 +208,8 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             current = self.price_settings.get(key, default)
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
+            elif isinstance(default, str):
+                schema_fields[vol.Optional(key, default=current)] = str
             else:
                 schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 
@@ -393,6 +395,8 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             current = self.price_settings.get(key, default)
             if isinstance(default, bool):
                 schema_fields[vol.Required(key, default=current)] = bool
+            elif isinstance(default, str):
+                schema_fields[vol.Optional(key, default=current)] = str
             else:
                 schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
 

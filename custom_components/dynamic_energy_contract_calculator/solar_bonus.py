@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, date
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
@@ -26,21 +26,27 @@ class SolarBonusTracker:
         entry_id: str,
         store: Store,
         initial_state: dict | None,
+        contract_start_date: str | None = None,
     ) -> None:
         self._lock = asyncio.Lock()
         self._store = store
         self._entry_id = entry_id
         self._hass = hass
+        self._contract_start_date = self._parse_date(contract_start_date)
 
-        # Track production eligible for bonus this year
-        self._current_year: int = datetime.now().year
+        # Track production eligible for bonus this contract year
+        self._current_contract_year_start: date | None = None
         self._year_production_kwh: float = 0.0
         self._total_bonus_euro: float = 0.0
 
+        # Calculate current contract year start
+        if self._contract_start_date:
+            self._current_contract_year_start = self._get_current_contract_year_start()
+
         if initial_state:
-            stored_year = initial_state.get("year", self._current_year)
-            # Reset if new year
-            if stored_year == self._current_year:
+            stored_year_start = self._parse_date(initial_state.get("contract_year_start"))
+            # Reset if new contract year
+            if stored_year_start == self._current_contract_year_start:
                 self._year_production_kwh = float(
                     initial_state.get("year_production_kwh", 0.0)
                 )
@@ -48,9 +54,42 @@ class SolarBonusTracker:
                     initial_state.get("total_bonus_euro", 0.0)
                 )
 
+    def _parse_date(self, date_str: str | None) -> date | None:
+        """Parse date string to date object."""
+        if not date_str:
+            return None
+        try:
+            return datetime.fromisoformat(date_str).date()
+        except (ValueError, AttributeError):
+            return None
+
+    def _get_current_contract_year_start(self) -> date | None:
+        """Get the start date of the current contract year."""
+        if not self._contract_start_date:
+            return None
+
+        today = datetime.now().date()
+        current_year = today.year
+
+        # Try this year's anniversary
+        try:
+            this_year_anniversary = self._contract_start_date.replace(year=current_year)
+        except ValueError:
+            # Handle February 29 edge case
+            this_year_anniversary = self._contract_start_date.replace(year=current_year, day=28)
+
+        if today >= this_year_anniversary:
+            return this_year_anniversary
+        else:
+            # We're before this year's anniversary, so use last year's
+            try:
+                return self._contract_start_date.replace(year=current_year - 1)
+            except ValueError:
+                return self._contract_start_date.replace(year=current_year - 1, day=28)
+
     @classmethod
     async def async_create(
-        cls, hass: HomeAssistant, entry_id: str
+        cls, hass: HomeAssistant, entry_id: str, contract_start_date: str | None = None
     ) -> SolarBonusTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{SOLAR_BONUS_STORAGE_KEY_PREFIX}_{entry_id}"
@@ -61,7 +100,7 @@ class SolarBonusTracker:
             private=True,
         )
         initial = await store.async_load() or {}
-        return cls(hass, entry_id, store, initial)
+        return cls(hass, entry_id, store, initial, contract_start_date)
 
     @property
     def year_production_kwh(self) -> float:
@@ -108,12 +147,13 @@ class SolarBonusTracker:
             Tuple of (bonus amount in euro, eligible kWh for this delta)
         """
         async with self._lock:
-            # Check if new year - reset if needed
-            current_year = datetime.now().year
-            if current_year != self._current_year:
-                self._current_year = current_year
-                self._year_production_kwh = 0.0
-                self._total_bonus_euro = 0.0
+            # Check if new contract year - reset if needed
+            if self._contract_start_date:
+                current_contract_year_start = self._get_current_contract_year_start()
+                if current_contract_year_start != self._current_contract_year_start:
+                    self._current_contract_year_start = current_contract_year_start
+                    self._year_production_kwh = 0.0
+                    self._total_bonus_euro = 0.0
 
             # Check conditions for bonus eligibility
             if delta_kwh <= 0:
@@ -152,14 +192,39 @@ class SolarBonusTracker:
         async with self._lock:
             self._year_production_kwh = 0.0
             self._total_bonus_euro = 0.0
-            self._current_year = datetime.now().year
+            if self._contract_start_date:
+                self._current_contract_year_start = self._get_current_contract_year_start()
             await self._async_save_state()
 
     async def _async_save_state(self) -> None:
         """Persist current state to storage."""
         state = {
-            "year": self._current_year,
+            "contract_year_start": self._current_contract_year_start.isoformat() if self._current_contract_year_start else None,
             "year_production_kwh": self._year_production_kwh,
             "total_bonus_euro": self._total_bonus_euro,
         }
         await self._store.async_save(state)
+
+    def get_next_anniversary_date(self) -> date | None:
+        """Get the next contract anniversary date."""
+        if not self._contract_start_date:
+            return None
+
+        today = datetime.now().date()
+        current_year = today.year
+
+        # Try this year's anniversary
+        try:
+            this_year_anniversary = self._contract_start_date.replace(year=current_year)
+        except ValueError:
+            # Handle February 29 edge case
+            this_year_anniversary = self._contract_start_date.replace(year=current_year, day=28)
+
+        if today >= this_year_anniversary:
+            # Return next year's anniversary
+            try:
+                return self._contract_start_date.replace(year=current_year + 1)
+            except ValueError:
+                return self._contract_start_date.replace(year=current_year + 1, day=28)
+        else:
+            return this_year_anniversary
