@@ -35,7 +35,7 @@
           "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
           "solar_bonus_percentage": "Solar bonus percentage",
           "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
-          "contract_start_date": "Contract start date (YYYY-MM-DD)",
+          "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
@@ -80,7 +80,7 @@
           "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
           "solar_bonus_percentage": "Solar bonus percentage",
           "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
-          "contract_start_date": "Contract start date (YYYY-MM-DD)",
+          "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
