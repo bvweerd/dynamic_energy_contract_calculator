@@ -154,7 +154,9 @@ class SolarBonusStatusSensor(BaseUtilitySensor):
         """Update sensor with current solar bonus stats."""
         self._attr_native_value = self._solar_bonus_tracker.total_bonus_euro
         self._attr_extra_state_attributes = {
-            "year_production_kwh": round(self._solar_bonus_tracker.year_production_kwh, 2),
+            "year_production_kwh": round(
+                self._solar_bonus_tracker.year_production_kwh, 2
+            ),
             "total_bonus_euro": round(self._solar_bonus_tracker.total_bonus_euro, 2),
         }
         self.async_write_ha_state()
@@ -633,10 +635,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         Conservative estimate: 7 AM to 7 PM (typical Dutch daylight hours year-round).
         """
         from datetime import datetime
+
         try:
             # Parse timestamp
             if isinstance(timestamp, str):
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             else:
                 dt = timestamp
 
@@ -685,7 +688,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 price_value = float(entry[value_key])
                 # Parse timestamp and round to hour
                 if isinstance(timestamp, str):
-                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                 else:
                     dt = timestamp
 
@@ -712,6 +715,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             hour_start = datetime(year, month, day, hour)
             # End time is one hour later
             from datetime import timedelta
+
             hour_end = hour_start + timedelta(hours=1)
 
             if template_entry.get("start"):
@@ -1066,6 +1070,7 @@ async def async_setup_entry(
     # Schedule contract anniversary reset if enabled
     reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
     if reset_on_anniversary and solar_bonus_tracker:
+
         async def check_contract_anniversary(now):
             """Check if today is the contract anniversary and reset if needed."""
             next_anniversary = solar_bonus_tracker.get_next_anniversary_date()
@@ -1078,4 +1083,6 @@ async def async_setup_entry(
                     await entity.async_reset()
 
         # Run at midnight every day
-        async_track_time_change(hass, check_contract_anniversary, hour=0, minute=0, second=0)
+        async_track_time_change(
+            hass, check_contract_anniversary, hour=0, minute=0, second=0
+        )
