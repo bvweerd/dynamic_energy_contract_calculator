@@ -762,8 +762,11 @@ async def async_setup_entry(
     if solar_bonus_enabled:
         solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
         sb_tracker = solar_bonus_map.get(entry.entry_id)
+        contract_start_date = price_settings.get("contract_start_date", "")
         if sb_tracker is None:
-            sb_tracker = await SolarBonusTracker.async_create(hass, entry.entry_id)
+            sb_tracker = await SolarBonusTracker.async_create(
+                hass, entry.entry_id, contract_start_date
+            )
             solar_bonus_map[entry.entry_id] = sb_tracker
         solar_bonus_tracker = sb_tracker
 
@@ -932,3 +935,20 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
     hass.data[DOMAIN]["entities"] = {ent.entity_id: ent for ent in entities}
+
+    # Schedule contract anniversary reset if enabled
+    reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
+    if reset_on_anniversary and solar_bonus_tracker:
+        async def check_contract_anniversary(now):
+            """Check if today is the contract anniversary and reset if needed."""
+            next_anniversary = solar_bonus_tracker.get_next_anniversary_date()
+            if next_anniversary and now.date() == next_anniversary:
+                _LOGGER.info("Contract anniversary reached, resetting all meters")
+                # Reset solar bonus tracker
+                await solar_bonus_tracker.async_reset_year()
+                # Reset all utility entities
+                for entity in UTILITY_ENTITIES:
+                    await entity.async_reset()
+
+        # Run at midnight every day
+        async_track_time_change(hass, check_contract_anniversary, hour=0, minute=0, second=0)
