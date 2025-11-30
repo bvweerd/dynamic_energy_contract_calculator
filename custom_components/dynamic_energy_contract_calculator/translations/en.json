@@ -13,10 +13,15 @@
           "sources": "Energy sensors"
         }
       },
+      "load_preset": {
+        "title": "Load Supplier Preset",
+        "data": {
+          "supplier_preset": "Supplier preset"
+        }
+      },
       "price_settings": {
         "title": "Price settings",
         "data": {
-          "supplier_preset": "Supplier preset",
           "price_sensor": "Electricity price sensor",
           "price_sensor_gas": "Gas price sensor",
           "per_unit_supplier_electricity_markup": "Electricity markup per kWh",
@@ -58,10 +63,15 @@
           "sources": "Energy sensors"
         }
       },
+      "load_preset": {
+        "title": "Load Supplier Preset",
+        "data": {
+          "supplier_preset": "Supplier preset"
+        }
+      },
       "price_settings": {
         "title": "Price settings",
         "data": {
-          "supplier_preset": "Supplier preset",
           "price_sensor": "Electricity price sensor",
           "price_sensor_gas": "Gas price sensor",
           "per_unit_supplier_electricity_markup": "Electricity markup per kWh",

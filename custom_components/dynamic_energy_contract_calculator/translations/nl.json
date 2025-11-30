@@ -13,10 +13,15 @@
           "sources": "Energiesensoren"
         }
       },
+      "load_preset": {
+        "title": "Leverancier Preset Laden",
+        "data": {
+          "supplier_preset": "Leverancier preset"
+        }
+      },
       "price_settings": {
         "title": "Prijsinstellingen",
         "data": {
-          "supplier_preset": "Leverancier preset",
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
           "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
@@ -58,10 +63,15 @@
           "sources": "Energiesensoren"
         }
       },
+      "load_preset": {
+        "title": "Leverancier Preset Laden",
+        "data": {
+          "supplier_preset": "Leverancier preset"
+        }
+      },
       "price_settings": {
         "title": "Prijsinstellingen",
         "data": {
-          "supplier_preset": "Leverancier preset",
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
           "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
