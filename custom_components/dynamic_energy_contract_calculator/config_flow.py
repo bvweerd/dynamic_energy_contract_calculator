@@ -260,6 +260,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             and (
                 state.attributes.get("device_class") == "monetary"
                 or state.attributes.get("unit_of_measurement") == "€/m³"
+                or state.attributes.get("unit_of_measurement") == "EUR/m³"
                 or state.attributes.get("unit_of_measurement") == "€/kWh"
                 or state.attributes.get("unit_of_measurement") == "EUR/kWh"
             )
@@ -519,6 +520,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             and (
                 state.attributes.get("device_class") == "monetary"
                 or state.attributes.get("unit_of_measurement") == "€/m³"
+                or state.attributes.get("unit_of_measurement") == "EUR/m³"
                 or state.attributes.get("unit_of_measurement") == "€/kWh"
                 or state.attributes.get("unit_of_measurement") == "EUR/kWh"
             )
