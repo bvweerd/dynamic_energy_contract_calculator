@@ -30,6 +30,7 @@ from .const import (
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
+from .solar_bonus import SolarBonusTracker
 
 import logging
 
@@ -123,6 +124,40 @@ class NettingStatusMixin:
         self._attr_extra_state_attributes = _build_netting_attributes(
             self._netting_tracker
         )
+
+
+class SolarBonusStatusSensor(BaseUtilitySensor):
+    """Sensor showing solar bonus statistics."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        device: DeviceInfo,
+        solar_bonus_tracker: SolarBonusTracker,
+    ):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:solar-power",
+            visible=True,
+            device=device,
+            translation_key="solar_bonus_total",
+        )
+        self.hass = hass
+        self._solar_bonus_tracker = solar_bonus_tracker
+
+    async def async_update(self):
+        """Update sensor with current solar bonus stats."""
+        self._attr_native_value = self._solar_bonus_tracker.total_bonus_euro
+        self._attr_extra_state_attributes = {
+            "year_production_kwh": round(self._solar_bonus_tracker.year_production_kwh, 2),
+            "total_bonus_euro": round(self._solar_bonus_tracker.total_bonus_euro, 2),
+        }
+        self.async_write_ha_state()
 
 
 class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
@@ -722,6 +757,16 @@ async def async_setup_entry(
             netting_map[entry.entry_id] = tracker
         netting_tracker = tracker
 
+    solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
+    solar_bonus_tracker: SolarBonusTracker | None = None
+    if solar_bonus_enabled:
+        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        sb_tracker = solar_bonus_map.get(entry.entry_id)
+        if sb_tracker is None:
+            sb_tracker = await SolarBonusTracker.async_create(hass, entry.entry_id)
+            solar_bonus_map[entry.entry_id] = sb_tracker
+        solar_bonus_tracker = sb_tracker
+
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
@@ -757,6 +802,11 @@ async def async_setup_entry(
                     and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
                     else None
                 )
+                solar_tracker_arg = (
+                    solar_bonus_tracker
+                    if solar_bonus_tracker and source_type == SOURCE_TYPE_PRODUCTION
+                    else None
+                )
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -772,6 +822,7 @@ async def async_setup_entry(
                         visible=mode_def["visible"],
                         device=device_info,
                         netting_tracker=tracker_arg,
+                        solar_bonus_tracker=solar_tracker_arg,
                     )
                 )
 
@@ -826,6 +877,17 @@ async def async_setup_entry(
         netting_tracker=netting_tracker,
     )
     entities.append(energy_cost)
+
+    # Add solar bonus sensor if enabled
+    if solar_bonus_tracker is not None:
+        solar_bonus_sensor = SolarBonusStatusSensor(
+            hass=hass,
+            name="Solar Bonus (Total)",
+            unique_id=f"{DOMAIN}_solar_bonus_total",
+            device=device_info,
+            solar_bonus_tracker=solar_bonus_tracker,
+        )
+        entities.append(solar_bonus_sensor)
 
     if price_sensor:
         entities.append(

@@ -62,8 +62,22 @@ In addition a few summary sensors are created:
 - `sensor.current_consumption_price`
 - `sensor.current_production_price`
 - `sensor.current_gas_consumption_price`
+- `sensor.solar_bonus_total` (when solar bonus is enabled)
 
 These sensors can be used in the [Energy dashboard](https://www.home-assistant.io/docs/energy/) or in your own automations.
+
+### Solar Bonus Feature
+
+When enabled, the integration automatically calculates solar bonus (zonnebonus) for electricity production. This feature:
+- Tracks production during daylight hours (sunrise to sunset)
+- Applies a configurable bonus percentage (default 10%)
+- Respects annual kWh limits (default 7,500 kWh)
+- Only applies when production compensation is positive
+- Automatically resets each calendar year
+
+The `sensor.solar_bonus_total` shows the total bonus earned this year and has attributes for:
+- `year_production_kwh`: Total eligible production this year
+- `total_bonus_euro`: Total bonus amount earned
 
 ## Services
 
@@ -147,6 +161,9 @@ the base price from your price sensor before VAT is calculated.
 | `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
 | `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
+| `solar_bonus_enabled` | Enable solar bonus calculation for production. |
+| `solar_bonus_percentage` | Bonus percentage applied to production (default 10%). |
+| `solar_bonus_annual_kwh_limit` | Annual kWh limit for solar bonus (default 7500). |
 
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
@@ -302,10 +319,16 @@ For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configur
 - Vaste terugleververgoeding: €0.02 per kWh
 - Salderingsregeling: enabled (until 2027)
 
+**Solar bonus (zonnebonus):**
+- **Automatically calculated** when enabled (10% of base price + production markup)
+- Only applied between sunrise and sunset (uses Home Assistant sun integration)
+- Limited to first 7,500 kWh per calendar year
+- Only when (base_price + production_markup) is positive
+- Automatically resets each calendar year
+
 **Important notes:**
 - All prices are **inclusive of VAT** (VAT percentage is set to 0%)
 - Use an EPEX Day Ahead price sensor for dynamic hourly pricing
-- The 10% solar bonus (zonnebonus) is **not automatically calculated** by this integration and must be tracked separately
 - Powerplay feed-in has separate compensation rules not covered by this preset
 
 **Manual configuration:**
@@ -322,6 +345,9 @@ per_day_government_electricity_tax_rebate: 1.73
 vat_percentage: 0.0
 production_price_include_vat: false
 netting_enabled: true
+solar_bonus_enabled: true
+solar_bonus_percentage: 10.0
+solar_bonus_annual_kwh_limit: 7500.0
 ```
 
 **Price sensor setup:**

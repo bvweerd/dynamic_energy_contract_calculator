@@ -30,7 +30,10 @@
           "per_unit_supplier_gas_markup": "Gas markup per m³",
           "per_unit_government_gas_tax": "Gas tax per m³",
           "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
-          "per_day_supplier_gas_standing_charge": "Gas standing charge per day"
+          "per_day_supplier_gas_standing_charge": "Gas standing charge per day",
+          "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
+          "solar_bonus_percentage": "Solar bonus percentage",
+          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit"
         }
       }
     },
@@ -69,7 +72,10 @@
           "per_unit_supplier_gas_markup": "Gas markup per m³",
           "per_unit_government_gas_tax": "Gas tax per m³",
           "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
-          "per_day_supplier_gas_standing_charge": "Gas standing charge per day"
+          "per_day_supplier_gas_standing_charge": "Gas standing charge per day",
+          "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
+          "solar_bonus_percentage": "Solar bonus percentage",
+          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit"
         }
       }
     },
