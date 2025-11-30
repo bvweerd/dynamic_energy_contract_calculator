@@ -317,15 +317,22 @@ The integration includes preset configurations for common energy suppliers. Thes
 
 For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configuration available in `const.py`. This preset includes:
 
-**Consumption costs:**
+**Consumption costs (from Zonneplan contract, inclusive VAT):**
 - Inkoopvergoeding: €0.02 per kWh
 - Energiebelasting: €0.13165 per kWh
-- Vaste leveringskosten: €6.25 per maand (€0.21 per dag)
-- Netbeheerkosten: €39.48 per maand (€1.30 per dag)
-- Vermindering energiebelasting: -€52.62 per maand (-€1.73 per dag)
+- Vaste leveringskosten: €6.25 per maand
+- Netbeheerkosten: €39.48 per maand
+- Vermindering energiebelasting: -€52.62 per maand
+
+**Configuration values (exclusive VAT - integration calculates VAT):**
+- Inkoopvergoeding: €0.01653 per kWh (€0.02 / 1.21)
+- Energiebelasting: €0.10880 per kWh (€0.13165 / 1.21)
+- Vaste leveringskosten: €0.17355 per dag (€6.25/30.42 / 1.21)
+- Netbeheerkosten: €1.07438 per dag (€39.48/30.42 / 1.21)
+- Vermindering energiebelasting: €1.42975 per dag (€52.62/30.42 / 1.21)
 
 **Production revenue:**
-- Vaste terugleververgoeding: €0.02 per kWh
+- Vaste terugleververgoeding: €0.02 per kWh (inclusive VAT per Dutch law)
 - Salderingsregeling: enabled (until 2027)
 
 **Solar bonus (zonnebonus):**
@@ -341,23 +348,36 @@ For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configur
 - Leave `contract_start_date` empty to use calendar year tracking
 
 **Important notes:**
-- All prices are **inclusive of VAT** (VAT percentage is set to 0%)
-- Use an EPEX Day Ahead price sensor for dynamic hourly pricing
+- All configuration values are **exclusive of VAT** (integration adds 21% VAT)
+- EPEX Day Ahead sensors typically provide prices exclusive of VAT
+- The integration calculates the final price: (EPEX + markup + tax) × 1.21
+- Production compensation already includes VAT per Dutch law for private solar owners
 - Powerplay feed-in has separate compensation rules not covered by this preset
+
+**Price calculation example:**
+```
+EPEX price: €0.10/kWh (exclusive VAT)
++ Inkoopvergoeding: €0.01653/kWh
++ Energiebelasting: €0.10880/kWh
+= €0.22533/kWh (subtotal exclusive VAT)
+× 1.21 (VAT)
+= €0.27265/kWh (final price inclusive VAT)
+```
 
 **Manual configuration:**
 
 To apply these settings manually during setup or via the options flow:
 
 ```yaml
-per_unit_supplier_electricity_markup: 0.02
-per_unit_supplier_electricity_production_markup: 0.02
-per_unit_government_electricity_tax: 0.13165
-per_day_grid_operator_electricity_connection_fee: 1.30
-per_day_supplier_electricity_standing_charge: 0.21
-per_day_government_electricity_tax_rebate: 1.73
-vat_percentage: 0.0
-production_price_include_vat: false
+# All values EXCLUSIVE of VAT - integration will add 21% VAT
+per_unit_supplier_electricity_markup: 0.01653  # €0.02 incl. VAT / 1.21
+per_unit_supplier_electricity_production_markup: 0.01653  # €0.02 incl. VAT / 1.21
+per_unit_government_electricity_tax: 0.10880  # €0.13165 incl. VAT / 1.21
+per_day_grid_operator_electricity_connection_fee: 1.07438  # €39.48/month / 30.42 / 1.21
+per_day_supplier_electricity_standing_charge: 0.17355  # €6.25/month / 30.42 / 1.21
+per_day_government_electricity_tax_rebate: 1.42975  # €52.62/month / 30.42 / 1.21
+vat_percentage: 21.0  # Integration calculates VAT
+production_price_include_vat: true  # Production already includes VAT
 netting_enabled: true
 solar_bonus_enabled: true
 solar_bonus_percentage: 10.0
