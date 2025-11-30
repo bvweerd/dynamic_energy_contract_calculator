@@ -8,13 +8,11 @@ from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.sun import get_astral_event_date
-from astral import LocationInfo
 
 from .const import SOLAR_BONUS_STORAGE_KEY_PREFIX, SOLAR_BONUS_STORAGE_VERSION
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .entity import DynamicEnergySensor
+    pass
 
 
 class SolarBonusTracker:
@@ -44,7 +42,9 @@ class SolarBonusTracker:
             self._current_contract_year_start = self._get_current_contract_year_start()
 
         if initial_state:
-            stored_year_start = self._parse_date(initial_state.get("contract_year_start"))
+            stored_year_start = self._parse_date(
+                initial_state.get("contract_year_start")
+            )
             # Reset if new contract year
             if stored_year_start == self._current_contract_year_start:
                 self._year_production_kwh = float(
@@ -76,7 +76,9 @@ class SolarBonusTracker:
             this_year_anniversary = self._contract_start_date.replace(year=current_year)
         except ValueError:
             # Handle February 29 edge case
-            this_year_anniversary = self._contract_start_date.replace(year=current_year, day=28)
+            this_year_anniversary = self._contract_start_date.replace(
+                year=current_year, day=28
+            )
 
         if today >= this_year_anniversary:
             return this_year_anniversary
@@ -193,13 +195,19 @@ class SolarBonusTracker:
             self._year_production_kwh = 0.0
             self._total_bonus_euro = 0.0
             if self._contract_start_date:
-                self._current_contract_year_start = self._get_current_contract_year_start()
+                self._current_contract_year_start = (
+                    self._get_current_contract_year_start()
+                )
             await self._async_save_state()
 
     async def _async_save_state(self) -> None:
         """Persist current state to storage."""
         state = {
-            "contract_year_start": self._current_contract_year_start.isoformat() if self._current_contract_year_start else None,
+            "contract_year_start": (
+                self._current_contract_year_start.isoformat()
+                if self._current_contract_year_start
+                else None
+            ),
             "year_production_kwh": self._year_production_kwh,
             "total_bonus_euro": self._total_bonus_euro,
         }
@@ -218,7 +226,9 @@ class SolarBonusTracker:
             this_year_anniversary = self._contract_start_date.replace(year=current_year)
         except ValueError:
             # Handle February 29 edge case
-            this_year_anniversary = self._contract_start_date.replace(year=current_year, day=28)
+            this_year_anniversary = self._contract_start_date.replace(
+                year=current_year, day=28
+            )
 
         if today >= this_year_anniversary:
             # Return next year's anniversary

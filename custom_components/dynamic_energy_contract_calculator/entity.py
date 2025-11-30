@@ -321,10 +321,17 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     and self._solar_bonus_tracker is not None
                     and self.price_settings.get("solar_bonus_enabled", False)
                 ):
-                    bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
-                    annual_limit = self.price_settings.get("solar_bonus_annual_kwh_limit", 7500.0)
+                    bonus_percentage = self.price_settings.get(
+                        "solar_bonus_percentage", 10.0
+                    )
+                    annual_limit = self.price_settings.get(
+                        "solar_bonus_annual_kwh_limit", 7500.0
+                    )
 
-                    solar_bonus_amount, eligible_kwh = await self._solar_bonus_tracker.async_calculate_bonus(
+                    (
+                        solar_bonus_amount,
+                        eligible_kwh,
+                    ) = await self._solar_bonus_tracker.async_calculate_bonus(
                         delta_kwh=delta,
                         base_price=total_price,
                         production_markup=markup_production,

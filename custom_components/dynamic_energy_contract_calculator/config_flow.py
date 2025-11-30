@@ -198,7 +198,11 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         """Handle loading a supplier preset."""
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
-            if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
+            if (
+                selected_preset
+                and selected_preset != "none"
+                and selected_preset in SUPPLIER_PRESETS
+            ):
                 preset = SUPPLIER_PRESETS[selected_preset]
 
                 # Detect preset type by checking which fields have non-zero values
@@ -231,21 +235,24 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         # Create preset options
         preset_options = [{"value": "none", "label": "None (keep current settings)"}]
         for preset_key in SUPPLIER_PRESETS:
-            preset_options.append({
-                "value": preset_key,
-                "label": preset_key.replace("_", " ").title()
-            })
+            preset_options.append(
+                {"value": preset_key, "label": preset_key.replace("_", " ").title()}
+            )
 
         return self.async_show_form(
             step_id=STEP_LOAD_PRESET,
-            data_schema=vol.Schema({
-                vol.Required("supplier_preset", default="none"): selector({
-                    "select": {
-                        "options": preset_options,
-                        "mode": "dropdown",
-                    }
-                })
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("supplier_preset", default="none"): selector(
+                        {
+                            "select": {
+                                "options": preset_options,
+                                "mode": "dropdown",
+                            }
+                        }
+                    )
+                }
+            ),
         )
 
     async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
@@ -305,13 +312,11 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 if key == "contract_start_date":
                     # Only set default if there's a valid date
                     if current and current != "":
-                        schema_fields[vol.Optional(key, default=current)] = selector({
-                            "date": {}
-                        })
+                        schema_fields[vol.Optional(key, default=current)] = selector(
+                            {"date": {}}
+                        )
                     else:
-                        schema_fields[vol.Optional(key)] = selector({
-                            "date": {}
-                        })
+                        schema_fields[vol.Optional(key)] = selector({"date": {}})
                 else:
                     schema_fields[vol.Optional(key, default=current)] = str
             else:
@@ -458,7 +463,11 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle loading a supplier preset."""
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
-            if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
+            if (
+                selected_preset
+                and selected_preset != "none"
+                and selected_preset in SUPPLIER_PRESETS
+            ):
                 preset = SUPPLIER_PRESETS[selected_preset]
 
                 # Detect preset type by checking which fields have non-zero values
@@ -491,21 +500,24 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         # Create preset options
         preset_options = [{"value": "none", "label": "None (keep current settings)"}]
         for preset_key in SUPPLIER_PRESETS:
-            preset_options.append({
-                "value": preset_key,
-                "label": preset_key.replace("_", " ").title()
-            })
+            preset_options.append(
+                {"value": preset_key, "label": preset_key.replace("_", " ").title()}
+            )
 
         return self.async_show_form(
             step_id=STEP_LOAD_PRESET,
-            data_schema=vol.Schema({
-                vol.Required("supplier_preset", default="none"): selector({
-                    "select": {
-                        "options": preset_options,
-                        "mode": "dropdown",
-                    }
-                })
-            }),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("supplier_preset", default="none"): selector(
+                        {
+                            "select": {
+                                "options": preset_options,
+                                "mode": "dropdown",
+                            }
+                        }
+                    )
+                }
+            ),
         )
 
     async def async_step_price_settings(self, user_input=None):
@@ -565,13 +577,11 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 if key == "contract_start_date":
                     # Only set default if there's a valid date
                     if current and current != "":
-                        schema_fields[vol.Optional(key, default=current)] = selector({
-                            "date": {}
-                        })
+                        schema_fields[vol.Optional(key, default=current)] = selector(
+                            {"date": {}}
+                        )
                     else:
-                        schema_fields[vol.Optional(key)] = selector({
-                            "date": {}
-                        })
+                        schema_fields[vol.Optional(key)] = selector({"date": {}})
                 else:
                     schema_fields[vol.Optional(key, default=current)] = str
             else:
