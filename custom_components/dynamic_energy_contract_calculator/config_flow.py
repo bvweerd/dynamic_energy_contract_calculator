@@ -27,6 +27,35 @@ STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
 STEP_LOAD_PRESET = "load_preset"
 
+# Field categories for smart preset loading
+GAS_FIELDS = {
+    "per_unit_supplier_gas_markup",
+    "per_unit_government_gas_tax",
+    "per_day_grid_operator_gas_connection_fee",
+    "per_day_supplier_gas_standing_charge",
+}
+
+ELECTRICITY_FIELDS = {
+    "per_unit_supplier_electricity_markup",
+    "per_unit_supplier_electricity_production_markup",
+    "per_unit_government_electricity_tax",
+    "per_day_grid_operator_electricity_connection_fee",
+    "per_day_supplier_electricity_standing_charge",
+    "per_day_government_electricity_tax_rebate",
+    "production_price_include_vat",
+    "netting_enabled",
+    "solar_bonus_enabled",
+    "solar_bonus_percentage",
+    "solar_bonus_annual_kwh_limit",
+    "contract_start_date",
+    "reset_on_contract_anniversary",
+}
+
+GENERAL_FIELDS = {
+    "vat_percentage",
+    "average_prices_to_hourly",
+}
+
 
 async def _get_energy_sensors(
     hass: HomeAssistant, source_type: str | None
@@ -170,8 +199,33 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
             if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Load preset values into price_settings
-                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
+                preset = SUPPLIER_PRESETS[selected_preset]
+
+                # Detect preset type by checking which fields have non-zero values
+                has_gas = any(
+                    preset.get(field, 0) != 0
+                    for field in GAS_FIELDS
+                    if isinstance(preset.get(field), (int, float))
+                )
+                has_electricity = any(
+                    preset.get(field, 0) != 0
+                    for field in ELECTRICITY_FIELDS
+                    if isinstance(preset.get(field), (int, float))
+                )
+
+                # Smart update: only update relevant fields
+                for key, value in preset.items():
+                    if has_gas and not has_electricity:
+                        # Gas-only preset: update gas + general fields
+                        if key in GAS_FIELDS or key in GENERAL_FIELDS:
+                            self.price_settings[key] = value
+                    elif has_electricity and not has_gas:
+                        # Electricity-only preset: update electricity + general fields
+                        if key in ELECTRICITY_FIELDS or key in GENERAL_FIELDS:
+                            self.price_settings[key] = value
+                    else:
+                        # Combined preset: update all
+                        self.price_settings[key] = value
             return await self.async_step_user()
 
         # Create preset options
@@ -245,9 +299,15 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             elif isinstance(default, str):
                 # Use date selector for contract_start_date
                 if key == "contract_start_date":
-                    schema_fields[vol.Optional(key, default=current)] = selector({
-                        "date": {}
-                    })
+                    # Only set default if there's a valid date
+                    if current and current != "":
+                        schema_fields[vol.Optional(key, default=current)] = selector({
+                            "date": {}
+                        })
+                    else:
+                        schema_fields[vol.Optional(key)] = selector({
+                            "date": {}
+                        })
                 else:
                     schema_fields[vol.Optional(key, default=current)] = str
             else:
@@ -395,8 +455,33 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
             if selected_preset and selected_preset != "none" and selected_preset in SUPPLIER_PRESETS:
-                # Load preset values into price_settings
-                self.price_settings.update(SUPPLIER_PRESETS[selected_preset])
+                preset = SUPPLIER_PRESETS[selected_preset]
+
+                # Detect preset type by checking which fields have non-zero values
+                has_gas = any(
+                    preset.get(field, 0) != 0
+                    for field in GAS_FIELDS
+                    if isinstance(preset.get(field), (int, float))
+                )
+                has_electricity = any(
+                    preset.get(field, 0) != 0
+                    for field in ELECTRICITY_FIELDS
+                    if isinstance(preset.get(field), (int, float))
+                )
+
+                # Smart update: only update relevant fields
+                for key, value in preset.items():
+                    if has_gas and not has_electricity:
+                        # Gas-only preset: update gas + general fields
+                        if key in GAS_FIELDS or key in GENERAL_FIELDS:
+                            self.price_settings[key] = value
+                    elif has_electricity and not has_gas:
+                        # Electricity-only preset: update electricity + general fields
+                        if key in ELECTRICITY_FIELDS or key in GENERAL_FIELDS:
+                            self.price_settings[key] = value
+                    else:
+                        # Combined preset: update all
+                        self.price_settings[key] = value
             return await self.async_step_user()
 
         # Create preset options
@@ -470,9 +555,15 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             elif isinstance(default, str):
                 # Use date selector for contract_start_date
                 if key == "contract_start_date":
-                    schema_fields[vol.Optional(key, default=current)] = selector({
-                        "date": {}
-                    })
+                    # Only set default if there's a valid date
+                    if current and current != "":
+                        schema_fields[vol.Optional(key, default=current)] = selector({
+                            "date": {}
+                        })
+                    else:
+                        schema_fields[vol.Optional(key)] = selector({
+                            "date": {}
+                        })
                 else:
                     schema_fields[vol.Optional(key, default=current)] = str
             else:
