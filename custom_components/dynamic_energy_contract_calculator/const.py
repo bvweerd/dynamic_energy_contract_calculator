@@ -94,8 +94,33 @@ PRESET_ZONNEPLAN_2025 = {
     "reset_on_contract_anniversary": True,
 }
 
+# Greenchoice 2025: Gas only preset
+# All values are EXCLUSIVE of VAT (21%)
+# Contract: Aardgas met Natuur voor Morgen (Fixed contract)
+PRESET_GREENCHOICE_GAS_2025 = {
+    "per_unit_supplier_electricity_markup": 0.0,
+    "per_unit_supplier_electricity_production_markup": 0.0,
+    "per_unit_government_electricity_tax": 0.0,
+    "per_day_grid_operator_electricity_connection_fee": 0.0,
+    "per_day_supplier_electricity_standing_charge": 0.0,
+    "per_day_government_electricity_tax_rebate": 0.0,
+    "per_unit_supplier_gas_markup": 0.39020,  # Leveringstarief: €0.47214 incl. VAT / 1.21
+    "per_unit_government_gas_tax": 0.57816,  # Energiebelasting: €0.69957 incl. VAT / 1.21
+    "per_day_grid_operator_gas_connection_fee": 0.58740,  # Netbeheerkosten: €0.71075 incl. VAT / 1.21
+    "per_day_supplier_gas_standing_charge": 0.22249,  # Vaste leveringskosten: €0.26922 incl. VAT / 1.21
+    "vat_percentage": 21.0,
+    "production_price_include_vat": True,
+    "netting_enabled": False,
+    "solar_bonus_enabled": False,
+    "solar_bonus_percentage": 10.0,
+    "solar_bonus_annual_kwh_limit": 7500.0,
+    "contract_start_date": "",
+    "reset_on_contract_anniversary": False,
+}
+
 SUPPLIER_PRESETS = {
     "zonneplan_2025": PRESET_ZONNEPLAN_2025,
+    "greenchoice_gas_2025": PRESET_GREENCHOICE_GAS_2025,
 }
 
 NETTING_STORAGE_VERSION = 1
