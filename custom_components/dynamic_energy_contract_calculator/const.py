@@ -41,6 +41,7 @@ PRICE_SETTINGS_KEYS = [
     "vat_percentage",
     "production_price_include_vat",
     "netting_enabled",
+    "average_prices_to_hourly",
     "solar_bonus_enabled",
     "solar_bonus_percentage",
     "solar_bonus_annual_kwh_limit",
@@ -62,6 +63,7 @@ DEFAULT_PRICE_SETTINGS = {
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
     "netting_enabled": False,
+    "average_prices_to_hourly": True,
     "solar_bonus_enabled": False,
     "solar_bonus_percentage": 10.0,
     "solar_bonus_annual_kwh_limit": 7500.0,
@@ -87,6 +89,7 @@ PRESET_ZONNEPLAN_2025 = {
     "vat_percentage": 21.0,  # VAT will be calculated by integration
     "production_price_include_vat": True,  # Production compensation already includes VAT per Dutch law
     "netting_enabled": True,
+    "average_prices_to_hourly": True,  # Zonneplan uses hourly averages
     "solar_bonus_enabled": True,
     "solar_bonus_percentage": 10.0,
     "solar_bonus_annual_kwh_limit": 7500.0,
@@ -111,6 +114,7 @@ PRESET_GREENCHOICE_GAS_2025 = {
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
     "netting_enabled": False,
+    "average_prices_to_hourly": True,
     "solar_bonus_enabled": False,
     "solar_bonus_percentage": 10.0,
     "solar_bonus_annual_kwh_limit": 7500.0,

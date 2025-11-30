@@ -648,6 +648,83 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         except Exception:
             return False
 
+    def _average_to_hourly(self, raw_prices):
+        """Average quarter-hour or sub-hourly price entries to hourly averages.
+
+        Groups entries by hour and calculates the average price for each hour.
+        Returns a new list with one entry per hour.
+        """
+        if not isinstance(raw_prices, list) or not raw_prices:
+            return raw_prices
+
+        from datetime import datetime
+        from collections import defaultdict
+
+        # Group entries by hour
+        hourly_groups = defaultdict(list)
+
+        for entry in raw_prices:
+            if not isinstance(entry, dict):
+                continue
+
+            # Get timestamp
+            timestamp = entry.get("start") or entry.get("time")
+            if not timestamp:
+                continue
+
+            # Get price value
+            value_key = None
+            if "value" in entry:
+                value_key = "value"
+            elif "price" in entry:
+                value_key = "price"
+            if value_key is None:
+                continue
+
+            try:
+                price_value = float(entry[value_key])
+                # Parse timestamp and round to hour
+                if isinstance(timestamp, str):
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                else:
+                    dt = timestamp
+
+                # Create hour key (year, month, day, hour)
+                hour_key = (dt.year, dt.month, dt.day, dt.hour)
+                hourly_groups[hour_key].append((price_value, entry))
+            except (ValueError, TypeError, AttributeError):
+                continue
+
+        # Calculate averages and create hourly entries
+        averaged = []
+        for hour_key, entries in sorted(hourly_groups.items()):
+            if not entries:
+                continue
+
+            # Calculate average price
+            avg_price = sum(price for price, _ in entries) / len(entries)
+
+            # Use the first entry as template and update with averaged price
+            template_entry = entries[0][1].copy()
+
+            # Set the timestamp to the start of the hour
+            year, month, day, hour = hour_key
+            hour_start = datetime(year, month, day, hour)
+            if template_entry.get("start"):
+                template_entry["start"] = hour_start.isoformat()
+            if template_entry.get("time"):
+                template_entry["time"] = hour_start.isoformat()
+
+            # Update price value
+            if "value" in template_entry:
+                template_entry["value"] = avg_price
+            if "price" in template_entry:
+                template_entry["price"] = avg_price
+
+            averaged.append(template_entry)
+
+        return averaged if averaged else raw_prices
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
@@ -658,6 +735,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         if not isinstance(raw_prices, list):
             return None
+
+        # Average to hourly if enabled
+        if self.price_settings.get("average_prices_to_hourly", True):
+            raw_prices = self._average_to_hourly(raw_prices)
 
         # Check if solar bonus is enabled for production
         solar_bonus_enabled = (
