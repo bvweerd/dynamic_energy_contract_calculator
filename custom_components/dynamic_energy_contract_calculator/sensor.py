@@ -710,10 +710,16 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Set the timestamp to the start of the hour
             year, month, day, hour = hour_key
             hour_start = datetime(year, month, day, hour)
+            # End time is one hour later
+            from datetime import timedelta
+            hour_end = hour_start + timedelta(hours=1)
+
             if template_entry.get("start"):
                 template_entry["start"] = hour_start.isoformat()
             if template_entry.get("time"):
                 template_entry["time"] = hour_start.isoformat()
+            if template_entry.get("end"):
+                template_entry["end"] = hour_end.isoformat()
 
             # Update price value
             if "value" in template_entry:
