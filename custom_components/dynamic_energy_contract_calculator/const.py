@@ -4,7 +4,7 @@
 DOMAIN = "dynamic_energy_contract_calculator"
 DOMAIN_ABBREVIATION = "DECC"
 
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "binary_sensor"]
 
 # Configuration keys
 CONF_SOURCE_TYPE = "source_type"
