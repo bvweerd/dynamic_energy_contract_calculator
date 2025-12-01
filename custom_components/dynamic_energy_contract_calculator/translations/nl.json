@@ -176,6 +176,14 @@
       "current_gas_consumption_price": {
         "name": "Huidige gasverbruiksprijs"
       }
+    },
+    "binary_sensor": {
+      "solar_bonus_active": {
+        "name": "Zonnebonus actief"
+      },
+      "production_price_positive": {
+        "name": "Terugleverprijs positief"
+      }
     }
   },
   "issues": {

@@ -134,5 +134,56 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "kwh_total": {
+        "name": "Total kWh"
+      },
+      "cost_total": {
+        "name": "Total cost"
+      },
+      "profit_total": {
+        "name": "Total profit"
+      },
+      "kwh_during_cost_total": {
+        "name": "kWh during cost"
+      },
+      "kwh_during_profit_total": {
+        "name": "kWh during profit"
+      },
+      "m3_total": {
+        "name": "Total m³"
+      },
+      "daily_electricity_cost_total": {
+        "name": "Electricity contract fixed costs (total)"
+      },
+      "daily_gas_cost_total": {
+        "name": "Gas contract fixed costs (total)"
+      },
+      "net_total_cost": {
+        "name": "Net energy costs (total)"
+      },
+      "total_energy_cost": {
+        "name": "Total energy contract costs"
+      },
+      "current_consumption_price": {
+        "name": "Current consumption price"
+      },
+      "current_production_price": {
+        "name": "Current production price"
+      },
+      "current_gas_consumption_price": {
+        "name": "Current gas consumption price"
+      }
+    },
+    "binary_sensor": {
+      "solar_bonus_active": {
+        "name": "Solar bonus active"
+      },
+      "production_price_positive": {
+        "name": "Production price positive"
+      }
+    }
   }
 }
