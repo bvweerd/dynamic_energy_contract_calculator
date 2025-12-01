@@ -8,11 +8,12 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.entity import DeviceInfo
 
-from .const import DOMAIN, SOURCE_TYPE_PRODUCTION
+from .const import DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION
 from .solar_bonus import SolarBonusTracker
 
 import logging
@@ -31,38 +32,9 @@ async def async_setup_entry(
     configs = entry.data.get("configurations", [])
     price_settings = entry.options.get("price_settings", entry.data.get("price_settings", {}))
 
-    device_info = DeviceInfo(
-        identifiers={(DOMAIN, entry.entry_id)},
-        name=f"Dynamic Energy Calculator ({entry.entry_id[:8]})",
-        manufacturer="Dynamic Energy Contract Calculator",
-        model="Energy Cost Calculator",
-    )
-
-    # Check if solar bonus is enabled
-    solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
-    if solar_bonus_enabled:
-        # Get the solar bonus tracker
-        solar_bonus_map = hass.data[DOMAIN].get("solar_bonus", {})
-        solar_bonus_tracker = solar_bonus_map.get(entry.entry_id)
-
-        if solar_bonus_tracker:
-            # Get production price sensor if exists
-            production_price_sensor = None
-            for config in configs:
-                if config.get("source_type") == SOURCE_TYPE_PRODUCTION:
-                    production_price_sensor = config.get("price_sensor")
-                    break
-
-            entities.append(
-                SolarBonusActiveBinarySensor(
-                    hass=hass,
-                    unique_id=f"{DOMAIN}_solar_bonus_active",
-                    device=device_info,
-                    solar_bonus_tracker=solar_bonus_tracker,
-                    price_sensor=production_price_sensor,
-                    price_settings=price_settings,
-                )
-            )
+    # Get the price sensor from entry data (used for production price calculations)
+    price_sensor_list = entry.options.get("price_sensor", entry.data.get("price_sensor", []))
+    production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
     # Check if production is configured
     has_production = any(
@@ -70,21 +42,52 @@ async def async_setup_entry(
         for config in configs
     )
 
-    if has_production:
-        # Get production price sensor
-        production_price_sensor = None
-        for config in configs:
-            if config.get("source_type") == SOURCE_TYPE_PRODUCTION:
-                production_price_sensor = config.get("price_sensor")
-                break
+    # Create device info for Summary Sensors device (same as in sensor.py)
+    base_id = "daily_electricity_cost"
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, base_id)},
+        name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
+        entry_type=DeviceEntryType.SERVICE,
+        manufacturer="DynamicEnergyCalc",
+        model="summary",
+    )
 
+    # Check if solar bonus is enabled
+    solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
+    if solar_bonus_enabled and has_production:
+        # Get or create the solar bonus tracker
+        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        solar_bonus_tracker = solar_bonus_map.get(entry.entry_id)
+
+        # Create tracker if it doesn't exist yet
+        if solar_bonus_tracker is None:
+            contract_start_date = price_settings.get("contract_start_date", "")
+            solar_bonus_tracker = await SolarBonusTracker.async_create(
+                hass, entry.entry_id, contract_start_date
+            )
+            solar_bonus_map[entry.entry_id] = solar_bonus_tracker
+
+        entities.append(
+            SolarBonusActiveBinarySensor(
+                hass=hass,
+                unique_id=f"{entry.entry_id}_solar_bonus_active",
+                entry_id=entry.entry_id,
+                solar_bonus_tracker=solar_bonus_tracker,
+                price_sensor=production_price_sensor,
+                price_settings=price_settings,
+                device_info=device_info,
+            )
+        )
+
+    if has_production and production_price_sensor:
         entities.append(
             ProductionPricePositiveBinarySensor(
                 hass=hass,
-                unique_id=f"{DOMAIN}_production_price_positive",
-                device=device_info,
+                unique_id=f"{entry.entry_id}_production_price_positive",
+                entry_id=entry.entry_id,
                 price_sensor=production_price_sensor,
                 price_settings=price_settings,
+                device_info=device_info,
             )
         )
 
@@ -99,17 +102,19 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         self,
         hass: HomeAssistant,
         unique_id: str,
-        device: DeviceInfo,
+        entry_id: str,
         solar_bonus_tracker: SolarBonusTracker,
         price_sensor: str | None,
         price_settings: dict,
+        device_info: DeviceInfo,
     ):
         """Initialize the binary sensor."""
         self.hass = hass
         self._attr_unique_id = unique_id
         self._attr_name = "Solar Bonus Active"
-        self._attr_device_info = device
-        self._attr_device_class = None
+        self._attr_has_entity_name = False
+        self._attr_translation_key = "solar_bonus_active"
+        self._attr_device_info = device_info
         self._solar_bonus_tracker = solar_bonus_tracker
         self._price_sensor = price_sensor
         self._price_settings = price_settings
@@ -170,16 +175,18 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):
         self,
         hass: HomeAssistant,
         unique_id: str,
-        device: DeviceInfo,
+        entry_id: str,
         price_sensor: str | None,
         price_settings: dict,
+        device_info: DeviceInfo,
     ):
         """Initialize the binary sensor."""
         self.hass = hass
         self._attr_unique_id = unique_id
         self._attr_name = "Production Price Positive"
-        self._attr_device_info = device
-        self._attr_device_class = None
+        self._attr_has_entity_name = False
+        self._attr_translation_key = "production_price_positive"
+        self._attr_device_info = device_info
         self._price_sensor = price_sensor
         self._price_settings = price_settings
         self._attr_is_on = False

@@ -150,8 +150,12 @@
       "current_consumption_price": {"name": "Current Consumption Price"},
       "current_production_price": {"name": "Current Production Price"},
       "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
-    }
     },
+    "binary_sensor": {
+      "solar_bonus_active": {"name": "Solar Bonus Active"},
+      "production_price_positive": {"name": "Production Price Positive"}
+    }
+  },
     "issues": {
     "energy_source_unavailable": {
       "title": "Energy source unavailable",

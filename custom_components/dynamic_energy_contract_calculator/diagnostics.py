@@ -38,6 +38,35 @@ async def async_get_config_entry_diagnostics(
     else:
         data["netting"] = {"enabled": False}
 
+    # Add solar bonus tracker info if available
+    solar_bonus_tracker = hass.data.get(DOMAIN, {}).get("solar_bonus", {}).get(entry.entry_id)
+    if solar_bonus_tracker:
+        data["solar_bonus"] = {
+            "enabled": True,
+            "year_production_kwh": solar_bonus_tracker.year_production_kwh,
+            "total_bonus_euro": solar_bonus_tracker.total_bonus_euro,
+        }
+    else:
+        data["solar_bonus"] = {"enabled": False}
+
+    # Add binary sensor states by searching for them
+    binary_sensors = {}
+
+    # Search through all binary_sensor entities that might belong to this integration
+    for state in hass.states.async_all("binary_sensor"):
+        if state and (
+            "solar_bonus_active" in state.entity_id.lower() or
+            "production_price_positive" in state.entity_id.lower()
+        ):
+            # Try to match by checking the unique_id or attributes
+            sensor_name = state.entity_id.replace("binary_sensor.", "")
+            binary_sensors[sensor_name] = async_redact_data(
+                state.as_dict(), REDACT_STATE
+            )
+
+    if binary_sensors:
+        data["binary_sensors"] = binary_sensors
+
     for block in entry.data.get(CONF_CONFIGS, []):
         for source in block.get(CONF_SOURCES, []):
             state = hass.states.get(source)
