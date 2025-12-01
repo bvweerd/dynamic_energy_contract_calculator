@@ -710,9 +710,21 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Use the first entry as template and update with averaged price
             template_entry = entries[0][1].copy()
 
-            # Set the timestamp to the start of the hour
+            # Get the original datetime to preserve timezone
+            timestamp = template_entry.get("start") or template_entry.get("time")
+            if isinstance(timestamp, str):
+                original_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            else:
+                original_dt = timestamp
+
+            # Set the timestamp to the start of the hour, preserving timezone
             year, month, day, hour = hour_key
-            hour_start = datetime(year, month, day, hour)
+            if original_dt.tzinfo:
+                # Preserve timezone from original
+                hour_start = original_dt.replace(year=year, month=month, day=day, hour=hour, minute=0, second=0, microsecond=0)
+            else:
+                hour_start = datetime(year, month, day, hour)
+
             # End time is one hour later
             from datetime import timedelta
 

@@ -35,9 +35,9 @@ During setup you will be asked for the following information:
    consumption, electricity production or gas consumption.
 2. **Energy sensors** – one or more sensors with the `energy` or `gas` device
    class that provide cumulative readings.
-3. **Price sensors** – optional sensors that provide components of the current energy price
-   in €/kWh or €/m³. You can select more than one; their values are summed.
-   This makes it possible to add sensors that expose dynamic tariff surcharges.
+3. **Price sensors** – optional sensors or input_number entities that provide components of the current energy price
+   in €/kWh, EUR/kWh, €/m³, or EUR/m³. You can select more than one; their values are summed.
+   This makes it possible to add sensors that expose dynamic tariff surcharges or use manual input helpers for fixed tariffs.
 4. **Price settings** – values from the table below used to calculate the final
    price.
 
@@ -63,6 +63,8 @@ In addition a few summary sensors are created:
 - `sensor.current_production_price`
 - `sensor.current_gas_consumption_price`
 - `sensor.solar_bonus_total` (when solar bonus is enabled)
+- `binary_sensor.solar_bonus_active` (when solar bonus is enabled)
+- `binary_sensor.production_price_positive` (when production is configured)
 
 These sensors can be used in the [Energy dashboard](https://www.home-assistant.io/docs/energy/) or in your own automations.
 
@@ -85,6 +87,13 @@ When enabled, the integration automatically calculates solar bonus (zonnebonus) 
 The `sensor.solar_bonus_total` shows the total bonus earned this contract year and has attributes for:
 - `year_production_kwh`: Total eligible production this contract year
 - `total_bonus_euro`: Total bonus amount earned
+
+**Binary Sensors:**
+
+The integration provides binary sensors for automation:
+
+- `binary_sensor.solar_bonus_active` - On when solar bonus is currently being applied (daylight hours, positive price, under annual limit)
+- `binary_sensor.production_price_positive` - On when the production compensation price is positive (useful for controlling inverters to zero export when prices are negative)
 
 ## Services
 
@@ -168,6 +177,8 @@ the base price from your price sensor before VAT is calculated.
 | `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
 | `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
+| `production_price_include_vat` | Whether to apply VAT to production compensation (default: False for Dutch private solar). |
+| `average_prices_to_hourly` | Average quarter-hour prices to hourly (default: True). |
 | `solar_bonus_enabled` | Enable solar bonus calculation for production. |
 | `solar_bonus_percentage` | Bonus percentage applied to production (default 10%). |
 | `solar_bonus_annual_kwh_limit` | Annual kWh limit for solar bonus (default 7500). |
@@ -213,18 +224,21 @@ price = (
 
 ### Production
 
-For production sensors the supplier markup is subtracted. Depending on the
+For production sensors the supplier markup is added (since it's compensation, not cost). Depending on the
 `production_price_include_vat` option VAT may or may not be applied:
 
 ```
 if production_price_include_vat:
     price = (
         base_price
-        - per_unit_supplier_electricity_production_markup
+        + per_unit_supplier_electricity_production_markup
     ) * (1 + vat_percentage / 100)
 else:
-    price = base_price - per_unit_supplier_electricity_production_markup
+    price = base_price + per_unit_supplier_electricity_production_markup
 ```
+
+**Note:** In the Netherlands, private solar panel owners receive production compensation that already includes VAT by law.
+Therefore, `production_price_include_vat` should typically be set to `False` to avoid double-counting VAT.
 
 The resulting price is multiplied by the energy delta (kWh or m³) and added to
 the appropriate cost or profit sensor.
@@ -332,7 +346,7 @@ For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configur
 - Vermindering energiebelasting: €1.42975 per dag (€52.62/30.42 / 1.21)
 
 **Production revenue:**
-- Vaste terugleververgoeding: €0.02 per kWh (inclusive VAT per Dutch law)
+- Vaste terugleververgoeding: €0.02 per kWh (exclusive VAT - no VAT on production compensation)
 - Salderingsregeling: enabled (until 2027)
 
 **Solar bonus (zonnebonus):**
@@ -369,16 +383,17 @@ EPEX price: €0.10/kWh (exclusive VAT)
 To apply these settings manually during setup or via the options flow:
 
 ```yaml
-# All values EXCLUSIVE of VAT - integration will add 21% VAT
+# All values EXCLUSIVE of VAT - integration will add 21% VAT for consumption
 per_unit_supplier_electricity_markup: 0.01653  # €0.02 incl. VAT / 1.21
-per_unit_supplier_electricity_production_markup: 0.01653  # €0.02 incl. VAT / 1.21
+per_unit_supplier_electricity_production_markup: 0.02  # €0.02 excl. VAT (no VAT on production)
 per_unit_government_electricity_tax: 0.10880  # €0.13165 incl. VAT / 1.21
 per_day_grid_operator_electricity_connection_fee: 1.07438  # €39.48/month / 30.42 / 1.21
 per_day_supplier_electricity_standing_charge: 0.17355  # €6.25/month / 30.42 / 1.21
 per_day_government_electricity_tax_rebate: 1.42975  # €52.62/month / 30.42 / 1.21
 vat_percentage: 21.0  # Integration calculates VAT
-production_price_include_vat: true  # Production already includes VAT
+production_price_include_vat: false  # No VAT on production compensation
 netting_enabled: true
+average_prices_to_hourly: true  # Zonneplan uses hourly averages
 solar_bonus_enabled: true
 solar_bonus_percentage: 10.0
 solar_bonus_annual_kwh_limit: 7500.0
@@ -393,6 +408,26 @@ For Zonneplan you'll need an EPEX Day Ahead price sensor. You can use integratio
 - [Nordpool](https://github.com/custom-components/nordpool) (includes EPEX data)
 
 More information about Zonneplan tariffs: [www.zonneplan.nl/energie](https://www.zonneplan.nl/energie)
+
+### Greenchoice Gas 2025
+
+For Greenchoice gas contracts (2025 tariffs), use the `PRESET_GREENCHOICE_GAS_2025` configuration. This is a gas-only preset for the "Aardgas met Natuur voor Morgen" fixed contract.
+
+**Configuration values (exclusive VAT):**
+- Leveringstarief: €0.39020 per m³ (€0.47214 incl. VAT / 1.21)
+- Energiebelasting: €0.57816 per m³ (€0.69957 incl. VAT / 1.21)
+- Netbeheerkosten: €0.58740 per dag (€0.71075 incl. VAT / 1.21)
+- Vaste leveringskosten: €0.22249 per dag (€0.26922 incl. VAT / 1.21)
+
+**Manual configuration:**
+
+```yaml
+per_unit_supplier_gas_markup: 0.39020
+per_unit_government_gas_tax: 0.57816
+per_day_grid_operator_gas_connection_fee: 0.58740
+per_day_supplier_gas_standing_charge: 0.22249
+vat_percentage: 21.0
+```
 
 ### 4. Resulting sensors
 
