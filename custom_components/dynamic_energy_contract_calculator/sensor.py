@@ -631,25 +631,77 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
     def _is_daylight_at(self, timestamp) -> bool:
         """Check if a given timestamp is during daylight hours.
 
-        Uses sun elevation data when available, falls back to hour-based estimate.
-        Conservative estimate: 7 AM to 7 PM (typical Dutch daylight hours year-round).
+        Uses Home Assistant's sun integration via astral to calculate
+        exact sunrise/sunset times for the timestamp.
+        Falls back to conservative hour-based estimate if calculation unavailable.
         """
         from datetime import datetime
 
+        # Parse timestamp first (outside try-except to use in fallback)
         try:
-            # Parse timestamp
             if isinstance(timestamp, str):
                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             else:
                 dt = timestamp
-
-            # Use simple but reliable hour-based check
-            # Conservative: 7 AM to 7 PM covers daylight hours year-round in NL
-            # This ensures solar bonus is only applied during guaranteed daylight
-            return 7 <= dt.hour < 19
-
-        except Exception:
+        except Exception as e:
+            # Can't parse timestamp, assume not daylight
+            _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
             return False
+
+        # Try to use astral for precise calculation
+        try:
+            from astral import LocationInfo
+            from astral.sun import sun
+
+            # Get location from Home Assistant config
+            latitude = self.hass.config.latitude
+            longitude = self.hass.config.longitude
+            timezone = str(self.hass.config.time_zone)
+
+            # Validate we have location data
+            if latitude is None or longitude is None:
+                raise ValueError("No location configured")
+
+            # Create location info
+            location = LocationInfo(
+                name="Home",
+                region="",
+                timezone=timezone,
+                latitude=latitude,
+                longitude=longitude
+            )
+
+            # Calculate sun times for the date of the timestamp
+            # Use the date in the local timezone
+            if dt.tzinfo is None:
+                # Assume local time if no timezone
+                check_date = dt.date()
+            else:
+                # Convert to local timezone
+                import pytz
+                local_tz = pytz.timezone(timezone)
+                local_dt = dt.astimezone(local_tz)
+                check_date = local_dt.date()
+
+            s = sun(location.observer, date=check_date, tzinfo=timezone)
+            sunrise = s["sunrise"]
+            sunset = s["sunset"]
+
+            # Compare timestamp with sunrise/sunset
+            # Make sure we're comparing timezone-aware datetimes
+            if dt.tzinfo is None:
+                import pytz
+                local_tz = pytz.timezone(timezone)
+                dt = local_tz.localize(dt)
+
+            return sunrise <= dt < sunset
+
+        except Exception as e:
+            # astral calculation failed, use hour-based fallback
+            _LOGGER.debug("Using hour-based daylight check (astral failed: %s)", e)
+            # Fallback: Conservative hour-based check
+            # 7 AM to 7 PM covers daylight hours year-round in NL
+            return 7 <= dt.hour < 19
 
     def _average_to_hourly(self, raw_prices):
         """Average quarter-hour or sub-hourly price entries to hourly averages.
@@ -747,6 +799,32 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         return averaged if averaged else raw_prices
 
+    def _get_sunrise_sunset_times(self, date_obj):
+        """Get sunrise and sunset times for a specific date.
+
+        Returns tuple of (sunrise, sunset) as datetime objects, or (None, None) if unavailable.
+        """
+        try:
+            from astral import LocationInfo
+            from astral.sun import sun
+
+            latitude = self.hass.config.latitude
+            longitude = self.hass.config.longitude
+            timezone = str(self.hass.config.time_zone)
+
+            location = LocationInfo(
+                name="Home",
+                region="",
+                timezone=timezone,
+                latitude=latitude,
+                longitude=longitude
+            )
+
+            s = sun(location.observer, date=date_obj, tzinfo=timezone)
+            return s["sunrise"], s["sunset"]
+        except Exception:
+            return None, None
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
@@ -789,17 +867,23 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             calculated = self._calculate_price(base)
 
             # Apply solar bonus if conditions are met
+            solar_bonus_applied = False
             if solar_bonus_enabled and calculated > 0:
                 # Check if this hour is during daylight
                 timestamp = entry_conv.get("start") or entry_conv.get("time")
-                if timestamp and self._is_daylight_at(timestamp):
+                is_daylight = self._is_daylight_at(timestamp) if timestamp else False
+                if is_daylight:
                     # Add solar bonus (10% extra)
                     bonus = calculated * (solar_bonus_percentage / 100.0)
                     calculated += bonus
+                    solar_bonus_applied = True
 
             entry_conv["value"] = calculated
             if "price" in entry_conv:
                 entry_conv["price"] = calculated
+            # Add marker if solar bonus was applied to this entry
+            if solar_bonus_enabled:
+                entry_conv["solar_bonus_applied"] = solar_bonus_applied
             converted.append(entry_conv)
 
         return converted
@@ -838,10 +922,34 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         self._net_today = self._convert_raw_prices(raw_today)
         self._net_tomorrow = self._convert_raw_prices(raw_tomorrow)
-        self._attr_extra_state_attributes = {
+
+        # Build attributes dictionary
+        attributes = {
             "net_prices_today": self._net_today,
             "net_prices_tomorrow": self._net_tomorrow,
         }
+
+        # Add sunrise/sunset info for production sensors with solar bonus
+        if (self.source_type == SOURCE_TYPE_PRODUCTION and
+            self.price_settings.get("solar_bonus_enabled", False)):
+            from datetime import datetime, timedelta
+
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+
+            sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
+            sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
+
+            if sunrise_today:
+                attributes["sunrise_today"] = sunrise_today.isoformat()
+            if sunset_today:
+                attributes["sunset_today"] = sunset_today.isoformat()
+            if sunrise_tomorrow:
+                attributes["sunrise_tomorrow"] = sunrise_tomorrow.isoformat()
+            if sunset_tomorrow:
+                attributes["sunset_tomorrow"] = sunset_tomorrow.isoformat()
+
+        self._attr_extra_state_attributes = attributes
 
         price = self._calculate_price(total_price)
         if price is None:
