@@ -71,12 +71,13 @@ These sensors can be used in the [Energy dashboard](https://www.home-assistant.i
 ### Solar Bonus Feature
 
 When enabled, the integration automatically calculates solar bonus (zonnebonus) for electricity production. This feature:
-- Tracks production during daylight hours (sunrise to sunset)
+- Tracks production during daylight hours (sunrise to sunset based on Home Assistant's sun entity)
 - Applies a configurable bonus percentage (default 10%)
 - Respects annual kWh limits (default 7,500 kWh)
 - Only applies when production compensation is positive
 - Automatically resets on contract anniversary (when contract start date is configured)
 - Falls back to calendar year reset if no contract start date is set
+- Uses exact sunrise/sunset times, which may result in fractional hour/quarter-hour periods in price data
 
 **Contract Anniversary Reset:**
 - Configure `contract_start_date` (format: YYYY-MM-DD) to track limits from your contract start date
@@ -351,10 +352,24 @@ For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configur
 
 **Solar bonus (zonnebonus):**
 - **Automatically calculated** when enabled (10% of base price + production markup)
-- Only applied between sunrise and sunset (uses Home Assistant sun integration)
+- Only applied between sunrise and sunset based on official measurements (De Bilt, NL)
 - Limited to first 7,500 kWh per contract year
 - Only when (base_price + production_markup) is positive
 - Automatically resets on contract anniversary when configured
+
+**How Zonneplan calculates the solar bonus:**
+
+Zonneplan calculates the solar bonus for electricity you return between sunrise and sunset. The calculation is based on quarter-hour readings from your smart meter, matching the exact moments of sunrise and sunset as closely as the meter's technical capabilities allow.
+
+There is no fixed rounding to a standard quarter-hour before or after sunrise/sunset. Your return is registered per quarter-hour; as soon as there is solar production in a quarter after sunrise, it counts toward the bonus. The same applies around sunset: only until the last full quarter during daylight do you receive the bonus.
+
+Although Zonneplan uses dynamic hourly prices, both registration and settlement occur based on these underlying quarter-hour data. You receive exactly what you're entitled to for each relevant consumption or return moment within an hour—without rounding beyond what is technically measurable.
+
+**Important timing notes:**
+- The integration uses the sun.sun entity from Home Assistant to determine sunrise and sunset times
+- This means solar bonus periods start and end at the exact sunrise/sunset times, not at fixed hour boundaries
+- When hourly price averaging is enabled (`average_prices_to_hourly: true`), hours containing sunrise or sunset may show different effective start/end times in the price attributes
+- The quarter-hour or hourly return rates in attributes will reflect partial-hour solar bonus periods during sunrise and sunset hours
 
 **Contract management:**
 - Set `contract_start_date` to your actual contract start date for accurate year tracking
