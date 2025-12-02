@@ -521,6 +521,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             "net_prices_today": None,
             "net_prices_tomorrow": None,
         }
+        self._price_change_unsub = None
 
     def _calculate_price(self, base_price: float) -> float:
         if self.source_type == SOURCE_TYPE_GAS:
@@ -902,8 +903,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if not isinstance(raw_prices, list):
             return None
 
+        # Check if averaging to hourly is enabled
+        average_to_hourly = self.price_settings.get("average_prices_to_hourly", True)
+
         # Average to hourly if enabled
-        if self.price_settings.get("average_prices_to_hourly", True):
+        if average_to_hourly:
             raw_prices = self._average_to_hourly(raw_prices)
 
         # Check if solar bonus is enabled for production
@@ -913,8 +917,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         )
         solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
 
-        # If solar bonus is enabled, we need to split entries at sunrise/sunset
-        if solar_bonus_enabled and raw_prices:
+        # If solar bonus is enabled AND averaging to hourly is enabled,
+        # we need to split entries at sunrise/sunset
+        if solar_bonus_enabled and average_to_hourly and raw_prices:
             from datetime import datetime
 
             # Get all unique dates from entries
@@ -1064,13 +1069,218 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         self._attr_extra_state_attributes = attributes
 
-        price = self._calculate_price(total_price)
-        if price is None:
-            return
-        self._attr_native_value = price
+        # Check if we need scheduling
+        average_to_hourly = self.price_settings.get("average_prices_to_hourly", True)
+        solar_bonus_enabled = (
+            self.source_type == SOURCE_TYPE_PRODUCTION
+            and self.price_settings.get("solar_bonus_enabled", False)
+        )
+
+        if average_to_hourly:
+            # With averaging: use scheduled updates based on net_prices (includes splits at sunrise/sunset)
+            self._update_current_price()
+            self._schedule_next_price_change()
+        else:
+            # Without averaging: calculate price directly from current base price
+            price = self._calculate_price(total_price)
+            if price is not None:
+                self._attr_native_value = price
+
+            # But still schedule sunrise/sunset updates if solar bonus is enabled
+            if solar_bonus_enabled:
+                self._schedule_sunrise_sunset_updates()
+
+    def _update_current_price(self):
+        """Update the current price based on the current time and net_prices."""
+        from datetime import datetime
+        import pytz
+
+        # Get current time in the configured timezone
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+
+        # Find current price from net_prices_today or net_prices_tomorrow
+        current_price = None
+
+        if self._net_today:
+            for entry in self._net_today:
+                start_str = entry.get("start") or entry.get("time")
+                end_str = entry.get("end")
+
+                if not start_str or not end_str:
+                    continue
+
+                try:
+                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+
+                    if start_dt <= now < end_dt:
+                        current_price = entry.get("value")
+                        break
+                except Exception:
+                    continue
+
+        # If not found in today, check tomorrow
+        if current_price is None and self._net_tomorrow:
+            for entry in self._net_tomorrow:
+                start_str = entry.get("start") or entry.get("time")
+                end_str = entry.get("end")
+
+                if not start_str or not end_str:
+                    continue
+
+                try:
+                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+
+                    if start_dt <= now < end_dt:
+                        current_price = entry.get("value")
+                        break
+                except Exception:
+                    continue
+
+        if current_price is not None:
+            self._attr_native_value = current_price
+        else:
+            # Fallback: calculate from current base price
+            total_price = 0.0
+            for sensor in self.price_sensors:
+                state = self.hass.states.get(sensor)
+                if state and state.state not in ("unknown", "unavailable"):
+                    try:
+                        total_price += float(state.state)
+                    except ValueError:
+                        pass
+            price = self._calculate_price(total_price)
+            if price is not None:
+                self._attr_native_value = price
+
+    def _schedule_next_price_change(self):
+        """Schedule the next price change based on net_prices."""
+        from datetime import datetime
+        import pytz
+        from homeassistant.helpers.event import async_track_point_in_time
+
+        # Cancel existing schedule
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+        next_change = None
+
+        # Find next price change time
+        all_prices = []
+        if self._net_today:
+            all_prices.extend(self._net_today)
+        if self._net_tomorrow:
+            all_prices.extend(self._net_tomorrow)
+
+        for entry in all_prices:
+            start_str = entry.get("start") or entry.get("time")
+            if not start_str:
+                continue
+
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                if start_dt > now:
+                    if next_change is None or start_dt < next_change:
+                        next_change = start_dt
+            except Exception:
+                continue
+
+        if next_change:
+            _LOGGER.debug(
+                "Scheduling next price change for %s at %s",
+                self.entity_id,
+                next_change
+            )
+
+            async def handle_next_change(now):
+                """Handle the next scheduled price change."""
+                self._update_current_price()
+                self.async_write_ha_state()
+                self._schedule_next_price_change()
+
+            self._price_change_unsub = async_track_point_in_time(
+                self.hass, handle_next_change, next_change
+            )
+
+    def _schedule_sunrise_sunset_updates(self):
+        """Schedule updates at sunrise and sunset for solar bonus (without averaging).
+
+        This is used when average_prices_to_hourly is False but solar_bonus is enabled.
+        The sensor will update at sunrise/sunset to apply/remove the solar bonus.
+        """
+        from datetime import datetime, timedelta
+        import pytz
+        from homeassistant.helpers.event import async_track_point_in_time
+
+        # Cancel existing schedule
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+
+        # Get sunrise/sunset times for today and tomorrow
+        today = now.date()
+        tomorrow = today + timedelta(days=1)
+
+        sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
+        sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
+
+        # Find the next sunrise or sunset
+        next_event = None
+        candidates = []
+
+        if sunrise_today and sunrise_today > now:
+            candidates.append(sunrise_today)
+        if sunset_today and sunset_today > now:
+            candidates.append(sunset_today)
+        if sunrise_tomorrow and sunrise_tomorrow > now:
+            candidates.append(sunrise_tomorrow)
+        if sunset_tomorrow and sunset_tomorrow > now:
+            candidates.append(sunset_tomorrow)
+
+        if candidates:
+            next_event = min(candidates)
+
+        if next_event:
+            _LOGGER.debug(
+                "Scheduling sunrise/sunset update for %s at %s",
+                self.entity_id,
+                next_event
+            )
+
+            async def handle_sun_event(now):
+                """Handle sunrise/sunset event - recalculate price and reschedule."""
+                # Recalculate the price
+                total_price = 0.0
+                for sensor in self.price_sensors:
+                    state = self.hass.states.get(sensor)
+                    if state and state.state not in ("unknown", "unavailable"):
+                        try:
+                            total_price += float(state.state)
+                        except ValueError:
+                            pass
+
+                price = self._calculate_price(total_price)
+                if price is not None:
+                    self._attr_native_value = price
+
+                self.async_write_ha_state()
+                self._schedule_sunrise_sunset_updates()
+
+            self._price_change_unsub = async_track_point_in_time(
+                self.hass, handle_sun_event, next_event
+            )
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        # Track price sensor changes to update net_prices
         for sensor in self.price_sensors:
             self.async_on_remove(
                 async_track_state_change_event(
@@ -1080,7 +1290,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 )
             )
 
+    async def async_will_remove_from_hass(self):
+        """Clean up when removing entity."""
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+        await super().async_will_remove_from_hass()
+
     async def _handle_price_change(self, event):
+        """Handle price sensor state change - rebuild net_prices and reschedule."""
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             self._attr_available = False
@@ -1088,6 +1306,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 "Price sensor %s is unavailable", event.data.get("entity_id")
             )
             return
+        # Rebuild net_prices and current price
         await self.async_update()
         self.async_write_ha_state()
 
