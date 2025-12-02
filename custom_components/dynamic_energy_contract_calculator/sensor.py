@@ -825,12 +825,78 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         except Exception:
             return None, None
 
+    def _split_entry_at_sunrise_sunset(self, entry, sunrise, sunset):
+        """Split a price entry at sunrise/sunset if they occur within the entry's timespan.
+
+        Returns a list of entries (1-3 items):
+        - If no sunrise/sunset in timespan: returns [original entry]
+        - If sunrise in timespan: returns [before_sunrise, after_sunrise]
+        - If sunset in timespan: returns [before_sunset, after_sunset]
+        - If both in timespan: returns [before_sunrise, day, after_sunset]
+        """
+        from datetime import datetime
+
+        timestamp_start = entry.get("start") or entry.get("time")
+        timestamp_end = entry.get("end")
+
+        if not timestamp_start or not timestamp_end:
+            return [entry]
+
+        # Parse timestamps
+        try:
+            if isinstance(timestamp_start, str):
+                start_dt = datetime.fromisoformat(timestamp_start.replace("Z", "+00:00"))
+            else:
+                start_dt = timestamp_start
+
+            if isinstance(timestamp_end, str):
+                end_dt = datetime.fromisoformat(timestamp_end.replace("Z", "+00:00"))
+            else:
+                end_dt = timestamp_end
+        except Exception:
+            return [entry]
+
+        # Check if sunrise or sunset occur within this period
+        sunrise_in_period = sunrise and start_dt <= sunrise < end_dt
+        sunset_in_period = sunset and start_dt < sunset <= end_dt
+
+        if not sunrise_in_period and not sunset_in_period:
+            return [entry]
+
+        # Build list of split points
+        split_points = [start_dt]
+        if sunrise_in_period:
+            split_points.append(sunrise)
+        if sunset_in_period:
+            split_points.append(sunset)
+        split_points.append(end_dt)
+
+        # Create entries for each segment
+        result = []
+        for i in range(len(split_points) - 1):
+            seg_start = split_points[i]
+            seg_end = split_points[i + 1]
+
+            # Copy entry
+            seg_entry = entry.copy()
+            seg_entry["start"] = seg_start.isoformat()
+            seg_entry["end"] = seg_end.isoformat()
+            if "time" in seg_entry:
+                seg_entry["time"] = seg_start.isoformat()
+
+            result.append(seg_entry)
+
+        return result
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
         The input may be a list accumulated from multiple price sensors.
         Each entry is copied before modification to avoid mutating the
         original structure.
+
+        For production with solar bonus enabled, entries that span sunrise or
+        sunset will be split into separate entries at those exact times.
         """
 
         if not isinstance(raw_prices, list):
@@ -846,6 +912,53 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             and self.price_settings.get("solar_bonus_enabled", False)
         )
         solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
+
+        # If solar bonus is enabled, we need to split entries at sunrise/sunset
+        if solar_bonus_enabled and raw_prices:
+            from datetime import datetime
+
+            # Get all unique dates from entries
+            dates_to_check = set()
+            for entry in raw_prices:
+                timestamp = entry.get("start") or entry.get("time")
+                if timestamp:
+                    try:
+                        if isinstance(timestamp, str):
+                            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        else:
+                            dt = timestamp
+                        dates_to_check.add(dt.date())
+                    except Exception:
+                        pass
+
+            # Get sunrise/sunset for all dates
+            sun_times = {}
+            for date_obj in dates_to_check:
+                sunrise, sunset = self._get_sunrise_sunset_times(date_obj)
+                sun_times[date_obj] = (sunrise, sunset)
+
+            # Split entries at sunrise/sunset
+            split_prices = []
+            for entry in raw_prices:
+                timestamp = entry.get("start") or entry.get("time")
+                if timestamp:
+                    try:
+                        if isinstance(timestamp, str):
+                            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        else:
+                            dt = timestamp
+                        date_key = dt.date()
+                        sunrise, sunset = sun_times.get(date_key, (None, None))
+
+                        # Split entry if needed
+                        segments = self._split_entry_at_sunrise_sunset(entry, sunrise, sunset)
+                        split_prices.extend(segments)
+                    except Exception:
+                        split_prices.append(entry)
+                else:
+                    split_prices.append(entry)
+
+            raw_prices = split_prices
 
         converted = []
         for entry in raw_prices:
