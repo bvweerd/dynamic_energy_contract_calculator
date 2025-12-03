@@ -30,6 +30,7 @@ from .const import (
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
+from .solar_bonus import SolarBonusTracker
 
 import logging
 
@@ -123,6 +124,42 @@ class NettingStatusMixin:
         self._attr_extra_state_attributes = _build_netting_attributes(
             self._netting_tracker
         )
+
+
+class SolarBonusStatusSensor(BaseUtilitySensor):
+    """Sensor showing solar bonus statistics."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        name: str,
+        unique_id: str,
+        device: DeviceInfo,
+        solar_bonus_tracker: SolarBonusTracker,
+    ):
+        super().__init__(
+            name=name,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:solar-power",
+            visible=True,
+            device=device,
+            translation_key="solar_bonus_total",
+        )
+        self.hass = hass
+        self._solar_bonus_tracker = solar_bonus_tracker
+
+    async def async_update(self):
+        """Update sensor with current solar bonus stats."""
+        self._attr_native_value = self._solar_bonus_tracker.total_bonus_euro
+        self._attr_extra_state_attributes = {
+            "year_production_kwh": round(
+                self._solar_bonus_tracker.year_production_kwh, 2
+            ),
+            "total_bonus_euro": round(self._solar_bonus_tracker.total_bonus_euro, 2),
+        }
+        self.async_write_ha_state()
 
 
 class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
@@ -484,6 +521,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             "net_prices_today": None,
             "net_prices_tomorrow": None,
         }
+        self._price_change_unsub = None
 
     def _calculate_price(self, base_price: float) -> float:
         if self.source_type == SOURCE_TYPE_GAS:
@@ -507,10 +545,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 price = (base_price + markup_consumption + tax) * vat_factor
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
+                # For production: markup is the return compensation (added, not subtracted)
                 if self.price_settings.get("production_price_include_vat", True):
-                    price = (base_price - markup_production) * vat_factor
+                    price = (base_price + markup_production) * vat_factor
                 else:
-                    price = base_price - markup_production
+                    price = base_price + markup_production
             else:
                 return None
         return round(price, 8)
@@ -590,16 +629,359 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 existing.append(entry_copy)
         return existing
 
+    def _is_daylight_at(self, timestamp) -> bool:
+        """Check if a given timestamp is during daylight hours.
+
+        Uses Home Assistant's sun integration via astral to calculate
+        exact sunrise/sunset times for the timestamp.
+        Falls back to conservative hour-based estimate if calculation unavailable.
+        """
+        from datetime import datetime
+
+        # Parse timestamp first (outside try-except to use in fallback)
+        try:
+            if isinstance(timestamp, str):
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            else:
+                dt = timestamp
+        except Exception as e:
+            # Can't parse timestamp, assume not daylight
+            _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
+            return False
+
+        # Try to use astral for precise calculation
+        try:
+            from astral import LocationInfo
+            from astral.sun import sun
+
+            # Get location from Home Assistant config
+            latitude = self.hass.config.latitude
+            longitude = self.hass.config.longitude
+            timezone = str(self.hass.config.time_zone)
+
+            # Validate we have location data
+            if latitude is None or longitude is None:
+                raise ValueError("No location configured")
+
+            # Create location info
+            location = LocationInfo(
+                name="Home",
+                region="",
+                timezone=timezone,
+                latitude=latitude,
+                longitude=longitude,
+            )
+
+            # Calculate sun times for the date of the timestamp
+            # Use the date in the local timezone
+            if dt.tzinfo is None:
+                # Assume local time if no timezone
+                check_date = dt.date()
+            else:
+                # Convert to local timezone
+                import pytz
+
+                local_tz = pytz.timezone(timezone)
+                local_dt = dt.astimezone(local_tz)
+                check_date = local_dt.date()
+
+            s = sun(location.observer, date=check_date, tzinfo=timezone)
+            sunrise = s["sunrise"]
+            sunset = s["sunset"]
+
+            # Compare timestamp with sunrise/sunset
+            # Make sure we're comparing timezone-aware datetimes
+            if dt.tzinfo is None:
+                import pytz
+
+                local_tz = pytz.timezone(timezone)
+                dt = local_tz.localize(dt)
+
+            return sunrise <= dt < sunset
+
+        except Exception as e:
+            # astral calculation failed, use hour-based fallback
+            _LOGGER.debug("Using hour-based daylight check (astral failed: %s)", e)
+            # Fallback: Conservative hour-based check
+            # 7 AM to 7 PM covers daylight hours year-round in NL
+            return 7 <= dt.hour < 19
+
+    def _average_to_hourly(self, raw_prices):
+        """Average quarter-hour or sub-hourly price entries to hourly averages.
+
+        Groups entries by hour and calculates the average price for each hour.
+        Returns a new list with one entry per hour.
+        """
+        if not isinstance(raw_prices, list) or not raw_prices:
+            return raw_prices
+
+        from datetime import datetime
+        from collections import defaultdict
+
+        # Group entries by hour
+        hourly_groups = defaultdict(list)
+
+        for entry in raw_prices:
+            if not isinstance(entry, dict):
+                continue
+
+            # Get timestamp
+            timestamp = entry.get("start") or entry.get("time")
+            if not timestamp:
+                continue
+
+            # Get price value
+            value_key = None
+            if "value" in entry:
+                value_key = "value"
+            elif "price" in entry:
+                value_key = "price"
+            if value_key is None:
+                continue
+
+            try:
+                price_value = float(entry[value_key])
+                # Parse timestamp and round to hour
+                if isinstance(timestamp, str):
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                else:
+                    dt = timestamp
+
+                # Create hour key (year, month, day, hour)
+                hour_key = (dt.year, dt.month, dt.day, dt.hour)
+                hourly_groups[hour_key].append((price_value, entry))
+            except (ValueError, TypeError, AttributeError):
+                continue
+
+        # Calculate averages and create hourly entries
+        averaged = []
+        for hour_key, entries in sorted(hourly_groups.items()):
+            if not entries:
+                continue
+
+            # Calculate average price
+            avg_price = sum(price for price, _ in entries) / len(entries)
+
+            # Use the first entry as template and update with averaged price
+            template_entry = entries[0][1].copy()
+
+            # Get the original datetime to preserve timezone
+            timestamp = template_entry.get("start") or template_entry.get("time")
+            if isinstance(timestamp, str):
+                original_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            else:
+                original_dt = timestamp
+
+            # Set the timestamp to the start of the hour, preserving timezone
+            year, month, day, hour = hour_key
+            if original_dt.tzinfo:
+                # Preserve timezone from original
+                hour_start = original_dt.replace(
+                    year=year,
+                    month=month,
+                    day=day,
+                    hour=hour,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+            else:
+                hour_start = datetime(year, month, day, hour)
+
+            # End time is one hour later
+            from datetime import timedelta
+
+            hour_end = hour_start + timedelta(hours=1)
+
+            if template_entry.get("start"):
+                template_entry["start"] = hour_start.isoformat()
+            if template_entry.get("time"):
+                template_entry["time"] = hour_start.isoformat()
+            if template_entry.get("end"):
+                template_entry["end"] = hour_end.isoformat()
+
+            # Update price value
+            if "value" in template_entry:
+                template_entry["value"] = avg_price
+            if "price" in template_entry:
+                template_entry["price"] = avg_price
+
+            averaged.append(template_entry)
+
+        return averaged if averaged else raw_prices
+
+    def _get_sunrise_sunset_times(self, date_obj):
+        """Get sunrise and sunset times for a specific date.
+
+        Returns tuple of (sunrise, sunset) as datetime objects, or (None, None) if unavailable.
+        """
+        try:
+            from astral import LocationInfo
+            from astral.sun import sun
+
+            latitude = self.hass.config.latitude
+            longitude = self.hass.config.longitude
+            timezone = str(self.hass.config.time_zone)
+
+            location = LocationInfo(
+                name="Home",
+                region="",
+                timezone=timezone,
+                latitude=latitude,
+                longitude=longitude,
+            )
+
+            s = sun(location.observer, date=date_obj, tzinfo=timezone)
+            return s["sunrise"], s["sunset"]
+        except Exception:
+            return None, None
+
+    def _split_entry_at_sunrise_sunset(self, entry, sunrise, sunset):
+        """Split a price entry at sunrise/sunset if they occur within the entry's timespan.
+
+        Returns a list of entries (1-3 items):
+        - If no sunrise/sunset in timespan: returns [original entry]
+        - If sunrise in timespan: returns [before_sunrise, after_sunrise]
+        - If sunset in timespan: returns [before_sunset, after_sunset]
+        - If both in timespan: returns [before_sunrise, day, after_sunset]
+        """
+        from datetime import datetime
+
+        timestamp_start = entry.get("start") or entry.get("time")
+        timestamp_end = entry.get("end")
+
+        if not timestamp_start or not timestamp_end:
+            return [entry]
+
+        # Parse timestamps
+        try:
+            if isinstance(timestamp_start, str):
+                start_dt = datetime.fromisoformat(
+                    timestamp_start.replace("Z", "+00:00")
+                )
+            else:
+                start_dt = timestamp_start
+
+            if isinstance(timestamp_end, str):
+                end_dt = datetime.fromisoformat(timestamp_end.replace("Z", "+00:00"))
+            else:
+                end_dt = timestamp_end
+        except Exception:
+            return [entry]
+
+        # Check if sunrise or sunset occur within this period
+        sunrise_in_period = sunrise and start_dt <= sunrise < end_dt
+        sunset_in_period = sunset and start_dt < sunset <= end_dt
+
+        if not sunrise_in_period and not sunset_in_period:
+            return [entry]
+
+        # Build list of split points
+        split_points = [start_dt]
+        if sunrise_in_period:
+            split_points.append(sunrise)
+        if sunset_in_period:
+            split_points.append(sunset)
+        split_points.append(end_dt)
+
+        # Create entries for each segment
+        result = []
+        for i in range(len(split_points) - 1):
+            seg_start = split_points[i]
+            seg_end = split_points[i + 1]
+
+            # Copy entry
+            seg_entry = entry.copy()
+            seg_entry["start"] = seg_start.isoformat()
+            seg_entry["end"] = seg_end.isoformat()
+            if "time" in seg_entry:
+                seg_entry["time"] = seg_start.isoformat()
+
+            result.append(seg_entry)
+
+        return result
+
     def _convert_raw_prices(self, raw_prices):
         """Convert raw price entries by applying price settings.
 
         The input may be a list accumulated from multiple price sensors.
         Each entry is copied before modification to avoid mutating the
         original structure.
+
+        For production with solar bonus enabled, entries that span sunrise or
+        sunset will be split into separate entries at those exact times.
         """
 
         if not isinstance(raw_prices, list):
             return None
+
+        # Check if averaging to hourly is enabled
+        average_to_hourly = self.price_settings.get("average_prices_to_hourly", True)
+
+        # Average to hourly if enabled
+        if average_to_hourly:
+            raw_prices = self._average_to_hourly(raw_prices)
+
+        # Check if solar bonus is enabled for production
+        solar_bonus_enabled = (
+            self.source_type == SOURCE_TYPE_PRODUCTION
+            and self.price_settings.get("solar_bonus_enabled", False)
+        )
+        solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
+
+        # If solar bonus is enabled AND averaging to hourly is enabled,
+        # we need to split entries at sunrise/sunset
+        if solar_bonus_enabled and average_to_hourly and raw_prices:
+            from datetime import datetime
+
+            # Get all unique dates from entries
+            dates_to_check = set()
+            for entry in raw_prices:
+                timestamp = entry.get("start") or entry.get("time")
+                if timestamp:
+                    try:
+                        if isinstance(timestamp, str):
+                            dt = datetime.fromisoformat(
+                                timestamp.replace("Z", "+00:00")
+                            )
+                        else:
+                            dt = timestamp
+                        dates_to_check.add(dt.date())
+                    except Exception:
+                        pass
+
+            # Get sunrise/sunset for all dates
+            sun_times = {}
+            for date_obj in dates_to_check:
+                sunrise, sunset = self._get_sunrise_sunset_times(date_obj)
+                sun_times[date_obj] = (sunrise, sunset)
+
+            # Split entries at sunrise/sunset
+            split_prices = []
+            for entry in raw_prices:
+                timestamp = entry.get("start") or entry.get("time")
+                if timestamp:
+                    try:
+                        if isinstance(timestamp, str):
+                            dt = datetime.fromisoformat(
+                                timestamp.replace("Z", "+00:00")
+                            )
+                        else:
+                            dt = timestamp
+                        date_key = dt.date()
+                        sunrise, sunset = sun_times.get(date_key, (None, None))
+
+                        # Split entry if needed
+                        segments = self._split_entry_at_sunrise_sunset(
+                            entry, sunrise, sunset
+                        )
+                        split_prices.extend(segments)
+                    except Exception:
+                        split_prices.append(entry)
+                else:
+                    split_prices.append(entry)
+
+            raw_prices = split_prices
 
         converted = []
         for entry in raw_prices:
@@ -619,9 +1001,25 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             entry_conv = entry.copy()
             calculated = self._calculate_price(base)
+
+            # Apply solar bonus if conditions are met
+            solar_bonus_applied = False
+            if solar_bonus_enabled and calculated > 0:
+                # Check if this hour is during daylight
+                timestamp = entry_conv.get("start") or entry_conv.get("time")
+                is_daylight = self._is_daylight_at(timestamp) if timestamp else False
+                if is_daylight:
+                    # Add solar bonus (10% extra)
+                    bonus = calculated * (solar_bonus_percentage / 100.0)
+                    calculated += bonus
+                    solar_bonus_applied = True
+
             entry_conv["value"] = calculated
             if "price" in entry_conv:
                 entry_conv["price"] = calculated
+            # Add marker if solar bonus was applied to this entry
+            if solar_bonus_enabled:
+                entry_conv["solar_bonus_applied"] = solar_bonus_applied
             converted.append(entry_conv)
 
         return converted
@@ -660,18 +1058,246 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         self._net_today = self._convert_raw_prices(raw_today)
         self._net_tomorrow = self._convert_raw_prices(raw_tomorrow)
-        self._attr_extra_state_attributes = {
+
+        # Build attributes dictionary
+        attributes = {
             "net_prices_today": self._net_today,
             "net_prices_tomorrow": self._net_tomorrow,
         }
 
-        price = self._calculate_price(total_price)
-        if price is None:
-            return
-        self._attr_native_value = price
+        # Add sunrise/sunset info for production sensors with solar bonus
+        if self.source_type == SOURCE_TYPE_PRODUCTION and self.price_settings.get(
+            "solar_bonus_enabled", False
+        ):
+            from datetime import datetime, timedelta
+
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+
+            sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
+            sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
+
+            if sunrise_today:
+                attributes["sunrise_today"] = sunrise_today.isoformat()
+            if sunset_today:
+                attributes["sunset_today"] = sunset_today.isoformat()
+            if sunrise_tomorrow:
+                attributes["sunrise_tomorrow"] = sunrise_tomorrow.isoformat()
+            if sunset_tomorrow:
+                attributes["sunset_tomorrow"] = sunset_tomorrow.isoformat()
+
+        self._attr_extra_state_attributes = attributes
+
+        # Check if we need scheduling
+        average_to_hourly = self.price_settings.get("average_prices_to_hourly", True)
+        solar_bonus_enabled = (
+            self.source_type == SOURCE_TYPE_PRODUCTION
+            and self.price_settings.get("solar_bonus_enabled", False)
+        )
+
+        if average_to_hourly:
+            # With averaging: use scheduled updates based on net_prices (includes splits at sunrise/sunset)
+            self._update_current_price()
+            self._schedule_next_price_change()
+        else:
+            # Without averaging: calculate price directly from current base price
+            price = self._calculate_price(total_price)
+            if price is not None:
+                self._attr_native_value = price
+
+            # But still schedule sunrise/sunset updates if solar bonus is enabled
+            if solar_bonus_enabled:
+                self._schedule_sunrise_sunset_updates()
+
+    def _update_current_price(self):
+        """Update the current price based on the current time and net_prices."""
+        from datetime import datetime
+        import pytz
+
+        # Get current time in the configured timezone
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+
+        # Find current price from net_prices_today or net_prices_tomorrow
+        current_price = None
+
+        if self._net_today:
+            for entry in self._net_today:
+                start_str = entry.get("start") or entry.get("time")
+                end_str = entry.get("end")
+
+                if not start_str or not end_str:
+                    continue
+
+                try:
+                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+
+                    if start_dt <= now < end_dt:
+                        current_price = entry.get("value")
+                        break
+                except Exception:
+                    continue
+
+        # If not found in today, check tomorrow
+        if current_price is None and self._net_tomorrow:
+            for entry in self._net_tomorrow:
+                start_str = entry.get("start") or entry.get("time")
+                end_str = entry.get("end")
+
+                if not start_str or not end_str:
+                    continue
+
+                try:
+                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+
+                    if start_dt <= now < end_dt:
+                        current_price = entry.get("value")
+                        break
+                except Exception:
+                    continue
+
+        if current_price is not None:
+            self._attr_native_value = current_price
+        else:
+            # Fallback: calculate from current base price
+            total_price = 0.0
+            for sensor in self.price_sensors:
+                state = self.hass.states.get(sensor)
+                if state and state.state not in ("unknown", "unavailable"):
+                    try:
+                        total_price += float(state.state)
+                    except ValueError:
+                        pass
+            price = self._calculate_price(total_price)
+            if price is not None:
+                self._attr_native_value = price
+
+    def _schedule_next_price_change(self):
+        """Schedule the next price change based on net_prices."""
+        from datetime import datetime
+        import pytz
+        from homeassistant.helpers.event import async_track_point_in_time
+
+        # Cancel existing schedule
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+        next_change = None
+
+        # Find next price change time
+        all_prices = []
+        if self._net_today:
+            all_prices.extend(self._net_today)
+        if self._net_tomorrow:
+            all_prices.extend(self._net_tomorrow)
+
+        for entry in all_prices:
+            start_str = entry.get("start") or entry.get("time")
+            if not start_str:
+                continue
+
+            try:
+                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                if start_dt > now:
+                    if next_change is None or start_dt < next_change:
+                        next_change = start_dt
+            except Exception:
+                continue
+
+        if next_change:
+            _LOGGER.debug(
+                "Scheduling next price change for %s at %s", self.entity_id, next_change
+            )
+
+            async def handle_next_change(now):
+                """Handle the next scheduled price change."""
+                self._update_current_price()
+                self.async_write_ha_state()
+                self._schedule_next_price_change()
+
+            self._price_change_unsub = async_track_point_in_time(
+                self.hass, handle_next_change, next_change
+            )
+
+    def _schedule_sunrise_sunset_updates(self):
+        """Schedule updates at sunrise and sunset for solar bonus (without averaging).
+
+        This is used when average_prices_to_hourly is False but solar_bonus is enabled.
+        The sensor will update at sunrise/sunset to apply/remove the solar bonus.
+        """
+        from datetime import datetime, timedelta
+        import pytz
+        from homeassistant.helpers.event import async_track_point_in_time
+
+        # Cancel existing schedule
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+
+        tz = pytz.timezone(str(self.hass.config.time_zone))
+        now = datetime.now(tz=tz)
+
+        # Get sunrise/sunset times for today and tomorrow
+        today = now.date()
+        tomorrow = today + timedelta(days=1)
+
+        sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
+        sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
+
+        # Find the next sunrise or sunset
+        next_event = None
+        candidates = []
+
+        if sunrise_today and sunrise_today > now:
+            candidates.append(sunrise_today)
+        if sunset_today and sunset_today > now:
+            candidates.append(sunset_today)
+        if sunrise_tomorrow and sunrise_tomorrow > now:
+            candidates.append(sunrise_tomorrow)
+        if sunset_tomorrow and sunset_tomorrow > now:
+            candidates.append(sunset_tomorrow)
+
+        if candidates:
+            next_event = min(candidates)
+
+        if next_event:
+            _LOGGER.debug(
+                "Scheduling sunrise/sunset update for %s at %s",
+                self.entity_id,
+                next_event,
+            )
+
+            async def handle_sun_event(now):
+                """Handle sunrise/sunset event - recalculate price and reschedule."""
+                # Recalculate the price
+                total_price = 0.0
+                for sensor in self.price_sensors:
+                    state = self.hass.states.get(sensor)
+                    if state and state.state not in ("unknown", "unavailable"):
+                        try:
+                            total_price += float(state.state)
+                        except ValueError:
+                            pass
+
+                price = self._calculate_price(total_price)
+                if price is not None:
+                    self._attr_native_value = price
+
+                self.async_write_ha_state()
+                self._schedule_sunrise_sunset_updates()
+
+            self._price_change_unsub = async_track_point_in_time(
+                self.hass, handle_sun_event, next_event
+            )
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        # Track price sensor changes to update net_prices
         for sensor in self.price_sensors:
             self.async_on_remove(
                 async_track_state_change_event(
@@ -681,7 +1307,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 )
             )
 
+    async def async_will_remove_from_hass(self):
+        """Clean up when removing entity."""
+        if self._price_change_unsub:
+            self._price_change_unsub()
+            self._price_change_unsub = None
+        await super().async_will_remove_from_hass()
+
     async def _handle_price_change(self, event):
+        """Handle price sensor state change - rebuild net_prices and reschedule."""
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
             self._attr_available = False
@@ -689,6 +1323,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 "Price sensor %s is unavailable", event.data.get("entity_id")
             )
             return
+        # Rebuild net_prices and current price
         await self.async_update()
         self.async_write_ha_state()
 
@@ -721,6 +1356,19 @@ async def async_setup_entry(
             tracker = await NettingTracker.async_create(hass, entry.entry_id)
             netting_map[entry.entry_id] = tracker
         netting_tracker = tracker
+
+    solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
+    solar_bonus_tracker: SolarBonusTracker | None = None
+    if solar_bonus_enabled:
+        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        sb_tracker = solar_bonus_map.get(entry.entry_id)
+        contract_start_date = price_settings.get("contract_start_date", "")
+        if sb_tracker is None:
+            sb_tracker = await SolarBonusTracker.async_create(
+                hass, entry.entry_id, contract_start_date
+            )
+            solar_bonus_map[entry.entry_id] = sb_tracker
+        solar_bonus_tracker = sb_tracker
 
     for block in configs:
         source_type = block[CONF_SOURCE_TYPE]
@@ -757,6 +1405,11 @@ async def async_setup_entry(
                     and source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_PRODUCTION)
                     else None
                 )
+                solar_tracker_arg = (
+                    solar_bonus_tracker
+                    if solar_bonus_tracker and source_type == SOURCE_TYPE_PRODUCTION
+                    else None
+                )
                 entities.append(
                     DynamicEnergySensor(
                         hass=hass,
@@ -772,6 +1425,7 @@ async def async_setup_entry(
                         visible=mode_def["visible"],
                         device=device_info,
                         netting_tracker=tracker_arg,
+                        solar_bonus_tracker=solar_tracker_arg,
                     )
                 )
 
@@ -827,6 +1481,17 @@ async def async_setup_entry(
     )
     entities.append(energy_cost)
 
+    # Add solar bonus sensor if enabled
+    if solar_bonus_tracker is not None:
+        solar_bonus_sensor = SolarBonusStatusSensor(
+            hass=hass,
+            name="Solar Bonus (Total)",
+            unique_id=f"{DOMAIN}_solar_bonus_total",
+            device=device_info,
+            solar_bonus_tracker=solar_bonus_tracker,
+        )
+        entities.append(solar_bonus_sensor)
+
     if price_sensor:
         entities.append(
             CurrentElectricityPriceSensor(
@@ -870,3 +1535,23 @@ async def async_setup_entry(
     async_add_entities(entities, True)
 
     hass.data[DOMAIN]["entities"] = {ent.entity_id: ent for ent in entities}
+
+    # Schedule contract anniversary reset if enabled
+    reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
+    if reset_on_anniversary and solar_bonus_tracker:
+
+        async def check_contract_anniversary(now):
+            """Check if today is the contract anniversary and reset if needed."""
+            next_anniversary = solar_bonus_tracker.get_next_anniversary_date()
+            if next_anniversary and now.date() == next_anniversary:
+                _LOGGER.info("Contract anniversary reached, resetting all meters")
+                # Reset solar bonus tracker
+                await solar_bonus_tracker.async_reset_year()
+                # Reset all utility entities
+                for entity in UTILITY_ENTITIES:
+                    await entity.async_reset()
+
+        # Run at midnight every day
+        async_track_time_change(
+            hass, check_contract_anniversary, hour=0, minute=0, second=0
+        )
