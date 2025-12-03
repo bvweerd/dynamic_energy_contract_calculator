@@ -24,6 +24,7 @@ from .repair import async_report_issue, async_clear_issue
 
 if TYPE_CHECKING:  # pragma: no cover - runtime import would create a cycle
     from .netting import NettingTracker
+    from .solar_bonus import SolarBonusTracker
 
 import logging
 
@@ -110,6 +111,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         visible: bool = True,
         device: DeviceInfo | None = None,
         netting_tracker: NettingTracker | None = None,
+        solar_bonus_tracker: SolarBonusTracker | None = None,
     ):
         super().__init__(
             None,
@@ -137,6 +139,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.source_type = source_type
         self.price_settings = price_settings
         self._netting_tracker = netting_tracker
+        self._solar_bonus_tracker = solar_bonus_tracker
         self._last_energy = None
         self._last_updated = datetime.now()
         self._energy_unavailable_since: datetime | None = None
@@ -310,6 +313,39 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     unit_price = total_price - markup_production
                 value = delta * unit_price
                 adjusted_value = value
+
+                # Calculate solar bonus if enabled
+                solar_bonus_amount = 0.0
+                if (
+                    self.mode == "profit_total"
+                    and self._solar_bonus_tracker is not None
+                    and self.price_settings.get("solar_bonus_enabled", False)
+                ):
+                    bonus_percentage = self.price_settings.get(
+                        "solar_bonus_percentage", 10.0
+                    )
+                    annual_limit = self.price_settings.get(
+                        "solar_bonus_annual_kwh_limit", 7500.0
+                    )
+
+                    (
+                        solar_bonus_amount,
+                        eligible_kwh,
+                    ) = await self._solar_bonus_tracker.async_calculate_bonus(
+                        delta_kwh=delta,
+                        base_price=total_price,
+                        production_markup=markup_production,
+                        bonus_percentage=bonus_percentage,
+                        annual_limit_kwh=annual_limit,
+                    )
+
+                    if solar_bonus_amount > 0:
+                        adjusted_value += solar_bonus_amount
+                        _LOGGER.debug(
+                            "Solar bonus: %.2f kWh eligible, %.4f EUR bonus added",
+                            eligible_kwh,
+                            solar_bonus_amount,
+                        )
 
                 if self.mode == "profit_total" and self._netting_tracker is not None:
                     (

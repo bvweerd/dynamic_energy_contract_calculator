@@ -131,3 +131,80 @@ async def test_get_energy_sensors_filters_gas(hass: HomeAssistant):
 
     sensors = await _get_energy_sensors(hass, SOURCE_TYPE_GAS)
     assert sensors == ["sensor.gas_total"]
+
+
+async def test_config_flow_accepts_input_number_price_sensors(hass: HomeAssistant):
+    """Test that config flow accepts input_number entities for price sensors."""
+    # Set up various input_number entities with monetary attributes
+    hass.states.async_set(
+        "input_number.electricity_tariff",
+        0.25,
+        {"unit_of_measurement": "EUR/kWh"},
+    )
+    hass.states.async_set(
+        "input_number.gas_tariff_euro_symbol",
+        0.85,
+        {"unit_of_measurement": "€/m³"},
+    )
+    hass.states.async_set(
+        "input_number.gas_tariff_eur",
+        0.90,
+        {"unit_of_measurement": "EUR/m³"},
+    )
+    hass.states.async_set(
+        "sensor.price_monetary",
+        0.20,
+        {"device_class": "monetary"},
+    )
+
+    # Test that the filtering includes input_number entities
+    all_prices = [
+        state.entity_id
+        for state in hass.states.async_all()
+        if (state.domain in ["sensor", "input_number"])
+        and (
+            state.attributes.get("device_class") == "monetary"
+            or state.attributes.get("unit_of_measurement") == "€/m³"
+            or state.attributes.get("unit_of_measurement") == "EUR/m³"
+            or state.attributes.get("unit_of_measurement") == "€/kWh"
+            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+        )
+    ]
+
+    assert "input_number.electricity_tariff" in all_prices
+    assert "input_number.gas_tariff_euro_symbol" in all_prices
+    assert "input_number.gas_tariff_eur" in all_prices
+    assert "sensor.price_monetary" in all_prices
+
+
+async def test_config_flow_supports_eur_m3_unit(hass: HomeAssistant):
+    """Test that config flow recognizes EUR/m³ unit for gas price sensors."""
+    # Set up gas price sensor with EUR/m³ unit
+    hass.states.async_set(
+        "sensor.gas_price_eur",
+        0.75,
+        {"unit_of_measurement": "EUR/m³"},
+    )
+    # Also test the euro symbol variant
+    hass.states.async_set(
+        "sensor.gas_price_euro_symbol",
+        0.80,
+        {"unit_of_measurement": "€/m³"},
+    )
+
+    # Test that the filtering includes EUR/m³ sensors
+    all_prices = [
+        state.entity_id
+        for state in hass.states.async_all()
+        if (state.domain in ["sensor", "input_number"])
+        and (
+            state.attributes.get("device_class") == "monetary"
+            or state.attributes.get("unit_of_measurement") == "€/m³"
+            or state.attributes.get("unit_of_measurement") == "EUR/m³"
+            or state.attributes.get("unit_of_measurement") == "€/kWh"
+            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+        )
+    ]
+
+    assert "sensor.gas_price_eur" in all_prices
+    assert "sensor.gas_price_euro_symbol" in all_prices

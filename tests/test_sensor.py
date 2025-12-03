@@ -728,18 +728,21 @@ async def test_current_price_attributes_entsoe(hass: HomeAssistant):
 
     assert attrs_today is not None
     assert attrs_tomorrow is not None
-    assert attrs_today[0]["time"] == prices_today[0]["time"]
-    assert attrs_today[0]["value"] == pytest.approx(0.077)
-    assert attrs_today[0]["price"] == pytest.approx(0.077)
-    assert attrs_today[1]["time"] == prices_today[1]["time"]
-    assert attrs_today[1]["value"] == pytest.approx(0.0551)
-    assert attrs_today[1]["price"] == pytest.approx(0.0551)
-    assert attrs_tomorrow[0]["time"] == prices_tomorrow[0]["time"]
-    assert attrs_tomorrow[0]["value"] == pytest.approx(0.06591)
-    assert attrs_tomorrow[0]["price"] == pytest.approx(0.06591)
-    assert attrs_tomorrow[1]["time"] == prices_tomorrow[1]["time"]
-    assert attrs_tomorrow[1]["value"] == pytest.approx(0.06426)
-    assert attrs_tomorrow[1]["price"] == pytest.approx(0.06426)
+    # With averaging enabled (default), quarter-hour entries are averaged to hourly
+    assert len(attrs_today) == 1
+    assert len(attrs_tomorrow) == 1
+    # Check that the average price is correct: (0.077 + 0.0551) / 2 = 0.06605
+    assert attrs_today[0]["value"] == pytest.approx(0.06605)
+    assert attrs_today[0]["price"] == pytest.approx(0.06605)
+    # Check that timezone is preserved in ISO format
+    assert attrs_today[0]["time"].startswith("2025-10-28T00:00:00")
+    assert "+01:00" in attrs_today[0]["time"]
+    # Check tomorrow's average: (0.06591 + 0.06426) / 2 = 0.065085
+    assert attrs_tomorrow[0]["value"] == pytest.approx(0.065085)
+    assert attrs_tomorrow[0]["price"] == pytest.approx(0.065085)
+    assert attrs_tomorrow[0]["time"].startswith("2025-10-29T00:00:00")
+    assert "+01:00" in attrs_tomorrow[0]["time"]
+    # Current value comes from sensor state, not the averaged values
     assert sensor.native_value == pytest.approx(0.077)
 
 
@@ -830,3 +833,183 @@ async def test_current_price_attributes_multiple_sensors(hass: HomeAssistant):
     assert sensor.extra_state_attributes["net_prices_today"] == expected_today
     assert sensor.extra_state_attributes["net_prices_tomorrow"] == expected_tomorrow
     assert sensor.native_value == pytest.approx(0.5)
+
+
+async def test_production_negative_price_no_solar_bonus(hass: HomeAssistant):
+    """Test that solar bonus is NOT applied when EPEX price is negative."""
+    price_settings = {
+        "per_unit_supplier_electricity_production_markup": 0.02,  # €0.02 production compensation
+        "vat_percentage": 0.0,
+        "production_price_include_vat": False,
+        "solar_bonus_enabled": True,
+        "solar_bonus_percentage": 10.0,
+    }
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Production Negative Price",
+        "prod_neg",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings=price_settings,
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "prod_neg")}),
+    )
+
+    # EPEX price is -0.05, so with production markup of 0.02:
+    # Final price = -0.05 + 0.02 = -0.03 (negative)
+    # Solar bonus should NOT be applied because final price is negative
+    raw_today = [
+        {
+            "start": "2025-07-25T12:00:00+02:00",  # Noon - definitely daylight
+            "end": "2025-07-25T13:00:00+02:00",
+            "value": -0.05,
+        }
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        -0.05,
+        {"raw_today": raw_today, "raw_tomorrow": []},
+    )
+    await sensor.async_update()
+
+    net_prices = sensor.extra_state_attributes["net_prices_today"]
+    assert len(net_prices) == 1
+    # Should be -0.05 + 0.02 = -0.03, no solar bonus applied
+    assert net_prices[0]["value"] == pytest.approx(-0.03)
+
+
+async def test_production_small_negative_price_becomes_positive_with_markup(hass: HomeAssistant):
+    """Test solar bonus IS applied when negative EPEX becomes positive with production markup."""
+    price_settings = {
+        "per_unit_supplier_electricity_production_markup": 0.05,  # €0.05 production compensation
+        "vat_percentage": 0.0,
+        "production_price_include_vat": False,
+        "solar_bonus_enabled": True,
+        "solar_bonus_percentage": 10.0,
+    }
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Production Small Negative",
+        "prod_small_neg",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings=price_settings,
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "prod_small_neg")}),
+    )
+
+    # EPEX price is -0.02, but with production markup of 0.05:
+    # Base price = -0.02 + 0.05 = 0.03 (positive!)
+    # Solar bonus should be applied: 0.03 * 1.10 = 0.033
+    raw_today = [
+        {
+            "start": "2025-07-25T12:00:00+02:00",  # Noon - definitely daylight
+            "end": "2025-07-25T13:00:00+02:00",
+            "value": -0.02,
+        }
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        -0.02,
+        {"raw_today": raw_today, "raw_tomorrow": []},
+    )
+    await sensor.async_update()
+
+    net_prices = sensor.extra_state_attributes["net_prices_today"]
+    assert len(net_prices) == 1
+    # Should be (-0.02 + 0.05) * 1.10 = 0.03 * 1.10 = 0.033
+    assert net_prices[0]["value"] == pytest.approx(0.033)
+
+
+async def test_production_positive_price_with_solar_bonus(hass: HomeAssistant):
+    """Test that solar bonus IS applied for positive prices during daylight."""
+    price_settings = {
+        "per_unit_supplier_electricity_production_markup": 0.02,
+        "vat_percentage": 0.0,
+        "production_price_include_vat": False,
+        "solar_bonus_enabled": True,
+        "solar_bonus_percentage": 10.0,
+    }
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Production Positive Price",
+        "prod_pos",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings=price_settings,
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "prod_pos")}),
+    )
+
+    # EPEX price is 0.10, with production markup of 0.02:
+    # Base price = 0.10 + 0.02 = 0.12
+    # Solar bonus: 0.12 * 1.10 = 0.132
+    raw_today = [
+        {
+            "start": "2025-07-25T12:00:00+02:00",  # Noon - definitely daylight
+            "end": "2025-07-25T13:00:00+02:00",
+            "value": 0.10,
+        }
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        0.10,
+        {"raw_today": raw_today, "raw_tomorrow": []},
+    )
+    await sensor.async_update()
+
+    net_prices = sensor.extra_state_attributes["net_prices_today"]
+    assert len(net_prices) == 1
+    # Should be (0.10 + 0.02) * 1.10 = 0.132
+    assert net_prices[0]["value"] == pytest.approx(0.132)
+
+
+async def test_production_night_time_no_solar_bonus(hass: HomeAssistant):
+    """Test that solar bonus is NOT applied during night time even with positive price."""
+    price_settings = {
+        "per_unit_supplier_electricity_production_markup": 0.02,
+        "vat_percentage": 0.0,
+        "production_price_include_vat": False,
+        "solar_bonus_enabled": True,
+        "solar_bonus_percentage": 10.0,
+    }
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Production Night",
+        "prod_night",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings=price_settings,
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("dec", "prod_night")}),
+    )
+
+    # EPEX price is 0.10 at night
+    # Base price = 0.10 + 0.02 = 0.12
+    # Solar bonus should NOT be applied at night: result = 0.12
+    raw_today = [
+        {
+            "start": "2025-07-25T02:00:00+02:00",  # 2 AM - night time
+            "end": "2025-07-25T03:00:00+02:00",
+            "value": 0.10,
+        }
+    ]
+
+    hass.states.async_set(
+        "sensor.price",
+        0.10,
+        {"raw_today": raw_today, "raw_tomorrow": []},
+    )
+    await sensor.async_update()
+
+    net_prices = sensor.extra_state_attributes["net_prices_today"]
+    assert len(net_prices) == 1
+    # Should be 0.10 + 0.02 = 0.12 (no solar bonus at night)
+    assert net_prices[0]["value"] == pytest.approx(0.12)
