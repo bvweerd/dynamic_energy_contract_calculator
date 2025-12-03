@@ -669,7 +669,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 region="",
                 timezone=timezone,
                 latitude=latitude,
-                longitude=longitude
+                longitude=longitude,
             )
 
             # Calculate sun times for the date of the timestamp
@@ -680,6 +680,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             else:
                 # Convert to local timezone
                 import pytz
+
                 local_tz = pytz.timezone(timezone)
                 local_dt = dt.astimezone(local_tz)
                 check_date = local_dt.date()
@@ -692,6 +693,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Make sure we're comparing timezone-aware datetimes
             if dt.tzinfo is None:
                 import pytz
+
                 local_tz = pytz.timezone(timezone)
                 dt = local_tz.localize(dt)
 
@@ -774,7 +776,15 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             year, month, day, hour = hour_key
             if original_dt.tzinfo:
                 # Preserve timezone from original
-                hour_start = original_dt.replace(year=year, month=month, day=day, hour=hour, minute=0, second=0, microsecond=0)
+                hour_start = original_dt.replace(
+                    year=year,
+                    month=month,
+                    day=day,
+                    hour=hour,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
             else:
                 hour_start = datetime(year, month, day, hour)
 
@@ -818,7 +828,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 region="",
                 timezone=timezone,
                 latitude=latitude,
-                longitude=longitude
+                longitude=longitude,
             )
 
             s = sun(location.observer, date=date_obj, tzinfo=timezone)
@@ -846,7 +856,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         # Parse timestamps
         try:
             if isinstance(timestamp_start, str):
-                start_dt = datetime.fromisoformat(timestamp_start.replace("Z", "+00:00"))
+                start_dt = datetime.fromisoformat(
+                    timestamp_start.replace("Z", "+00:00")
+                )
             else:
                 start_dt = timestamp_start
 
@@ -929,7 +941,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 if timestamp:
                     try:
                         if isinstance(timestamp, str):
-                            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                            dt = datetime.fromisoformat(
+                                timestamp.replace("Z", "+00:00")
+                            )
                         else:
                             dt = timestamp
                         dates_to_check.add(dt.date())
@@ -949,14 +963,18 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 if timestamp:
                     try:
                         if isinstance(timestamp, str):
-                            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                            dt = datetime.fromisoformat(
+                                timestamp.replace("Z", "+00:00")
+                            )
                         else:
                             dt = timestamp
                         date_key = dt.date()
                         sunrise, sunset = sun_times.get(date_key, (None, None))
 
                         # Split entry if needed
-                        segments = self._split_entry_at_sunrise_sunset(entry, sunrise, sunset)
+                        segments = self._split_entry_at_sunrise_sunset(
+                            entry, sunrise, sunset
+                        )
                         split_prices.extend(segments)
                     except Exception:
                         split_prices.append(entry)
@@ -1048,8 +1066,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         }
 
         # Add sunrise/sunset info for production sensors with solar bonus
-        if (self.source_type == SOURCE_TYPE_PRODUCTION and
-            self.price_settings.get("solar_bonus_enabled", False)):
+        if self.source_type == SOURCE_TYPE_PRODUCTION and self.price_settings.get(
+            "solar_bonus_enabled", False
+        ):
             from datetime import datetime, timedelta
 
             today = datetime.now().date()
@@ -1192,9 +1211,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         if next_change:
             _LOGGER.debug(
-                "Scheduling next price change for %s at %s",
-                self.entity_id,
-                next_change
+                "Scheduling next price change for %s at %s", self.entity_id, next_change
             )
 
             async def handle_next_change(now):
@@ -1252,7 +1269,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             _LOGGER.debug(
                 "Scheduling sunrise/sunset update for %s at %s",
                 self.entity_id,
-                next_event
+                next_event,
             )
 
             async def handle_sun_event(now):

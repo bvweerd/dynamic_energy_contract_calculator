@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
-    BinarySensorDeviceClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -30,16 +29,19 @@ async def async_setup_entry(
     entities = []
 
     configs = entry.data.get("configurations", [])
-    price_settings = entry.options.get("price_settings", entry.data.get("price_settings", {}))
+    price_settings = entry.options.get(
+        "price_settings", entry.data.get("price_settings", {})
+    )
 
     # Get the price sensor from entry data (used for production price calculations)
-    price_sensor_list = entry.options.get("price_sensor", entry.data.get("price_sensor", []))
+    price_sensor_list = entry.options.get(
+        "price_sensor", entry.data.get("price_sensor", [])
+    )
     production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
     # Check if production is configured
     has_production = any(
-        config.get("source_type") == SOURCE_TYPE_PRODUCTION
-        for config in configs
+        config.get("source_type") == SOURCE_TYPE_PRODUCTION for config in configs
     )
 
     # Create device info for Summary Sensors device (same as in sensor.py)
@@ -146,12 +148,17 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         # Check if daylight
         if self._solar_bonus_tracker._is_daylight():
             # Check if under annual limit
-            annual_limit = self._price_settings.get("solar_bonus_annual_kwh_limit", 7500.0)
+            annual_limit = self._price_settings.get(
+                "solar_bonus_annual_kwh_limit", 7500.0
+            )
             if self._solar_bonus_tracker.year_production_kwh < annual_limit:
                 # Check if price is positive
                 if self._price_sensor:
                     price_state = self.hass.states.get(self._price_sensor)
-                    if price_state and price_state.state not in ("unknown", "unavailable"):
+                    if price_state and price_state.state not in (
+                        "unknown",
+                        "unavailable",
+                    ):
                         try:
                             base_price = float(price_state.state)
                             production_markup = self._price_settings.get(
