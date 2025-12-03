@@ -880,7 +880,9 @@ async def test_production_negative_price_no_solar_bonus(hass: HomeAssistant):
     assert net_prices[0]["value"] == pytest.approx(-0.03)
 
 
-async def test_production_small_negative_price_becomes_positive_with_markup(hass: HomeAssistant):
+async def test_production_small_negative_price_becomes_positive_with_markup(
+    hass: HomeAssistant,
+):
     """Test solar bonus IS applied when negative EPEX becomes positive with production markup."""
     price_settings = {
         "per_unit_supplier_electricity_production_markup": 0.05,  # €0.05 production compensation
