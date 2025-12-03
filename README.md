@@ -35,9 +35,9 @@ During setup you will be asked for the following information:
    consumption, electricity production or gas consumption.
 2. **Energy sensors** – one or more sensors with the `energy` or `gas` device
    class that provide cumulative readings.
-3. **Price sensors** – optional sensors that provide components of the current energy price
-   in €/kWh or €/m³. You can select more than one; their values are summed.
-   This makes it possible to add sensors that expose dynamic tariff surcharges.
+3. **Price sensors** – optional sensors or input_number entities that provide components of the current energy price
+   in €/kWh, EUR/kWh, €/m³, or EUR/m³. You can select more than one; their values are summed.
+   This makes it possible to add sensors that expose dynamic tariff surcharges or use manual input helpers for fixed tariffs.
 4. **Price settings** – values from the table below used to calculate the final
    price.
 
@@ -62,8 +62,39 @@ In addition a few summary sensors are created:
 - `sensor.current_consumption_price`
 - `sensor.current_production_price`
 - `sensor.current_gas_consumption_price`
+- `sensor.solar_bonus_total` (when solar bonus is enabled)
+- `binary_sensor.solar_bonus_active` (when solar bonus is enabled)
+- `binary_sensor.production_price_positive` (when production is configured)
 
 These sensors can be used in the [Energy dashboard](https://www.home-assistant.io/docs/energy/) or in your own automations.
+
+### Solar Bonus Feature
+
+When enabled, the integration automatically calculates solar bonus (zonnebonus) for electricity production. This feature:
+- Tracks production during daylight hours (sunrise to sunset based on Home Assistant's sun entity)
+- Applies a configurable bonus percentage (default 10%)
+- Respects annual kWh limits (default 7,500 kWh)
+- Only applies when production compensation is positive
+- Automatically resets on contract anniversary (when contract start date is configured)
+- Falls back to calendar year reset if no contract start date is set
+- Uses exact sunrise/sunset times, which may result in fractional hour/quarter-hour periods in price data
+
+**Contract Anniversary Reset:**
+- Configure `contract_start_date` (format: YYYY-MM-DD) to track limits from your contract start date
+- Enable `reset_on_contract_anniversary` to automatically reset all meters on the anniversary
+- The annual kWh limit is calculated from the contract start date, not the calendar year
+- Example: Contract starting 2024-07-01 will track limits from July 1 to June 30 each year
+
+The `sensor.solar_bonus_total` shows the total bonus earned this contract year and has attributes for:
+- `year_production_kwh`: Total eligible production this contract year
+- `total_bonus_euro`: Total bonus amount earned
+
+**Binary Sensors:**
+
+The integration provides binary sensors for automation:
+
+- `binary_sensor.solar_bonus_active` - On when solar bonus is currently being applied (daylight hours, positive price, under annual limit)
+- `binary_sensor.production_price_positive` - On when the production compensation price is positive (useful for controlling inverters to zero export when prices are negative)
 
 ## Services
 
@@ -147,6 +178,13 @@ the base price from your price sensor before VAT is calculated.
 | `per_day_grid_operator_gas_connection_fee` | Daily gas connection fees. |
 | `per_day_supplier_gas_standing_charge` | Fixed daily gas contract cost. |
 | `vat_percentage` | VAT rate that should be applied to all calculated prices. |
+| `production_price_include_vat` | Whether to apply VAT to production compensation (default: False for Dutch private solar). |
+| `average_prices_to_hourly` | Average quarter-hour prices to hourly (default: True). |
+| `solar_bonus_enabled` | Enable solar bonus calculation for production. |
+| `solar_bonus_percentage` | Bonus percentage applied to production (default 10%). |
+| `solar_bonus_annual_kwh_limit` | Annual kWh limit for solar bonus (default 7500). |
+| `contract_start_date` | Contract start date in YYYY-MM-DD format for anniversary tracking. |
+| `reset_on_contract_anniversary` | Automatically reset all meters on contract anniversary. |
 
 If your price sensors already provide prices **including** VAT, set
 `vat_percentage` to `0` to avoid double counting.
@@ -187,18 +225,21 @@ price = (
 
 ### Production
 
-For production sensors the supplier markup is subtracted. Depending on the
+For production sensors the supplier markup is added (since it's compensation, not cost). Depending on the
 `production_price_include_vat` option VAT may or may not be applied:
 
 ```
 if production_price_include_vat:
     price = (
         base_price
-        - per_unit_supplier_electricity_production_markup
+        + per_unit_supplier_electricity_production_markup
     ) * (1 + vat_percentage / 100)
 else:
-    price = base_price - per_unit_supplier_electricity_production_markup
+    price = base_price + per_unit_supplier_electricity_production_markup
 ```
+
+**Note:** In the Netherlands, private solar panel owners receive production compensation that already includes VAT by law.
+Therefore, `production_price_include_vat` should typically be set to `False` to avoid double-counting VAT.
 
 The resulting price is multiplied by the energy delta (kWh or m³) and added to
 the appropriate cost or profit sensor.
@@ -282,6 +323,126 @@ This screen lets you configure markups, surcharges and VAT. The values are added
 on top of the base price reported by your price sensor.
 
 The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2025 with gas consumption <500m3 per year and electricity <10.000kWh per year.
+
+## Supplier Presets
+
+The integration includes preset configurations for common energy suppliers. These presets can be manually applied or used as a reference.
+
+### Zonneplan 2025
+
+For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configuration available in `const.py`. This preset includes:
+
+**Consumption costs (from Zonneplan contract, inclusive VAT):**
+- Inkoopvergoeding: €0.02 per kWh
+- Energiebelasting: €0.13165 per kWh
+- Vaste leveringskosten: €6.25 per maand
+- Netbeheerkosten: €39.48 per maand
+- Vermindering energiebelasting: -€52.62 per maand
+
+**Configuration values (exclusive VAT - integration calculates VAT):**
+- Inkoopvergoeding: €0.01653 per kWh (€0.02 / 1.21)
+- Energiebelasting: €0.10880 per kWh (€0.13165 / 1.21)
+- Vaste leveringskosten: €0.17355 per dag (€6.25/30.42 / 1.21)
+- Netbeheerkosten: €1.07438 per dag (€39.48/30.42 / 1.21)
+- Vermindering energiebelasting: €1.42975 per dag (€52.62/30.42 / 1.21)
+
+**Production revenue:**
+- Vaste terugleververgoeding: €0.02 per kWh (exclusive VAT - no VAT on production compensation)
+- Salderingsregeling: enabled (until 2027)
+
+**Solar bonus (zonnebonus):**
+- **Automatically calculated** when enabled (10% of base price + production markup)
+- Only applied between sunrise and sunset based on official measurements (De Bilt, NL)
+- Limited to first 7,500 kWh per contract year
+- Only when (base_price + production_markup) is positive
+- Automatically resets on contract anniversary when configured
+
+**How Zonneplan calculates the solar bonus:**
+
+Zonneplan calculates the solar bonus for electricity you return between sunrise and sunset. The calculation is based on quarter-hour readings from your smart meter, matching the exact moments of sunrise and sunset as closely as the meter's technical capabilities allow.
+
+There is no fixed rounding to a standard quarter-hour before or after sunrise/sunset. Your return is registered per quarter-hour; as soon as there is solar production in a quarter after sunrise, it counts toward the bonus. The same applies around sunset: only until the last full quarter during daylight do you receive the bonus.
+
+Although Zonneplan uses dynamic hourly prices, both registration and settlement occur based on these underlying quarter-hour data. You receive exactly what you're entitled to for each relevant consumption or return moment within an hour—without rounding beyond what is technically measurable.
+
+**Important timing notes:**
+- The integration uses the sun.sun entity from Home Assistant to determine sunrise and sunset times
+- This means solar bonus periods start and end at the exact sunrise/sunset times, not at fixed hour boundaries
+- When hourly price averaging is enabled (`average_prices_to_hourly: true`), hours containing sunrise or sunset may show different effective start/end times in the price attributes
+- The quarter-hour or hourly return rates in attributes will reflect partial-hour solar bonus periods during sunrise and sunset hours
+
+**Contract management:**
+- Set `contract_start_date` to your actual contract start date for accurate year tracking
+- Enable `reset_on_contract_anniversary` to automatically reset all meters yearly
+- Leave `contract_start_date` empty to use calendar year tracking
+
+**Important notes:**
+- All configuration values are **exclusive of VAT** (integration adds 21% VAT)
+- EPEX Day Ahead sensors typically provide prices exclusive of VAT
+- The integration calculates the final price: (EPEX + markup + tax) × 1.21
+- Production compensation already includes VAT per Dutch law for private solar owners
+- Powerplay feed-in has separate compensation rules not covered by this preset
+
+**Price calculation example:**
+```
+EPEX price: €0.10/kWh (exclusive VAT)
++ Inkoopvergoeding: €0.01653/kWh
++ Energiebelasting: €0.10880/kWh
+= €0.22533/kWh (subtotal exclusive VAT)
+× 1.21 (VAT)
+= €0.27265/kWh (final price inclusive VAT)
+```
+
+**Manual configuration:**
+
+To apply these settings manually during setup or via the options flow:
+
+```yaml
+# All values EXCLUSIVE of VAT - integration will add 21% VAT for consumption
+per_unit_supplier_electricity_markup: 0.01653  # €0.02 incl. VAT / 1.21
+per_unit_supplier_electricity_production_markup: 0.02  # €0.02 excl. VAT (no VAT on production)
+per_unit_government_electricity_tax: 0.10880  # €0.13165 incl. VAT / 1.21
+per_day_grid_operator_electricity_connection_fee: 1.07438  # €39.48/month / 30.42 / 1.21
+per_day_supplier_electricity_standing_charge: 0.17355  # €6.25/month / 30.42 / 1.21
+per_day_government_electricity_tax_rebate: 1.42975  # €52.62/month / 30.42 / 1.21
+vat_percentage: 21.0  # Integration calculates VAT
+production_price_include_vat: false  # No VAT on production compensation
+netting_enabled: true
+average_prices_to_hourly: true  # Zonneplan uses hourly averages
+solar_bonus_enabled: true
+solar_bonus_percentage: 10.0
+solar_bonus_annual_kwh_limit: 7500.0
+contract_start_date: "2024-01-01"  # Set your actual contract start date
+reset_on_contract_anniversary: true
+```
+
+**Price sensor setup:**
+
+For Zonneplan you'll need an EPEX Day Ahead price sensor. You can use integrations like:
+- [EPEX Spot](https://github.com/TheFes/epex-spot-sensor) custom integration
+- [Nordpool](https://github.com/custom-components/nordpool) (includes EPEX data)
+
+More information about Zonneplan tariffs: [www.zonneplan.nl/energie](https://www.zonneplan.nl/energie)
+
+### Greenchoice Gas 2025
+
+For Greenchoice gas contracts (2025 tariffs), use the `PRESET_GREENCHOICE_GAS_2025` configuration. This is a gas-only preset for the "Aardgas met Natuur voor Morgen" fixed contract.
+
+**Configuration values (exclusive VAT):**
+- Leveringstarief: €0.39020 per m³ (€0.47214 incl. VAT / 1.21)
+- Energiebelasting: €0.57816 per m³ (€0.69957 incl. VAT / 1.21)
+- Netbeheerkosten: €0.58740 per dag (€0.71075 incl. VAT / 1.21)
+- Vaste leveringskosten: €0.22249 per dag (€0.26922 incl. VAT / 1.21)
+
+**Manual configuration:**
+
+```yaml
+per_unit_supplier_gas_markup: 0.39020
+per_unit_government_gas_tax: 0.57816
+per_day_grid_operator_gas_connection_fee: 0.58740
+per_day_supplier_gas_standing_charge: 0.22249
+vat_percentage: 21.0
+```
 
 ### 4. Resulting sensors
 

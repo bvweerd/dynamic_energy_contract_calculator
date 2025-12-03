@@ -3,8 +3,9 @@
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
+        "description": "Configureer energiebronnen en prijsinstellingen. Voeg sensoren toe, laad een leverancier preset, of configureer prijzen.",
         "data": {
-          "source_type": "Type bron"
+          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "select_sources": {
@@ -13,15 +14,23 @@
           "sources": "Energiesensoren"
         }
       },
+      "load_preset": {
+        "title": "Leverancier Preset Laden",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
+        "data": {
+          "supplier_preset": "Leverancier preset"
+        }
+      },
       "price_settings": {
         "title": "Prijsinstellingen",
         "data": {
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
           "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
-          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "per_unit_supplier_electricity_production_markup": "Terugleververgoeding per kWh",
           "production_price_include_vat": "BTW toepassen op terugleverprijs",
           "netting_enabled": "Salderingsregeling inschakelen",
+          "average_prices_to_hourly": "Kwartierprijzen middelen naar uurprijzen",
           "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
           "vat_percentage": "BTW-percentage",
           "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
@@ -30,7 +39,12 @@
           "per_unit_supplier_gas_markup": "Gasopslag per m³",
           "per_unit_government_gas_tax": "Belasting gas per m³",
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
-          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
+          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag",
+          "solar_bonus_enabled": "Zonnebonus inschakelen",
+          "solar_bonus_percentage": "Zonnebonus percentage",
+          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet",
+          "contract_start_date": "Contract startdatum",
+          "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
     },
@@ -42,8 +56,9 @@
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
+        "description": "Wijzig energiebronnen en prijsinstellingen. Voeg sensoren toe/verwijder, herlaad presets, of pas prijzen aan.",
         "data": {
-          "source_type": "Type bron"
+          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "select_sources": {
@@ -52,15 +67,23 @@
           "sources": "Energiesensoren"
         }
       },
+      "load_preset": {
+        "title": "Leverancier Preset Laden",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
+        "data": {
+          "supplier_preset": "Leverancier preset"
+        }
+      },
       "price_settings": {
         "title": "Prijsinstellingen",
         "data": {
           "price_sensor": "Stroomprijssensor",
           "price_sensor_gas": "Gasprijssensor",
           "per_unit_supplier_electricity_markup": "Opslag elektriciteit per kWh",
-          "per_unit_supplier_electricity_production_markup": "Opslag stroomproductie per kWh",
+          "per_unit_supplier_electricity_production_markup": "Terugleververgoeding per kWh",
           "production_price_include_vat": "BTW toepassen op terugleverprijs",
           "netting_enabled": "Salderingsregeling inschakelen",
+          "average_prices_to_hourly": "Kwartierprijzen middelen naar uurprijzen",
           "per_unit_government_electricity_tax": "Belasting elektriciteit per kWh",
           "vat_percentage": "BTW-percentage",
           "per_day_grid_operator_electricity_connection_fee": "Aansluitkosten elektriciteit per dag",
@@ -69,7 +92,12 @@
           "per_unit_supplier_gas_markup": "Gasopslag per m³",
           "per_unit_government_gas_tax": "Belasting gas per m³",
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
-          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag"
+          "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag",
+          "solar_bonus_enabled": "Zonnebonus inschakelen",
+          "solar_bonus_percentage": "Zonnebonus percentage",
+          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet",
+          "contract_start_date": "Contract startdatum",
+          "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
     },
@@ -147,6 +175,14 @@
       },
       "current_gas_consumption_price": {
         "name": "Huidige gasverbruiksprijs"
+      }
+    },
+    "binary_sensor": {
+      "solar_bonus_active": {
+        "name": "Zonnebonus actief"
+      },
+      "production_price_positive": {
+        "name": "Terugleverprijs positief"
       }
     }
   },
