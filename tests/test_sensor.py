@@ -163,7 +163,8 @@ async def test_daily_gas_cost_sensor(hass: HomeAssistant):
     )
     assert sensor.entity_category is None
     assert sensor._calculate_daily_cost() == pytest.approx(0.5)
-    assert sensor.extra_state_attributes == {"netting_enabled": False}
+    # Gas sensor should not have netting attributes
+    assert sensor.extra_state_attributes is None
 
 
 async def test_daily_electricity_cost_sensor(hass: HomeAssistant):
