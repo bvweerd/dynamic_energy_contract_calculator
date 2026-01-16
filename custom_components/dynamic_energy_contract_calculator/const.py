@@ -72,21 +72,21 @@ DEFAULT_PRICE_SETTINGS = {
 }
 
 # Preset configurations for common suppliers
-# Zonneplan 2025: All values are EXCLUSIVE of VAT (21%)
+# Zonneplan 2026: All values are EXCLUSIVE of VAT (21%)
 # The integration will add VAT on top of these values
 # Contract values (inclusive VAT) converted: value_incl_vat / 1.21
-PRESET_ZONNEPLAN_2025 = {
+PRESET_ZONNEPLAN_2026 = {
     "per_unit_supplier_electricity_markup": 0.01653,  # €0.02 incl. VAT / 1.21
-    "per_unit_supplier_electricity_production_markup": 0.02,  # €0.02 excl. VAT (no VAT on production)
-    "per_unit_government_electricity_tax": 0.10880,  # €0.13165 incl. VAT / 1.21
+    "per_unit_supplier_electricity_production_markup": 0.02,  # €0.02 (No VAT on production)
+    "per_unit_government_electricity_tax": 0.09157,  # €0.1108 incl. VAT / 1.21
     "per_unit_supplier_gas_markup": 0.0,
     "per_unit_government_gas_tax": 0.0,
-    "per_day_grid_operator_electricity_connection_fee": 1.07438,  # €1.30 incl. VAT / 1.21 (€39.48/month)
-    "per_day_supplier_electricity_standing_charge": 0.17355,  # €0.21 incl. VAT / 1.21 (€6.25/month)
-    "per_day_government_electricity_tax_rebate": 1.42975,  # €1.73 incl. VAT / 1.21 (€52.62/month)
+    "per_day_grid_operator_electricity_connection_fee": 0.92098,  # €1.11438 incl. VAT / 1.21
+    "per_day_supplier_electricity_standing_charge": 0.14343,  # €0.17355 incl. VAT / 1.21
+    "per_day_government_electricity_tax_rebate": 1.17707,  # €1.42425 incl. VAT / 1.21
     "per_day_grid_operator_gas_connection_fee": 0.0,
     "per_day_supplier_gas_standing_charge": 0.0,
-    "vat_percentage": 21.0,  # VAT will be calculated by integration
+    "vat_percentage": 21.0,
     "production_price_include_vat": False,  # No VAT on production compensation (teruglevering)
     "netting_enabled": True,
     "average_prices_to_hourly": True,  # Zonneplan uses hourly averages
@@ -97,20 +97,20 @@ PRESET_ZONNEPLAN_2025 = {
     "reset_on_contract_anniversary": True,
 }
 
-# Greenchoice 2025: Gas only preset
+# Greenchoice 2026: Gas only
 # All values are EXCLUSIVE of VAT (21%)
-# Contract: Aardgas met Natuur voor Morgen (Fixed contract)
-PRESET_GREENCHOICE_GAS_2025 = {
+# Contract: Nederlands Groen 1 jaar
+PRESET_GREENCHOICE_GAS_2026 = {
     "per_unit_supplier_electricity_markup": 0.0,
     "per_unit_supplier_electricity_production_markup": 0.0,
     "per_unit_government_electricity_tax": 0.0,
     "per_day_grid_operator_electricity_connection_fee": 0.0,
     "per_day_supplier_electricity_standing_charge": 0.0,
     "per_day_government_electricity_tax_rebate": 0.0,
-    "per_unit_supplier_gas_markup": 0.39020,  # Leveringstarief: €0.47214 incl. VAT / 1.21
-    "per_unit_government_gas_tax": 0.57816,  # Energiebelasting: €0.69957 incl. VAT / 1.21
-    "per_day_grid_operator_gas_connection_fee": 0.58740,  # Netbeheerkosten: €0.71075 incl. VAT / 1.21
-    "per_day_supplier_gas_standing_charge": 0.22249,  # Vaste leveringskosten: €0.26922 incl. VAT / 1.21
+    "per_unit_supplier_gas_markup": 0.41050,  # €0.49671 incl. VAT / 1.21
+    "per_unit_government_gas_tax": 0.60066,  # €0.7268 incl. VAT / 1.21
+    "per_day_grid_operator_gas_connection_fee": 0.22249,  # €0.26921 incl. VAT / 1.21
+    "per_day_supplier_gas_standing_charge": 0.43860,  # €0.53071 incl. VAT / 1.21
     "vat_percentage": 21.0,
     "production_price_include_vat": True,
     "netting_enabled": False,
@@ -123,8 +123,8 @@ PRESET_GREENCHOICE_GAS_2025 = {
 }
 
 SUPPLIER_PRESETS = {
-    "zonneplan_2025": PRESET_ZONNEPLAN_2025,
-    "greenchoice_gas_2025": PRESET_GREENCHOICE_GAS_2025,
+    "zonneplan_2026": PRESET_ZONNEPLAN_2026,    
+    "greenchoice_gas_2026": PRESET_GREENCHOICE_GAS_2026,
 }
 
 NETTING_STORAGE_VERSION = 1
