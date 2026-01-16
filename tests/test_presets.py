@@ -1,20 +1,20 @@
 """Test supplier preset configurations."""
 
 from custom_components.dynamic_energy_contract_calculator.const import (
-    PRESET_ZONNEPLAN_2025,
+    PRESET_ZONNEPLAN_2026,
     SUPPLIER_PRESETS,
 )
 
 
 def test_zonneplan_preset_exists():
     """Test that Zonneplan preset is available."""
-    assert "zonneplan_2025" in SUPPLIER_PRESETS
-    assert SUPPLIER_PRESETS["zonneplan_2025"] == PRESET_ZONNEPLAN_2025
+    assert "zonneplan_2026" in SUPPLIER_PRESETS
+    assert SUPPLIER_PRESETS["zonneplan_2026"] == PRESET_ZONNEPLAN_2026
 
 
 def test_zonneplan_preset_structure():
     """Test that Zonneplan preset has correct structure and values."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
 
     # Test consumption costs (exclusive VAT - will be multiplied by 1.21)
     assert abs(preset["per_unit_supplier_electricity_markup"] - 0.01653) < 0.00001
@@ -54,7 +54,7 @@ def test_zonneplan_preset_structure():
 
 def test_zonneplan_vat_calculation():
     """Test that VAT calculation yields correct inclusive prices."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
     vat_factor = 1.21
 
     # Test per-unit costs: exclusive * 1.21 should equal inclusive
@@ -90,7 +90,7 @@ def test_zonneplan_vat_calculation():
 
 def test_zonneplan_daily_costs_calculation():
     """Test that daily costs match Zonneplan monthly rates (with VAT)."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
     vat_factor = 1.21
 
     # Calculate monthly costs from daily rates (including VAT)
