@@ -76,7 +76,7 @@ DEFAULT_PRICE_SETTINGS = {
 # The integration will add VAT on top of these values
 # Contract values (inclusive VAT) converted: value_incl_vat / 1.21
 PRESET_ZONNEPLAN_2026 = {
-    "per_unit_supplier_electricity_markup": 0.01366,  # €0.01653 incl. VAT / 1.21
+    "per_unit_supplier_electricity_markup": 0.01653,  # €0.02 incl. VAT / 1.21
     "per_unit_supplier_electricity_production_markup": 0.02,  # €0.02 (No VAT on production)
     "per_unit_government_electricity_tax": 0.09157,  # €0.1108 incl. VAT / 1.21
     "per_unit_supplier_gas_markup": 0.0,
