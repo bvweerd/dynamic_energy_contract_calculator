@@ -322,15 +322,15 @@ provides the current tariff.
 This screen lets you configure markups, surcharges and VAT. The values are added
 on top of the base price reported by your price sensor.
 
-The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2025 with gas consumption <500m3 per year and electricity <10.000kWh per year.
+The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2026 with gas consumption <500m3 per year and electricity <10.000kWh per year.
 
 ## Supplier Presets
 
 The integration includes preset configurations for common energy suppliers. These presets can be manually applied or used as a reference.
 
-### Zonneplan 2025
+### Zonneplan 2026
 
-For Zonneplan contracts (2025 tariffs), use the `PRESET_ZONNEPLAN_2025` configuration available in `const.py`. This preset includes:
+For Zonneplan contracts (2026 tariffs), use the `PRESET_ZONNEPLAN_2026` configuration available in `const.py`. This preset includes:
 
 **Consumption costs (from Zonneplan contract, inclusive VAT):**
 - Inkoopvergoeding: €0.02 per kWh
@@ -424,9 +424,9 @@ For Zonneplan you'll need an EPEX Day Ahead price sensor. You can use integratio
 
 More information about Zonneplan tariffs: [www.zonneplan.nl/energie](https://www.zonneplan.nl/energie)
 
-### Greenchoice Gas 2025
+### Greenchoice Gas 2026
 
-For Greenchoice gas contracts (2025 tariffs), use the `PRESET_GREENCHOICE_GAS_2025` configuration. This is a gas-only preset for the "Aardgas met Natuur voor Morgen" fixed contract.
+For Greenchoice gas contracts (2026 tariffs), use the `PRESET_GREENCHOICE_GAS_2026` configuration. This is a gas-only preset for the "Aardgas met Natuur voor Morgen" fixed contract.
 
 **Configuration values (exclusive VAT):**
 - Leveringstarief: €0.39020 per m³ (€0.47214 incl. VAT / 1.21)
