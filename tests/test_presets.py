@@ -1,32 +1,32 @@
 """Test supplier preset configurations."""
 
 from custom_components.dynamic_energy_contract_calculator.const import (
-    PRESET_ZONNEPLAN_2025,
+    PRESET_ZONNEPLAN_2026,
     SUPPLIER_PRESETS,
 )
 
 
 def test_zonneplan_preset_exists():
     """Test that Zonneplan preset is available."""
-    assert "zonneplan_2025" in SUPPLIER_PRESETS
-    assert SUPPLIER_PRESETS["zonneplan_2025"] == PRESET_ZONNEPLAN_2025
+    assert "zonneplan_2026" in SUPPLIER_PRESETS
+    assert SUPPLIER_PRESETS["zonneplan_2026"] == PRESET_ZONNEPLAN_2026
 
 
 def test_zonneplan_preset_structure():
     """Test that Zonneplan preset has correct structure and values."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
 
     # Test consumption costs (exclusive VAT - will be multiplied by 1.21)
     assert abs(preset["per_unit_supplier_electricity_markup"] - 0.01653) < 0.00001
-    assert abs(preset["per_unit_government_electricity_tax"] - 0.10880) < 0.00001
+    assert abs(preset["per_unit_government_electricity_tax"] - 0.09157) < 0.00001
     assert (
-        abs(preset["per_day_supplier_electricity_standing_charge"] - 0.17355) < 0.00001
+        abs(preset["per_day_supplier_electricity_standing_charge"] - 0.14343) < 0.00001
     )
     assert (
-        abs(preset["per_day_grid_operator_electricity_connection_fee"] - 1.07438)
+        abs(preset["per_day_grid_operator_electricity_connection_fee"] - 0.92098)
         < 0.00001
     )
-    assert abs(preset["per_day_government_electricity_tax_rebate"] - 1.42975) < 0.00001
+    assert abs(preset["per_day_government_electricity_tax_rebate"] - 1.17707) < 0.00001
 
     # Test production revenue (no VAT on production compensation)
     assert (
@@ -54,7 +54,7 @@ def test_zonneplan_preset_structure():
 
 def test_zonneplan_vat_calculation():
     """Test that VAT calculation yields correct inclusive prices."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
     vat_factor = 1.21
 
     # Test per-unit costs: exclusive * 1.21 should equal inclusive
@@ -64,59 +64,59 @@ def test_zonneplan_vat_calculation():
         < 0.0001
     )
 
-    # Energiebelasting: €0.13165 inclusive
+    # Energiebelasting: €0.1108 inclusive
     assert (
-        abs((preset["per_unit_government_electricity_tax"] * vat_factor) - 0.13165)
+        abs((preset["per_unit_government_electricity_tax"] * vat_factor) - 0.1108)
         < 0.0001
     )
 
     # Test daily costs: (exclusive * 1.21) should match original daily inclusive
-    # Vaste leveringskosten: €6.25/month = €0.21/day inclusive
+    # Vaste leveringskosten: €5.28/month = €0.1735/day inclusive
     daily_standing_charge_incl = (
         preset["per_day_supplier_electricity_standing_charge"] * vat_factor
     )
-    assert abs(daily_standing_charge_incl - (6.25 / 30.416667)) < 0.005
+    assert abs(daily_standing_charge_incl - (5.28 / 30.416667)) < 0.005
 
-    # Netbeheerkosten: €39.48/month = €1.30/day inclusive
+    # Netbeheerkosten: €33.90/month = €1.11/day inclusive
     daily_connection_fee_incl = (
         preset["per_day_grid_operator_electricity_connection_fee"] * vat_factor
     )
-    assert abs(daily_connection_fee_incl - (39.48 / 30.416667)) < 0.005
+    assert abs(daily_connection_fee_incl - (33.90 / 30.416667)) < 0.005
 
-    # Vermindering energiebelasting: €52.62/month = €1.73/day inclusive
+    # Vermindering energiebelasting: €43.38/month = €1.43/day inclusive
     daily_rebate_incl = preset["per_day_government_electricity_tax_rebate"] * vat_factor
-    assert abs(daily_rebate_incl - (52.62 / 30.416667)) < 0.005
+    assert abs(daily_rebate_incl - (43.38 / 30.416667)) < 0.005
 
 
 def test_zonneplan_daily_costs_calculation():
     """Test that daily costs match Zonneplan monthly rates (with VAT)."""
-    preset = PRESET_ZONNEPLAN_2025
+    preset = PRESET_ZONNEPLAN_2026
     vat_factor = 1.21
 
     # Calculate monthly costs from daily rates (including VAT)
     # Using 30.416667 days per month (365/12)
     days_per_month = 30.416667
 
-    # Vaste leveringskosten: €6.25 per maand (inclusive VAT)
+    # Vaste leveringskosten: €5.28 per maand (inclusive VAT)
     monthly_standing_charge = (
         preset["per_day_supplier_electricity_standing_charge"]
         * days_per_month
         * vat_factor
     )
-    assert abs(monthly_standing_charge - 6.25) < 0.15
+    assert abs(monthly_standing_charge - 5.28) < 0.15
 
-    # Netbeheerkosten: €39.48 per maand (inclusive VAT)
+    # Netbeheerkosten: €33.90 per maand (inclusive VAT)
     monthly_connection_fee = (
         preset["per_day_grid_operator_electricity_connection_fee"]
         * days_per_month
         * vat_factor
     )
-    assert abs(monthly_connection_fee - 39.48) < 0.10
+    assert abs(monthly_connection_fee - 33.90) < 0.10
 
-    # Vermindering energiebelasting: €52.62 per maand (inclusive VAT)
+    # Vermindering energiebelasting: €43.38 per maand (inclusive VAT)
     monthly_rebate = (
         preset["per_day_government_electricity_tax_rebate"]
         * days_per_month
         * vat_factor
     )
-    assert abs(monthly_rebate - 52.62) < 0.01
+    assert abs(monthly_rebate - 43.38) < 0.10
