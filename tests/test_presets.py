@@ -1,6 +1,14 @@
 """Test supplier preset configurations."""
 
+from custom_components.dynamic_energy_contract_calculator.config_flow import (
+    ELECTRICITY_CORE_FIELDS,
+    ELECTRICITY_FIELDS,
+    GAS_CORE_FIELDS,
+    GAS_FIELDS,
+    GENERAL_FIELDS,
+)
 from custom_components.dynamic_energy_contract_calculator.const import (
+    PRESET_GREENCHOICE_GAS_2026,
     PRESET_ZONNEPLAN_2026,
     SUPPLIER_PRESETS,
 )
