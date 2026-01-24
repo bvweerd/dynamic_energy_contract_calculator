@@ -159,7 +159,6 @@ class SolarBonusStatusSensor(BaseUtilitySensor):
             ),
             "total_bonus_euro": round(self._solar_bonus_tracker.total_bonus_euro, 2),
         }
-        self.async_write_ha_state()
 
 
 class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
