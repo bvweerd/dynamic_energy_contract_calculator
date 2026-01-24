@@ -1,6 +1,14 @@
 """Test supplier preset configurations."""
 
+from custom_components.dynamic_energy_contract_calculator.config_flow import (
+    ELECTRICITY_CORE_FIELDS,
+    ELECTRICITY_FIELDS,
+    GAS_CORE_FIELDS,
+    GAS_FIELDS,
+    GENERAL_FIELDS,
+)
 from custom_components.dynamic_energy_contract_calculator.const import (
+    PRESET_GREENCHOICE_GAS_2026,
     PRESET_ZONNEPLAN_2026,
     SUPPLIER_PRESETS,
 )
@@ -120,3 +128,84 @@ def test_zonneplan_daily_costs_calculation():
         * vat_factor
     )
     assert abs(monthly_rebate - 52.62) < 0.01
+
+
+def test_preset_type_detection():
+    """Test that preset type detection uses only core pricing fields."""
+    # Zonneplan has non-zero electricity core fields, zero gas core fields
+    has_electricity_zonneplan = any(
+        PRESET_ZONNEPLAN_2026.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
+    )
+    has_gas_zonneplan = any(
+        PRESET_ZONNEPLAN_2026.get(field, 0) != 0 for field in GAS_CORE_FIELDS
+    )
+    assert has_electricity_zonneplan is True
+    assert has_gas_zonneplan is False
+
+    # Greenchoice has non-zero gas core fields, zero electricity core fields
+    has_electricity_greenchoice = any(
+        PRESET_GREENCHOICE_GAS_2026.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
+    )
+    has_gas_greenchoice = any(
+        PRESET_GREENCHOICE_GAS_2026.get(field, 0) != 0 for field in GAS_CORE_FIELDS
+    )
+    assert has_electricity_greenchoice is False
+    assert has_gas_greenchoice is True
+
+
+def test_preset_merge_preserves_existing_values():
+    """Test that loading gas preset after electricity preset preserves electricity values.
+
+    This is the core fix for the bug where loading Greenchoice gas preset
+    would overwrite Zonneplan electricity values with zeros.
+    """
+    # Simulate loading Zonneplan first
+    settings = {}
+    preset = PRESET_ZONNEPLAN_2026
+
+    has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
+    has_electricity = any(preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS)
+
+    # Apply Zonneplan preset (electricity-only)
+    for key, value in preset.items():
+        if has_gas and not has_electricity:
+            if key in GAS_FIELDS or key in GENERAL_FIELDS:
+                settings[key] = value
+        elif has_electricity and not has_gas:
+            if key in ELECTRICITY_FIELDS or key in GENERAL_FIELDS:
+                settings[key] = value
+        else:
+            settings[key] = value
+
+    # Store original electricity values
+    original_electricity_markup = settings["per_unit_supplier_electricity_markup"]
+    original_electricity_tax = settings["per_unit_government_electricity_tax"]
+    original_netting = settings["netting_enabled"]
+    original_solar_bonus = settings["solar_bonus_enabled"]
+
+    # Now simulate loading Greenchoice gas preset
+    preset = PRESET_GREENCHOICE_GAS_2026
+
+    has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
+    has_electricity = any(preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS)
+
+    # Apply Greenchoice preset (gas-only)
+    for key, value in preset.items():
+        if has_gas and not has_electricity:
+            if key in GAS_FIELDS or key in GENERAL_FIELDS:
+                settings[key] = value
+        elif has_electricity and not has_gas:
+            if key in ELECTRICITY_FIELDS or key in GENERAL_FIELDS:
+                settings[key] = value
+        else:
+            settings[key] = value
+
+    # Electricity values should be preserved (not overwritten with zeros)
+    assert settings["per_unit_supplier_electricity_markup"] == original_electricity_markup
+    assert settings["per_unit_government_electricity_tax"] == original_electricity_tax
+    assert settings["netting_enabled"] == original_netting
+    assert settings["solar_bonus_enabled"] == original_solar_bonus
+
+    # Gas values should be from Greenchoice
+    assert settings["per_unit_supplier_gas_markup"] == PRESET_GREENCHOICE_GAS_2026["per_unit_supplier_gas_markup"]
+    assert settings["per_unit_government_gas_tax"] == PRESET_GREENCHOICE_GAS_2026["per_unit_government_gas_tax"]
