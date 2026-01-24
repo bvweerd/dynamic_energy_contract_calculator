@@ -28,20 +28,27 @@ STEP_PRICE_SETTINGS = "price_settings"
 STEP_LOAD_PRESET = "load_preset"
 
 # Field categories for smart preset loading
-GAS_FIELDS = {
+# Core fields are used for detecting preset type (only pricing fields, not settings)
+GAS_CORE_FIELDS = {
     "per_unit_supplier_gas_markup",
     "per_unit_government_gas_tax",
     "per_day_grid_operator_gas_connection_fee",
     "per_day_supplier_gas_standing_charge",
 }
 
-ELECTRICITY_FIELDS = {
+ELECTRICITY_CORE_FIELDS = {
     "per_unit_supplier_electricity_markup",
     "per_unit_supplier_electricity_production_markup",
     "per_unit_government_electricity_tax",
     "per_day_grid_operator_electricity_connection_fee",
     "per_day_supplier_electricity_standing_charge",
     "per_day_government_electricity_tax_rebate",
+}
+
+# All fields in each category (for selective updating)
+GAS_FIELDS = GAS_CORE_FIELDS
+
+ELECTRICITY_FIELDS = ELECTRICITY_CORE_FIELDS | {
     "production_price_include_vat",
     "netting_enabled",
     "solar_bonus_enabled",
@@ -205,16 +212,11 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ):
                 preset = SUPPLIER_PRESETS[selected_preset]
 
-                # Detect preset type by checking which fields have non-zero values
-                has_gas = any(
-                    preset.get(field, 0) != 0
-                    for field in GAS_FIELDS
-                    if isinstance(preset.get(field), (int, float))
-                )
+                # Detect preset type by checking which core pricing fields have non-zero values
+                # Only use core fields (markup/tax) for detection, not bonus settings
+                has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
                 has_electricity = any(
-                    preset.get(field, 0) != 0
-                    for field in ELECTRICITY_FIELDS
-                    if isinstance(preset.get(field), (int, float))
+                    preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
                 )
 
                 # Smart update: only update relevant fields
@@ -470,16 +472,11 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             ):
                 preset = SUPPLIER_PRESETS[selected_preset]
 
-                # Detect preset type by checking which fields have non-zero values
-                has_gas = any(
-                    preset.get(field, 0) != 0
-                    for field in GAS_FIELDS
-                    if isinstance(preset.get(field), (int, float))
-                )
+                # Detect preset type by checking which core pricing fields have non-zero values
+                # Only use core fields (markup/tax) for detection, not bonus settings
+                has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
                 has_electricity = any(
-                    preset.get(field, 0) != 0
-                    for field in ELECTRICITY_FIELDS
-                    if isinstance(preset.get(field), (int, float))
+                    preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
                 )
 
                 # Smart update: only update relevant fields
