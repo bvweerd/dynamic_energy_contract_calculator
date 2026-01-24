@@ -144,7 +144,8 @@ def test_preset_type_detection():
 
     # Greenchoice has non-zero gas core fields, zero electricity core fields
     has_electricity_greenchoice = any(
-        PRESET_GREENCHOICE_GAS_2026.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
+        PRESET_GREENCHOICE_GAS_2026.get(field, 0) != 0
+        for field in ELECTRICITY_CORE_FIELDS
     )
     has_gas_greenchoice = any(
         PRESET_GREENCHOICE_GAS_2026.get(field, 0) != 0 for field in GAS_CORE_FIELDS
@@ -164,7 +165,9 @@ def test_preset_merge_preserves_existing_values():
     preset = PRESET_ZONNEPLAN_2026
 
     has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
-    has_electricity = any(preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS)
+    has_electricity = any(
+        preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
+    )
 
     # Apply Zonneplan preset (electricity-only)
     for key, value in preset.items():
@@ -187,7 +190,9 @@ def test_preset_merge_preserves_existing_values():
     preset = PRESET_GREENCHOICE_GAS_2026
 
     has_gas = any(preset.get(field, 0) != 0 for field in GAS_CORE_FIELDS)
-    has_electricity = any(preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS)
+    has_electricity = any(
+        preset.get(field, 0) != 0 for field in ELECTRICITY_CORE_FIELDS
+    )
 
     # Apply Greenchoice preset (gas-only)
     for key, value in preset.items():
@@ -201,11 +206,19 @@ def test_preset_merge_preserves_existing_values():
             settings[key] = value
 
     # Electricity values should be preserved (not overwritten with zeros)
-    assert settings["per_unit_supplier_electricity_markup"] == original_electricity_markup
+    assert (
+        settings["per_unit_supplier_electricity_markup"] == original_electricity_markup
+    )
     assert settings["per_unit_government_electricity_tax"] == original_electricity_tax
     assert settings["netting_enabled"] == original_netting
     assert settings["solar_bonus_enabled"] == original_solar_bonus
 
     # Gas values should be from Greenchoice
-    assert settings["per_unit_supplier_gas_markup"] == PRESET_GREENCHOICE_GAS_2026["per_unit_supplier_gas_markup"]
-    assert settings["per_unit_government_gas_tax"] == PRESET_GREENCHOICE_GAS_2026["per_unit_government_gas_tax"]
+    assert (
+        settings["per_unit_supplier_gas_markup"]
+        == PRESET_GREENCHOICE_GAS_2026["per_unit_supplier_gas_markup"]
+    )
+    assert (
+        settings["per_unit_government_gas_tax"]
+        == PRESET_GREENCHOICE_GAS_2026["per_unit_government_gas_tax"]
+    )
