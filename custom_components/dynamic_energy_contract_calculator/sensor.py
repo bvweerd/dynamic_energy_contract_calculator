@@ -159,7 +159,6 @@ class SolarBonusStatusSensor(BaseUtilitySensor):
             ),
             "total_bonus_euro": round(self._solar_bonus_tracker.total_bonus_euro, 2),
         }
-        self.async_write_ha_state()
 
 
 class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
@@ -305,7 +304,7 @@ class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self.async_write_ha_state()
 
 
-class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
+class DailyGasCostSensor(BaseUtilitySensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -313,7 +312,6 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
         unique_id: str,
         price_settings: dict[str, float],
         device: DeviceInfo,
-        netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
             name=None,
@@ -327,8 +325,6 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
         )
         self.hass = hass
         self.price_settings = price_settings
-        self._netting_tracker = netting_tracker
-        self._update_netting_attributes()
 
     def _calculate_daily_cost(self) -> float:
         vat = self.price_settings.get("vat_percentage", 21.0)
@@ -349,11 +345,10 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
         return round(total, 8)
 
     async def async_update(self):
-        self._update_netting_attributes()
+        pass
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        self._update_netting_attributes()
         self.async_on_remove(
             async_track_time_change(
                 self.hass,
@@ -373,7 +368,6 @@ class DailyGasCostSensor(NettingStatusMixin, BaseUtilitySensor):
             self.entity_id,
         )
         self._attr_native_value += addition
-        self._update_netting_attributes()
         self.async_write_ha_state()
 
 
@@ -1457,7 +1451,6 @@ async def async_setup_entry(
         unique_id=f"{DOMAIN}_daily_gas_cost",
         price_settings=price_settings,
         device=device_info,
-        netting_tracker=netting_tracker,
     )
     entities.append(daily_gas)
 
