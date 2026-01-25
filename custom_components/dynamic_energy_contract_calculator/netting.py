@@ -89,7 +89,9 @@ class NettingTracker:
     @property
     def tax_rate(self) -> float:
         """Return the current energy tax rate per kWh (excluding VAT)."""
-        return float(self._price_settings.get("per_unit_government_electricity_tax", 0.0))
+        return float(
+            self._price_settings.get("per_unit_government_electricity_tax", 0.0)
+        )
 
     @property
     def vat_factor(self) -> float:
@@ -121,9 +123,12 @@ class NettingTracker:
 
         # Find consumption sensors and assign tax balance
         consumption_sensors = [
-            uid for uid, sensor in self._sensors.items()
-            if hasattr(sensor, 'source_type') and sensor.source_type == "Electricity consumption"
-            and hasattr(sensor, 'mode') and sensor.mode == "cost_total"
+            uid
+            for uid, sensor in self._sensors.items()
+            if hasattr(sensor, "source_type")
+            and sensor.source_type == "Electricity consumption"
+            and hasattr(sensor, "mode")
+            and sensor.mode == "cost_total"
         ]
 
         if consumption_sensors:
