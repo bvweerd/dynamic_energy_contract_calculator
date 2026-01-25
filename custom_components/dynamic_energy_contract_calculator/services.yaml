@@ -40,3 +40,29 @@ set_meter_value:
           min: 0
           mode: box
           step: 0.01
+
+set_netting:
+  name: Set netting
+  description: Enable or disable netting (saldering). This will reload the integration to apply the change.
+  fields:
+    enabled:
+      name: Enabled
+      description: Whether netting should be enabled or disabled.
+      required: true
+      example: true
+      selector:
+        boolean:
+
+set_netting_value:
+  name: Set netting value
+  description: Manually set the netting net consumption value (kWh). A negative value means you have solar credit to offset future consumption.
+  fields:
+    value:
+      name: Value
+      description: The net consumption value in kWh. Positive = net consumer, negative = net producer (credit).
+      required: true
+      example: -50.0
+      selector:
+        number:
+          mode: box
+          step: 0.01

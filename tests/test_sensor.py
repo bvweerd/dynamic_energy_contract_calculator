@@ -41,9 +41,9 @@ async def test_base_sensor_reset_and_set(hass: HomeAssistant):
     sensor.hass = hass
     sensor.async_write_ha_state = lambda *args, **kwargs: None
     sensor._attr_native_value = 5
-    sensor.reset()
+    await sensor.async_reset()
     assert sensor.native_value == 0
-    sensor.set_value(3.14)
+    await sensor.async_set_value(3.14)
     assert sensor.native_value == pytest.approx(3.14)
 
 
