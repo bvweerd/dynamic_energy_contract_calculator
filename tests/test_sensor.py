@@ -377,7 +377,9 @@ async def test_netting_applies_tax_credit(hass: HomeAssistant):
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
     }
-    tracker = await NettingTracker.async_create(hass, "entry_netting_credit", price_settings)
+    tracker = await NettingTracker.async_create(
+        hass, "entry_netting_credit", price_settings
+    )
     await tracker.async_reset_all()
 
     consumption = DynamicEnergySensor(
@@ -449,7 +451,9 @@ async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
         "per_unit_government_electricity_tax": 0.1,
         "vat_percentage": 21.0,
     }
-    tracker = await NettingTracker.async_create(hass, "entry_netting_summary", price_settings)
+    tracker = await NettingTracker.async_create(
+        hass, "entry_netting_summary", price_settings
+    )
     await tracker.async_reset_all()
 
     cost_sensor = DynamicEnergySensor(
