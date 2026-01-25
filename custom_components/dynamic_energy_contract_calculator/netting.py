@@ -329,7 +329,9 @@ class NettingTracker:
             self._net_consumption_kwh = 0.0
             self._tax_contributions.clear()
             await self._async_save_state()
-            _LOGGER.info("Netting tracker reset: net_consumption_kwh=0.0, contributions cleared")
+            _LOGGER.info(
+                "Netting tracker reset: net_consumption_kwh=0.0, contributions cleared"
+            )
 
     async def async_set_net_consumption(self, value: float) -> None:
         """Set the net consumption kWh value directly.
