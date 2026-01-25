@@ -4,15 +4,17 @@ The Dutch netting regulation (salderingsregeling) allows consumers to offset
 their electricity consumption against their production (e.g., from solar panels).
 Energy tax is only charged on the NET consumption (consumption - production).
 
-The tax rate (energiebelasting) is a FIXED rate per kWh, not variable per hour.
-Therefore, the tax balance is calculated dynamically as:
-    tax_balance = max(net_consumption_kwh, 0) * per_unit_government_electricity_tax
+This implementation tracks consumption with historical tax rates, so that when
+the tax rate changes mid-contract, the correct rate is applied to consumption
+that occurred during each period. Production is credited against consumption
+in FIFO order, ensuring accurate tax calculations.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from homeassistant.core import HomeAssistant
@@ -26,12 +28,51 @@ if TYPE_CHECKING:  # pragma: no cover
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass
+class TaxContribution:
+    """A record of taxable consumption with the rate at time of consumption.
+
+    This allows accurate tax calculation when rates change mid-contract.
+    Each contribution represents kWh consumed at a specific tax rate.
+    """
+
+    kwh: float
+    tax_rate: float  # per_unit_government_electricity_tax at time of consumption
+    vat_factor: float  # VAT multiplier (e.g., 1.21) at time of consumption
+
+    @property
+    def tax_amount(self) -> float:
+        """Calculate the tax for this contribution (including VAT)."""
+        return round(self.kwh * self.tax_rate * self.vat_factor, 8)
+
+    def to_dict(self) -> dict:
+        """Serialize to dictionary for storage."""
+        return {
+            "kwh": round(self.kwh, 8),
+            "tax_rate": self.tax_rate,
+            "vat_factor": self.vat_factor,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> TaxContribution:
+        """Deserialize from dictionary."""
+        return cls(
+            kwh=float(data.get("kwh", 0.0)),
+            tax_rate=float(data.get("tax_rate", 0.0)),
+            vat_factor=float(data.get("vat_factor", 1.21)),
+        )
+
+
 class NettingTracker:
     """Coordinate netting adjustments across sensors.
 
-    The tracker maintains the net consumption (consumption - production) in kWh.
-    The tax balance is calculated dynamically based on the current tax rate,
-    as per Dutch netting regulations where energy tax is a fixed rate.
+    The tracker maintains:
+    - net_consumption_kwh: The total net consumption (consumption - production)
+    - tax_contributions: A FIFO queue of consumption records with historical rates
+
+    When production occurs, it's credited against consumption in FIFO order,
+    removing the corresponding tax contributions. This ensures that tax rates
+    from when consumption occurred are used, even if rates change later.
     """
 
     def __init__(
@@ -47,6 +88,7 @@ class NettingTracker:
         self._store = store
         self._entry_id = entry_id
         self._net_consumption_kwh: float = 0.0
+        self._tax_contributions: list[TaxContribution] = []
         self._sensors: dict[str, DynamicEnergySensor] = {}
         self._price_settings = price_settings or {}
 
@@ -54,9 +96,21 @@ class NettingTracker:
             self._net_consumption_kwh = float(
                 initial_state.get("net_consumption_kwh", 0.0)
             )
+            # Restore tax contributions from storage
+            contributions_data = initial_state.get("tax_contributions", [])
+            if isinstance(contributions_data, list):
+                for entry in contributions_data:
+                    if isinstance(entry, dict):
+                        try:
+                            contrib = TaxContribution.from_dict(entry)
+                            if contrib.kwh > 0:
+                                self._tax_contributions.append(contrib)
+                        except (TypeError, ValueError):
+                            continue
             _LOGGER.debug(
-                "Restored netting state: net_consumption_kwh=%.4f",
+                "Restored netting state: net_consumption_kwh=%.4f, %d tax contributions",
                 self._net_consumption_kwh,
+                len(self._tax_contributions),
             )
 
     @classmethod
@@ -89,7 +143,9 @@ class NettingTracker:
     @property
     def tax_rate(self) -> float:
         """Return the current energy tax rate per kWh (excluding VAT)."""
-        return float(self._price_settings.get("per_unit_government_electricity_tax", 0.0))
+        return float(
+            self._price_settings.get("per_unit_government_electricity_tax", 0.0)
+        )
 
     @property
     def vat_factor(self) -> float:
@@ -99,40 +155,38 @@ class NettingTracker:
 
     @property
     def tax_balance(self) -> float:
-        """Calculate the total energy tax based on net consumption (including VAT).
+        """Calculate the total energy tax from all contributions (including VAT).
 
-        As per Dutch netting regulations, energy tax is only charged on
-        positive net consumption (consumption > production).
-        The returned value includes VAT.
+        This sums the tax from all consumption records, each using the rate
+        that was in effect when the consumption occurred. This ensures correct
+        tax calculation even when rates change mid-contract.
         """
-        taxable_kwh = max(self._net_consumption_kwh, 0.0)
-        return round(taxable_kwh * self.tax_rate * self.vat_factor, 8)
+        return round(sum(c.tax_amount for c in self._tax_contributions), 8)
 
     @property
     def tax_balance_per_sensor(self) -> dict[str, float]:
         """Return tax balance distributed across registered consumption sensors.
 
-        Since tax is calculated on total net consumption, we distribute it
-        proportionally across all registered consumption sensors.
         For simplicity, we assign the full balance to the first consumption sensor.
         """
         total_tax = self.tax_balance
         result: dict[str, float] = {}
 
-        # Find consumption sensors and assign tax balance
+        # Find consumption cost sensors
         consumption_sensors = [
-            uid for uid, sensor in self._sensors.items()
-            if hasattr(sensor, 'source_type') and sensor.source_type == "Electricity consumption"
-            and hasattr(sensor, 'mode') and sensor.mode == "cost_total"
+            uid
+            for uid, sensor in self._sensors.items()
+            if hasattr(sensor, "source_type")
+            and sensor.source_type == "Electricity consumption"
+            and hasattr(sensor, "mode")
+            and sensor.mode == "cost_total"
         ]
 
         if consumption_sensors:
-            # Assign full tax balance to first consumption cost sensor
             result[consumption_sensors[0]] = total_tax
             for uid in consumption_sensors[1:]:
                 result[uid] = 0.0
         else:
-            # Fallback: assign to all registered sensors proportionally
             for uid in self._sensors:
                 result[uid] = 0.0
 
@@ -151,11 +205,11 @@ class NettingTracker:
             self._sensors.pop(uid, None)
 
     async def async_reset_sensor(self, sensor: DynamicEnergySensor) -> None:
-        """Reset is a no-op for individual sensors in the new model.
+        """Reset is a no-op for individual sensors.
 
-        Tax balance is calculated dynamically from net_consumption_kwh.
+        Tax balance is calculated from the contributions queue.
         """
-        pass  # No action needed - tax is calculated dynamically
+        pass
 
     async def async_record_consumption(
         self,
@@ -165,10 +219,13 @@ class NettingTracker:
     ) -> tuple[float, float]:
         """Record consumption and return the taxable kWh and value.
 
+        Each consumption is recorded with the current tax rate, so that
+        future rate changes don't affect historical consumption.
+
         Args:
             sensor: The consumption sensor recording the delta
             delta_kwh: The consumption delta in kWh
-            tax_unit_price: The energy tax rate per kWh (fixed, not hourly)
+            tax_unit_price: The energy tax rate per kWh (used for return value)
 
         Returns:
             Tuple of (taxable_kwh, taxable_value) - the portion that is taxable
@@ -186,8 +243,23 @@ class NettingTracker:
             taxable_value = round(taxable_kwh * tax_unit_price, 8)
 
             self._net_consumption_kwh = net_after
-            await self._async_save_state()
 
+            # Record the taxable consumption with current rates
+            if taxable_kwh > 0:
+                contribution = TaxContribution(
+                    kwh=taxable_kwh,
+                    tax_rate=self.tax_rate,
+                    vat_factor=self.vat_factor,
+                )
+                self._tax_contributions.append(contribution)
+                _LOGGER.debug(
+                    "Added tax contribution: %.4f kWh @ %.4f rate, %.2f%% VAT",
+                    taxable_kwh,
+                    self.tax_rate,
+                    (self.vat_factor - 1) * 100,
+                )
+
+            await self._async_save_state()
             return taxable_kwh, taxable_value
 
     async def async_record_production(
@@ -195,16 +267,19 @@ class NettingTracker:
         delta_kwh: float,
         tax_unit_price: float,
     ) -> tuple[float, float, list[tuple[DynamicEnergySensor, float]]]:
-        """Record production and return credited kWh/value plus adjustments.
+        """Record production and credit against consumption in FIFO order.
+
+        When production reduces net consumption below what was previously
+        taxed, the corresponding tax contributions are removed from the queue.
+        This ensures tax credits use the rate from when consumption occurred.
 
         Args:
             delta_kwh: The production delta in kWh
-            tax_unit_price: The energy tax rate per kWh (fixed, not hourly)
+            tax_unit_price: The energy tax rate per kWh (used for return value)
 
         Returns:
             Tuple of (credited_kwh, credited_value, sensor_adjustments).
-            In the new model, sensor_adjustments is always empty because
-            tax balance is calculated dynamically.
+            sensor_adjustments is always empty in this model.
         """
         if delta_kwh <= 0 or tax_unit_price <= 0:
             return 0.0, 0.0, []
@@ -215,31 +290,81 @@ class NettingTracker:
 
             # The portion that reduces positive net consumption gets tax credit
             credited_kwh = max(net_before, 0.0) - max(net_after, 0.0)
-            credited_value = round(credited_kwh * tax_unit_price, 8)
 
             self._net_consumption_kwh = net_after
-            await self._async_save_state()
 
-            # No sensor adjustments needed - tax is calculated dynamically
+            # Remove tax contributions in FIFO order for the credited kWh
+            if credited_kwh > 0:
+                remaining_credit = credited_kwh
+                while remaining_credit > 0 and self._tax_contributions:
+                    contrib = self._tax_contributions[0]
+                    if contrib.kwh <= remaining_credit:
+                        # Remove entire contribution
+                        remaining_credit -= contrib.kwh
+                        self._tax_contributions.pop(0)
+                        _LOGGER.debug(
+                            "Removed tax contribution: %.4f kWh @ %.4f rate",
+                            contrib.kwh,
+                            contrib.tax_rate,
+                        )
+                    else:
+                        # Partial removal
+                        contrib.kwh = round(contrib.kwh - remaining_credit, 8)
+                        _LOGGER.debug(
+                            "Reduced tax contribution by %.4f kWh, %.4f kWh remaining",
+                            remaining_credit,
+                            contrib.kwh,
+                        )
+                        remaining_credit = 0
+
+            # Calculate credited value using current rate (for return value only)
+            credited_value = round(credited_kwh * tax_unit_price, 8)
+
+            await self._async_save_state()
             return credited_kwh, credited_value, []
 
     async def async_reset_all(self) -> None:
         """Reset the entire tracker state."""
         async with self._lock:
             self._net_consumption_kwh = 0.0
+            self._tax_contributions.clear()
             await self._async_save_state()
-            _LOGGER.info("Netting tracker reset: net_consumption_kwh=0.0")
+            _LOGGER.info("Netting tracker reset: net_consumption_kwh=0.0, contributions cleared")
 
     async def async_set_net_consumption(self, value: float) -> None:
-        """Set the net consumption kWh value directly."""
+        """Set the net consumption kWh value directly.
+
+        This also adjusts the tax contributions to match the new value,
+        using the current tax rate for any positive net consumption.
+        """
         async with self._lock:
+            old_value = self._net_consumption_kwh
             self._net_consumption_kwh = round(value, 8)
+
+            # Rebuild tax contributions to match new net consumption
+            # Clear existing and create a single contribution for positive net
+            self._tax_contributions.clear()
+            if value > 0:
+                contribution = TaxContribution(
+                    kwh=value,
+                    tax_rate=self.tax_rate,
+                    vat_factor=self.vat_factor,
+                )
+                self._tax_contributions.append(contribution)
+                _LOGGER.info(
+                    "Netting set to %.4f kWh, created tax contribution @ %.4f rate",
+                    value,
+                    self.tax_rate,
+                )
+            else:
+                _LOGGER.info("Netting set to %.4f kWh (no tax contribution)", value)
+
             await self._async_save_state()
-            _LOGGER.info("Netting net_consumption_kwh set to %.4f", value)
 
     async def _async_save_state(self) -> None:
         """Persist the tracker state to storage."""
         data = {
             "net_consumption_kwh": round(self._net_consumption_kwh, 8),
+            "tax_contributions": [c.to_dict() for c in self._tax_contributions],
         }
         await self._store.async_save(data)
