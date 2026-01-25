@@ -1,0 +1,73 @@
+# Home Assistant Script: Corrigeer meterstanden na late reset
+# ============================================================
+#
+# Dit script corrigeert de meterstanden voor de gemiste uren (0-6) op 2026-01-25
+# omdat de reset te laat werd uitgevoerd.
+#
+# Gemiste waarden (Tarief 1):
+# | Uur | kWh       | Kosten (€)  |
+# |-----|-----------|-------------|
+# | 0   | 0.86900   | 0.2525996   |
+# | 1   | 1.34700   | 0.25339     |
+# | 2   | 0.94000   | 0.251549    |
+# | 3   | 1.25500   | 0.25011     |
+# | 4   | 1.06790   | 0.2494899   |
+# | 5   | 1.25200   | 0.247523    |
+# | 6   | 1.09390   | 0.24849     |
+# |-----|-----------|-------------|
+# | Tot | 7.82480   | 1.7531486   |
+#
+# Gebruik: Voeg dit toe aan scripts.yaml of maak via Instellingen > Automatiseringen > Scripts
+#
+# NOTE: De tax_balance (energiebelasting) wordt nu AUTOMATISCH berekend op basis
+# van de netting kWh waarde en het vaste energiebelastingtarief. Dit is conform
+# de wettelijke salderingsregeling waar energiebelasting een vast tarief is.
+
+correct_meter_readings:
+  alias: "Corrigeer meterstanden na late reset"
+  description: "Telt de gemiste waarden (uur 0-6) op bij de huidige meterstanden voor tarief 1"
+  mode: single
+  sequence:
+    # === Stap 1: Corrigeer kWh consumptie tarief 1 ===
+    - alias: "Corrigeer kWh consumptie tarief 1 (+7.8248 kWh)"
+      service: dynamic_energy_contract_calculator.set_meter_value
+      data:
+        entity_id: sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_kwh_total
+        value: >-
+          {{ (states('sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_kwh_total') | float(0)) + 7.8248 }}
+
+    # === Stap 2: Corrigeer kosten consumptie tarief 1 ===
+    - alias: "Corrigeer kosten consumptie tarief 1 (+1.7531486 EUR)"
+      service: dynamic_energy_contract_calculator.set_meter_value
+      data:
+        entity_id: sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_cost_total
+        value: >-
+          {{ (states('sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_cost_total') | float(0)) + 1.7531486 }}
+
+    # === Stap 3: Corrigeer kWh tijdens kosten tarief 1 ===
+    # Deze sensor houdt bij hoeveel kWh verbruikt is tijdens periodes met kosten (positieve prijs)
+    - alias: "Corrigeer kWh tijdens kosten tarief 1 (+7.8248 kWh)"
+      service: dynamic_energy_contract_calculator.set_meter_value
+      data:
+        entity_id: sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_kwh_during_cost_total
+        value: >-
+          {{ (states('sensor.dynamic_energy_contract_calculator_sensor_energy_consumption_tarif_1_kwh_during_cost_total') | float(0)) + 7.8248 }}
+
+    # === Stap 4: Corrigeer netting net_consumption_kwh ===
+    # De netting tracker houdt bij hoeveel netto consumptie er is (consumptie - productie)
+    # De tax_balance (energiebelasting) wordt AUTOMATISCH berekend als:
+    #   tax_balance = max(net_consumption_kwh, 0) * per_unit_government_electricity_tax
+    - alias: "Corrigeer netting waarde (+7.8248 kWh)"
+      service: dynamic_energy_contract_calculator.set_netting_value
+      data:
+        # Huidige netting waarde was 4.24 kWh, nieuwe waarde: 4.24 + 7.8248 = 12.0648
+        value: 12.0648
+
+    # === Stap 5: Log resultaat ===
+    - alias: "Log correctie voltooid"
+      service: system_log.write
+      data:
+        message: >-
+          Meterstanden gecorrigeerd: +7.8248 kWh, +7.8248 kWh tijdens kosten, +1.7531486 EUR, netting naar 12.0648 kWh (tax_balance wordt automatisch berekend)
+        level: info
+        logger: dynamic_energy_contract_calculator.correction
