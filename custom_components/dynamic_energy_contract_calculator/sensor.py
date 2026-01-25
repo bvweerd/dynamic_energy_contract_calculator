@@ -1347,8 +1347,13 @@ async def async_setup_entry(
         netting_map = hass.data[DOMAIN].setdefault("netting", {})
         tracker = netting_map.get(entry.entry_id)
         if tracker is None:
-            tracker = await NettingTracker.async_create(hass, entry.entry_id)
+            tracker = await NettingTracker.async_create(
+                hass, entry.entry_id, price_settings
+            )
             netting_map[entry.entry_id] = tracker
+        else:
+            # Update price settings in case they changed
+            tracker.update_price_settings(price_settings)
         netting_tracker = tracker
 
     solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))

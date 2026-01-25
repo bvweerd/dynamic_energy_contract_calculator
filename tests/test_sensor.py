@@ -364,14 +364,21 @@ async def test_production_price_no_vat(hass: HomeAssistant):
 
 
 async def test_netting_applies_tax_credit(hass: HomeAssistant):
-    tracker = await NettingTracker.async_create(hass, "entry_netting_credit")
-    await tracker.async_reset_all()
+    """Test netting tracks net consumption and calculates tax balance dynamically.
+
+    With the new implementation (matching Dutch netting regulations), the tax
+    balance is calculated dynamically as: max(net_consumption_kwh, 0) * tax_rate.
+    The sensor value is NOT adjusted when production is recorded - only the
+    net_consumption_kwh changes, and the tax balance follows automatically.
+    """
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
         "per_unit_government_electricity_tax": 0.1,
         "vat_percentage": 21.0,
         "production_price_include_vat": True,
     }
+    tracker = await NettingTracker.async_create(hass, "entry_netting_credit", price_settings)
+    await tracker.async_reset_all()
 
     consumption = DynamicEnergySensor(
         hass,
@@ -401,37 +408,49 @@ async def test_netting_applies_tax_credit(hass: HomeAssistant):
 
     await tracker.async_register_sensor(consumption)
 
+    # Record 1 kWh consumption
     consumption._last_energy = 0.0
     hass.states.async_set("sensor.consumption_energy", 1.0)
     hass.states.async_set("sensor.price", 0.0)
     await consumption.async_update()
 
+    # Consumption cost includes tax on 1 kWh: 0.1 * 1.21 = 0.121
     assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
     assert tracker.net_consumption_kwh == pytest.approx(1.0, rel=1e-6)
+    # Tax balance is calculated dynamically: max(1.0, 0) * 0.1 * 1.21 = 0.121 (incl VAT)
+    assert tracker.tax_balance == pytest.approx(0.121, rel=1e-6)
 
+    # Record 1 kWh production - this reduces net consumption to 0
     production._last_energy = 0.0
     hass.states.async_set("sensor.production_energy", 1.0)
     await production.async_update()
 
-    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    # With new model, sensor value is NOT adjusted - only net consumption changes
+    # The sensor still shows the original cost (0.121)
+    assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
     assert tracker.net_consumption_kwh == pytest.approx(0.0, abs=1e-6)
+    # Tax balance is now 0 because net consumption is 0
+    assert tracker.tax_balance == pytest.approx(0.0, abs=1e-6)
 
+    # Record another 1 kWh production - net consumption goes negative
     production._last_energy = 1.0
     hass.states.async_set("sensor.production_energy", 2.0)
     await production.async_update()
 
-    assert consumption.native_value == pytest.approx(0.0, abs=1e-6)
+    assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
     assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
+    # Tax balance stays 0 when net consumption is negative
+    assert tracker.tax_balance == pytest.approx(0.0, abs=1e-6)
 
 
 async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
-    tracker = await NettingTracker.async_create(hass, "entry_netting_summary")
-    await tracker.async_reset_all()
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
         "per_unit_government_electricity_tax": 0.1,
         "vat_percentage": 21.0,
     }
+    tracker = await NettingTracker.async_create(hass, "entry_netting_summary", price_settings)
+    await tracker.async_reset_all()
 
     cost_sensor = DynamicEnergySensor(
         hass,
