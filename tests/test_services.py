@@ -37,10 +37,10 @@ async def test_service_handlers(hass: HomeAssistant):
             self.hass = hass
             self.async_write_ha_state = lambda *a, **k: None
 
-        def reset(self):
+        async def async_reset(self):
             called["reset"] = True
 
-        def set_value(self, value):
+        async def async_set_value(self, value):
             called["set"] = value
 
     hass.data[DOMAIN] = {

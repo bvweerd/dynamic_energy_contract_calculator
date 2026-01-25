@@ -192,6 +192,12 @@ class NettingTracker:
                 self._balances[key] = 0.0
             await self._async_save_state()
 
+    async def async_set_net_consumption(self, value: float) -> None:
+        """Set the net consumption kWh value directly."""
+        async with self._lock:
+            self._net_consumption_kwh = round(value, 8)
+            await self._async_save_state()
+
     async def _async_save_state(self) -> None:
         """Persist the tracker state to storage."""
         data = {
