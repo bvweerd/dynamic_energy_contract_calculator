@@ -77,21 +77,15 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
             except ValueError:
                 self._attr_native_value = 0.0
 
-    def reset(self):
+    async def async_reset(self) -> None:
+        """Reset the sensor value to zero."""
         self._attr_native_value = 0.0
         self.async_write_ha_state()
 
-    def set_value(self, value: float):
+    async def async_set_value(self, value: float) -> None:
+        """Set the sensor to a specific value."""
         self._attr_native_value = round(value, 8)
         self.async_write_ha_state()
-
-    async def async_reset(self) -> None:
-        """Async wrapper for reset."""
-        self.reset()
-
-    async def async_set_value(self, value: float) -> None:
-        """Async wrapper for set_value."""
-        self.set_value(value)
 
 
 class DynamicEnergySensor(BaseUtilitySensor):

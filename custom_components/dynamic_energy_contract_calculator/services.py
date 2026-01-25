@@ -25,6 +25,18 @@ SET_VALUE_SCHEMA = vol.Schema(
     }
 )
 
+SET_NETTING_SCHEMA = vol.Schema(
+    {
+        vol.Required("enabled"): bool,
+    }
+)
+
+SET_NETTING_VALUE_SCHEMA = vol.Schema(
+    {
+        vol.Required("value"): vol.Coerce(float),
+    }
+)
+
 # ─── registration ──────────────────────────────────────────────────────────────
 
 
@@ -42,6 +54,15 @@ async def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, "set_meter_value", _handle_set_value, schema=SET_VALUE_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, "set_netting", _handle_set_netting, schema=SET_NETTING_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "set_netting_value",
+        _handle_set_netting_value,
+        schema=SET_NETTING_VALUE_SCHEMA,
+    )
     _LOGGER.debug("Dynamic Energy Contract Calculator services registered.")
 
 
@@ -50,6 +71,8 @@ async def async_unregister_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, "reset_all_meters")
     hass.services.async_remove(DOMAIN, "reset_selected_meters")
     hass.services.async_remove(DOMAIN, "set_meter_value")
+    hass.services.async_remove(DOMAIN, "set_netting")
+    hass.services.async_remove(DOMAIN, "set_netting_value")
     _LOGGER.debug("Dynamic Energy Contract Calculator services unregistered.")
 
 
@@ -95,3 +118,44 @@ async def _handle_set_value(call: ServiceCall) -> None:
     if ent and hasattr(ent, "async_set_value"):
         _LOGGER.debug("  setting %s → %s", entity, value)
         await ent.async_set_value(value)
+
+
+async def _handle_set_netting(call: ServiceCall) -> None:
+    """Enable or disable netting via config entry options."""
+    from homeassistant.config_entries import ConfigEntryState
+
+    from .const import CONF_PRICE_SETTINGS
+
+    enabled = call.data["enabled"]
+    _LOGGER.info("Service set_netting called: enabled=%s", enabled)
+
+    entries = call.hass.config_entries.async_entries(DOMAIN)
+    for entry in entries:
+        if entry.state != ConfigEntryState.LOADED:
+            continue
+
+        # Get current options or data
+        current_options = dict(entry.options) if entry.options else dict(entry.data)
+        price_settings = dict(current_options.get(CONF_PRICE_SETTINGS, {}))
+        price_settings["netting_enabled"] = enabled
+        current_options[CONF_PRICE_SETTINGS] = price_settings
+
+        call.hass.config_entries.async_update_entry(entry, options=current_options)
+        _LOGGER.info("Netting set to %s for entry %s", enabled, entry.entry_id)
+
+        # Reload entry to apply changes
+        await call.hass.config_entries.async_reload(entry.entry_id)
+
+
+async def _handle_set_netting_value(call: ServiceCall) -> None:
+    """Set the netting net_consumption_kwh value directly."""
+    value = call.data["value"]
+    _LOGGER.info("Service set_netting_value called: value=%s", value)
+
+    netting_map = call.hass.data.get(DOMAIN, {}).get("netting")
+    if isinstance(netting_map, dict):
+        for entry_id, tracker in netting_map.items():
+            await tracker.async_set_net_consumption(value)
+            _LOGGER.info(
+                "Netting net_consumption_kwh set to %s for entry %s", value, entry_id
+            )
