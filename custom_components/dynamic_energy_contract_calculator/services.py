@@ -94,7 +94,11 @@ async def _handle_reset_all(call: ServiceCall) -> None:
 
 
 async def _handle_reset_sensors(call: ServiceCall) -> None:
-    """Reset only the specified sensors back to zero."""
+    """Reset only the specified sensors back to zero.
+
+    Note: This does NOT reset the netting tracker. Use reset_all_meters
+    to reset everything including netting state.
+    """
     to_reset = call.data["entity_ids"]
     _LOGGER.info("Service reset_selected_meters called: %s", to_reset)
     entities = call.hass.data.get(DOMAIN, {}).get("entities", {})
@@ -103,10 +107,6 @@ async def _handle_reset_sensors(call: ServiceCall) -> None:
         if ent and hasattr(ent, "async_reset"):
             _LOGGER.debug("  resetting %s", entity)
             await ent.async_reset()
-    netting_map = call.hass.data.get(DOMAIN, {}).get("netting")
-    if isinstance(netting_map, dict):
-        for tracker in netting_map.values():
-            await tracker.async_reset_all()
 
 
 async def _handle_set_value(call: ServiceCall) -> None:
