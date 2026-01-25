@@ -342,16 +342,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         )
 
                 if self.mode == "profit_total" and self._netting_tracker is not None:
-                    (
-                        _,
-                        tax_credit_value,
-                        adjustments,
-                    ) = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                    # Record production for netting - tax balance is calculated dynamically
+                    await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
                         delta, tax * vat_factor
                     )
-                    if tax_credit_value > 0:
-                        for target_sensor, deduction in adjustments:
-                            await target_sensor.async_apply_tax_adjustment(deduction)
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
@@ -448,17 +442,24 @@ class DynamicEnergySensor(BaseUtilitySensor):
         await super().async_will_remove_from_hass()
 
     async def async_reset(self) -> None:
-        if self._uses_netting:
-            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        # Note: Do NOT reset netting here - the netting tracker should be
+        # reset separately via reset_all_meters service, not per-sensor reset.
+        # This prevents netting from being reset multiple times when resetting
+        # multiple sensors.
         await super().async_reset()
 
     async def async_set_value(self, value: float) -> None:
-        if self._uses_netting:
-            await self._netting_tracker.async_reset_all()  # type: ignore[union-attr]
+        # Note: Do NOT reset netting here - set_meter_value should only
+        # change the sensor value, not affect the netting state
         await super().async_set_value(value)
 
     async def async_apply_tax_adjustment(self, deduction: float) -> None:
-        """Reduce previously booked tax from this sensor."""
+        """Reduce previously booked tax from this sensor.
+
+        Note: This method is deprecated and no longer used. Tax balance is now
+        calculated dynamically based on net_consumption_kwh and the fixed
+        energy tax rate, as per Dutch netting regulations.
+        """
         if deduction <= 0:
             return
         self._attr_native_value = round(self._attr_native_value - deduction, 8)
