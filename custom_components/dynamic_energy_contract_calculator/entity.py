@@ -342,10 +342,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         )
 
                 if self.mode == "profit_total" and self._netting_tracker is not None:
-                    # Record production for netting - tax balance is calculated dynamically
-                    await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                    # Record production for netting and add credited tax to value
+                    (
+                        _credited_kwh,
+                        credited_value,
+                        _,
+                    ) = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
                         delta, tax * vat_factor
                     )
+                    adjusted_value += credited_value
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
