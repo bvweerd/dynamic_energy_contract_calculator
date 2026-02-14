@@ -427,12 +427,14 @@ async def test_netting_applies_tax_credit(hass: HomeAssistant):
     hass.states.async_set("sensor.production_energy", 1.0)
     await production.async_update()
 
-    # With new model, sensor value is NOT adjusted - only net consumption changes
-    # The sensor still shows the original cost (0.121)
+    # Consumption sensor value is NOT adjusted - it keeps the original cost (0.121)
     assert consumption.native_value == pytest.approx(0.121, rel=1e-6)
     assert tracker.net_consumption_kwh == pytest.approx(0.0, abs=1e-6)
     # Tax balance is now 0 because net consumption is 0
     assert tracker.tax_balance == pytest.approx(0.0, abs=1e-6)
+    # The netting credit (0.1 * 1.21 = 0.121 EUR) is added to production profit_total
+    # so that TotalCostSensor (cost - profit) correctly shows 0 net cost
+    assert production.native_value == pytest.approx(0.121, rel=1e-6)
 
     # Record another 1 kWh production - net consumption goes negative
     production._last_energy = 1.0
@@ -443,6 +445,8 @@ async def test_netting_applies_tax_credit(hass: HomeAssistant):
     assert tracker.net_consumption_kwh == pytest.approx(-1.0, rel=1e-6)
     # Tax balance stays 0 when net consumption is negative
     assert tracker.tax_balance == pytest.approx(0.0, abs=1e-6)
+    # No additional netting credit when net was already at 0: production still 0.121
+    assert production.native_value == pytest.approx(0.121, rel=1e-6)
 
 
 async def test_summary_sensor_netting_attributes(hass: HomeAssistant):

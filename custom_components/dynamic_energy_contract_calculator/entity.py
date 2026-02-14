@@ -397,7 +397,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         self._attr_native_value += abs(value)
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
                     if value >= 0:
-                        self._attr_native_value += value
+                        self._attr_native_value += adjusted_value
             elif self.mode == "kwh_during_cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
                     if value >= 0:
