@@ -79,7 +79,7 @@ async def _get_energy_sensors(
     )
 
 
-class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
+class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,misc]
     """Handle a config flow for Dynamic Energy Contract Calculator."""
 
     VERSION = 1
@@ -88,10 +88,10 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         super().__init__()
 
         self.context: ConfigFlowContext = {}
-        self.configs: list[dict] = []
+        self.configs: list[dict[str, Any]] = []
         self.source_type: str | None = None
         self.sources: list[str] | None = None
-        self.price_settings: dict = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
+        self.price_settings: dict[str, Any] = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
@@ -149,7 +149,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             }
         )
 
-    async def async_step_select_sources(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_select_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         if user_input is not None:
             self.sources = user_input[CONF_SOURCES]
 
@@ -201,7 +203,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
-    async def async_step_load_preset(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_load_preset(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         """Handle loading a supplier preset."""
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
@@ -257,7 +261,9 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             ),
         )
 
-    async def async_step_price_settings(self, user_input=None) -> ConfigFlowResult:
+    async def async_step_price_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         if user_input is not None:
             self.price_settings = dict(user_input)
             return await self.async_step_user()
@@ -330,23 +336,23 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
         )
 
     @staticmethod
-    @callback
+    @callback  # type: ignore[misc]
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         return DynamicEnergyCalculatorOptionsFlowHandler(config_entry)
 
 
-class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
+class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # type: ignore[misc]
     """Handle updates to a config entry (options)."""
 
-    def __init__(self, config_entry):
-        self.configs = list(
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self.configs: list[dict[str, Any]] = list(
             config_entry.options.get(
                 CONF_CONFIGS, config_entry.data.get(CONF_CONFIGS, [])
             )
         )
-        self.price_settings = copy.deepcopy(
+        self.price_settings: dict[str, Any] = copy.deepcopy(
             config_entry.options.get(
                 CONF_PRICE_SETTINGS,
                 config_entry.data.get(CONF_PRICE_SETTINGS, DEFAULT_PRICE_SETTINGS),
@@ -355,10 +361,14 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
         self.source_type: str | None = None
         self.sources: list[str] | None = None
 
-    async def async_step_init(self, user_input=None):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
         return await self.async_step_user()
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
         if user_input and CONF_SOURCE_TYPE in user_input:
             choice = user_input[CONF_SOURCE_TYPE]
             if choice == "finish":
@@ -408,7 +418,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
-    async def async_step_select_sources(self, user_input=None):
+    async def async_step_select_sources(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
         if user_input and CONF_SOURCES in user_input:
             self.sources = user_input[CONF_SOURCES]
 
@@ -461,7 +473,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_load_preset(self, user_input=None):
+    async def async_step_load_preset(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
         """Handle loading a supplier preset."""
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
@@ -517,7 +531,9 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_price_settings(self, user_input=None):
+    async def async_step_price_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
         if user_input is not None:
             self.price_settings = dict(user_input)
             return await self.async_step_user()

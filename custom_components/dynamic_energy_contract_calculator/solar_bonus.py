@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -23,7 +23,7 @@ class SolarBonusTracker:
         hass: HomeAssistant,
         entry_id: str,
         store: Store,
-        initial_state: dict | None,
+        initial_state: dict[str, Any] | None,
         contract_start_date: str | None = None,
     ) -> None:
         self._lock = asyncio.Lock()
