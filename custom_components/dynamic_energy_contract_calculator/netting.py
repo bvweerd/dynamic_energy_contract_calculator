@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -45,7 +45,7 @@ class TaxContribution:
         """Calculate the tax for this contribution (including VAT)."""
         return round(self.kwh * self.tax_rate * self.vat_factor, 8)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, float]:
         """Serialize to dictionary for storage."""
         return {
             "kwh": round(self.kwh, 8),
@@ -54,7 +54,7 @@ class TaxContribution:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> TaxContribution:
+    def from_dict(cls, data: dict[str, Any]) -> TaxContribution:
         """Deserialize from dictionary."""
         return cls(
             kwh=float(data.get("kwh", 0.0)),
@@ -80,8 +80,8 @@ class NettingTracker:
         hass: HomeAssistant,
         entry_id: str,
         store: Store,
-        initial_state: dict | None,
-        price_settings: dict | None = None,
+        initial_state: dict[str, Any] | None,
+        price_settings: dict[str, Any] | None = None,
     ) -> None:
         self._hass = hass
         self._lock = asyncio.Lock()
@@ -118,7 +118,7 @@ class NettingTracker:
         cls,
         hass: HomeAssistant,
         entry_id: str,
-        price_settings: dict | None = None,
+        price_settings: dict[str, Any] | None = None,
     ) -> NettingTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{NETTING_STORAGE_KEY_PREFIX}_{entry_id}"
@@ -131,7 +131,7 @@ class NettingTracker:
         initial = await store.async_load() or {}
         return cls(hass, entry_id, store, initial, price_settings)
 
-    def update_price_settings(self, price_settings: dict) -> None:
+    def update_price_settings(self, price_settings: dict[str, Any]) -> None:
         """Update the price settings (e.g., after config reload)."""
         self._price_settings = price_settings
 
