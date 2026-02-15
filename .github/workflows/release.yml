@@ -21,7 +21,7 @@ jobs:
 
       - name: Patch manifest and zip
         run: |
-          sed -i 's/v0.0.0/${{ steps.version.outputs.version }}/' custom_components/dynamic_energy_contract_calculator/manifest.json
+          sed -i 's/0.0.0/${{ steps.version.outputs.version }}/' custom_components/dynamic_energy_contract_calculator/manifest.json
           cd custom_components/dynamic_energy_contract_calculator/
           zip ../../dynamic_energy_contract_calculator.zip -r ./
       - uses: svenstaro/upload-release-action@master
