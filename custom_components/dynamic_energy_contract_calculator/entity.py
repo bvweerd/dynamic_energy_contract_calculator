@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorEntity,
-    RestoreEntity,
     SensorStateClass,
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import Event, HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
     SOURCE_TYPE_CONSUMPTION,
@@ -35,6 +35,8 @@ UNAVAILABLE_GRACE_SECONDS = 60
 
 
 class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
+    _attr_native_value: float  # narrow the base class StateType to float
+
     def __init__(
         self,
         name: str | None,
@@ -64,7 +66,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
 
     @property
     def native_value(self) -> float:
-        return round(float(self._attr_native_value or 0.0), 8)
+        return round(self._attr_native_value or 0.0, 8)
 
     async def async_added_to_hass(self) -> None:
         last_state = await self.async_get_last_state()

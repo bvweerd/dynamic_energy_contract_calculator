@@ -14,8 +14,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.device_registry import DeviceEntryType
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .const import (
     DOMAIN,
@@ -40,7 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
 
-SENSOR_MODES_ELECTRICITY = [
+SENSOR_MODES_ELECTRICITY: list[dict[str, Any]] = [
     {
         "key": "kwh_total",
         "translation_key": "kwh_total",
@@ -83,7 +82,7 @@ SENSOR_MODES_ELECTRICITY = [
     },
 ]
 
-SENSOR_MODES_GAS = [
+SENSOR_MODES_GAS: list[dict[str, Any]] = [
     {
         "key": "m3_total",
         "translation_key": "m3_total",
@@ -1482,8 +1481,11 @@ async def async_setup_entry(
         hass=hass,
         name="Energy Contract Cost (Total)",
         unique_id=f"{DOMAIN}_total_energy_cost",
-        net_cost_unique_id=net_cost.unique_id,
-        fixed_cost_unique_ids=[daily_electricity.unique_id, daily_gas.unique_id],
+        net_cost_unique_id=net_cost.unique_id or "",
+        fixed_cost_unique_ids=[
+            daily_electricity.unique_id or "",
+            daily_gas.unique_id or "",
+        ],
         device=device_info,
         netting_tracker=netting_tracker,
     )

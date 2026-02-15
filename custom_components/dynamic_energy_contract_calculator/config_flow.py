@@ -5,7 +5,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigFlowContext, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlowContext, ConfigFlowResult, FlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import selector
 
@@ -363,12 +363,12 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # 
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         return await self.async_step_user()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         if user_input and CONF_SOURCE_TYPE in user_input:
             choice = user_input[CONF_SOURCE_TYPE]
             if choice == "finish":
@@ -420,7 +420,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # 
 
     async def async_step_select_sources(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         if user_input and CONF_SOURCES in user_input:
             self.sources = user_input[CONF_SOURCES]
 
@@ -475,7 +475,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # 
 
     async def async_step_load_preset(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         """Handle loading a supplier preset."""
         if user_input is not None:
             selected_preset = user_input.get("supplier_preset")
@@ -533,7 +533,7 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # 
 
     async def async_step_price_settings(
         self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.FlowResult:
+    ) -> FlowResult:
         if user_input is not None:
             self.price_settings = dict(user_input)
             return await self.async_step_user()
