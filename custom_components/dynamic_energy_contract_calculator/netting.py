@@ -196,13 +196,15 @@ class NettingTracker:
         """Register a cost sensor that participates in netting."""
         async with self._lock:
             uid = sensor.unique_id
-            self._sensors[uid] = sensor
+            if uid is not None:
+                self._sensors[uid] = sensor
 
     async def async_unregister_sensor(self, sensor: DynamicEnergySensor) -> None:
         """Remove a cost sensor from the tracker."""
         async with self._lock:
             uid = sensor.unique_id
-            self._sensors.pop(uid, None)
+            if uid is not None:
+                self._sensors.pop(uid, None)
 
     async def async_reset_sensor(self, sensor: DynamicEnergySensor) -> None:
         """Reset is a no-op for individual sensors.
