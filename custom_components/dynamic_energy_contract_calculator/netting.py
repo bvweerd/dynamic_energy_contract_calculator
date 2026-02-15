@@ -340,7 +340,6 @@ class NettingTracker:
         using the current tax rate for any positive net consumption.
         """
         async with self._lock:
-            old_value = self._net_consumption_kwh
             self._net_consumption_kwh = round(value, 8)
 
             # Rebuild tax contributions to match new net consumption
