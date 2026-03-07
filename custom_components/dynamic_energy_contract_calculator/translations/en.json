@@ -133,6 +133,26 @@
           "description": "The new value for the sensor."
         }
       }
+    },
+    "set_netting": {
+      "name": "Set netting",
+      "description": "Enable or disable netting (salderingsregeling). Reloads the integration to apply the change.",
+      "fields": {
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether netting should be enabled or disabled."
+        }
+      }
+    },
+    "set_netting_value": {
+      "name": "Set netting value",
+      "description": "Manually set the netting net consumption value in kWh. Negative means solar credit.",
+      "fields": {
+        "value": {
+          "name": "Value",
+          "description": "Net consumption in kWh. Positive = net consumer, negative = net producer (credit)."
+        }
+      }
     }
   },
   "entity": {
@@ -149,7 +169,8 @@
       "total_energy_cost": {"name": "Energy Contract Cost (Total)"},
       "current_consumption_price": {"name": "Current Consumption Price"},
       "current_production_price": {"name": "Current Production Price"},
-      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"}
+      "current_gas_consumption_price": {"name": "Current Gas Consumption Price"},
+      "solar_bonus_total": {"name": "Solar Bonus (Total)"}
     },
     "binary_sensor": {
       "solar_bonus_active": {"name": "Solar Bonus Active"},

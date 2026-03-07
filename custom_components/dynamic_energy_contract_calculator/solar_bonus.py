@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, date
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import SOLAR_BONUS_STORAGE_KEY_PREFIX, SOLAR_BONUS_STORAGE_VERSION
 
 if TYPE_CHECKING:  # pragma: no cover
     pass
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SolarBonusTracker:
@@ -68,7 +72,7 @@ class SolarBonusTracker:
         if not self._contract_start_date:
             return None
 
-        today = datetime.now().date()
+        today = dt_util.now().date()
         current_year = today.year
 
         # Try this year's anniversary
@@ -114,7 +118,7 @@ class SolarBonusTracker:
         """Return total bonus earned this year."""
         return self._total_bonus_euro
 
-    def _is_daylight(self) -> bool:
+    def is_daylight(self) -> bool:
         """Check if current time is between sunrise and sunset."""
         try:
             # Try to get sun data from Home Assistant
@@ -122,10 +126,12 @@ class SolarBonusTracker:
             if sun_state and sun_state.state == "above_horizon":
                 return True
             return False
-        except Exception:
-            # Fallback: assume daylight between 6 AM and 8 PM
-            now = datetime.now()
-            return 6 <= now.hour < 20
+        except Exception as err:
+            _LOGGER.debug(
+                "sun.sun state unavailable, using hour-based fallback: %s", err
+            )
+            now = dt_util.now()
+            return bool(6 <= now.hour < 20)
 
     async def async_calculate_bonus(
         self,
@@ -162,7 +168,7 @@ class SolarBonusTracker:
                 return 0.0, 0.0
 
             # Must be during daylight hours
-            if not self._is_daylight():
+            if not self.is_daylight():
                 return 0.0, 0.0
 
             # Base compensation must be positive
@@ -218,7 +224,7 @@ class SolarBonusTracker:
         if not self._contract_start_date:
             return None
 
-        today = datetime.now().date()
+        today = dt_util.now().date()
         current_year = today.year
 
         # Try this year's anniversary

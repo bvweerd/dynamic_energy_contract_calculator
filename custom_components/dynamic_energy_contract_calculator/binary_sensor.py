@@ -6,7 +6,7 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
@@ -112,8 +112,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
         """Initialize the binary sensor."""
         self.hass = hass
         self._attr_unique_id = unique_id
-        self._attr_name = "Solar Bonus Active"
-        self._attr_has_entity_name = False
+        self._attr_has_entity_name = True
         self._attr_translation_key = "solar_bonus_active"
         self._attr_device_info = device_info
         self._solar_bonus_tracker = solar_bonus_tracker
@@ -134,10 +133,9 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
         # Initial update
         await self._async_update_state()
 
-    @callback  # type: ignore[misc]
-    def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event) -> None:
         """Handle price sensor state change."""
-        self.hass.async_create_task(self._async_update_state())
+        await self._async_update_state()
 
     async def _async_update_state(self) -> None:
         """Update the binary sensor state."""
@@ -145,7 +143,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
         is_active = False
 
         # Check if daylight
-        if self._solar_bonus_tracker._is_daylight():
+        if self._solar_bonus_tracker.is_daylight():
             # Check if under annual limit
             annual_limit = self._price_settings.get(
                 "solar_bonus_annual_kwh_limit", 7500.0
@@ -189,8 +187,7 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[m
         """Initialize the binary sensor."""
         self.hass = hass
         self._attr_unique_id = unique_id
-        self._attr_name = "Production Price Positive"
-        self._attr_has_entity_name = False
+        self._attr_has_entity_name = True
         self._attr_translation_key = "production_price_positive"
         self._attr_device_info = device_info
         self._price_sensor = price_sensor
@@ -210,10 +207,9 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[m
         # Initial update
         await self._async_update_state()
 
-    @callback  # type: ignore[misc]
-    def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event) -> None:
         """Handle price sensor state change."""
-        self.hass.async_create_task(self._async_update_state())
+        await self._async_update_state()
 
     async def _async_update_state(self) -> None:
         """Update the binary sensor state."""

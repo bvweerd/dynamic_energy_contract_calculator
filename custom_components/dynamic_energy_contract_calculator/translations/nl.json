@@ -133,6 +133,26 @@
           "description": "De nieuwe waarde voor de sensor."
         }
       }
+    },
+    "set_netting": {
+      "name": "Saldering instellen",
+      "description": "Schakel de salderingsregeling in of uit. De integratie herlaadt om de wijziging toe te passen.",
+      "fields": {
+        "enabled": {
+          "name": "Ingeschakeld",
+          "description": "Of saldering in- of uitgeschakeld moet worden."
+        }
+      }
+    },
+    "set_netting_value": {
+      "name": "Saldowaarde instellen",
+      "description": "Stel handmatig het netto verbruik in kWh in. Negatief betekent zonnecrediet.",
+      "fields": {
+        "value": {
+          "name": "Waarde",
+          "description": "Netto verbruik in kWh. Positief = netto verbruiker, negatief = netto producent (crediet)."
+        }
+      }
     }
   },
   "entity": {
@@ -175,6 +195,9 @@
       },
       "current_gas_consumption_price": {
         "name": "Huidige gasverbruiksprijs"
+      },
+      "solar_bonus_total": {
+        "name": "Zonnebonus (totaal)"
       }
     },
     "binary_sensor": {

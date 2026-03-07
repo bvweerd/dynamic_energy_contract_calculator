@@ -117,14 +117,14 @@ async def test_solar_bonus_active_sensor(hass: HomeAssistant, device_info):
     )
 
     # Mock daylight to True
-    with patch.object(tracker, "_is_daylight", return_value=True):
+    with patch.object(tracker, "is_daylight", return_value=True):
         await sensor.async_added_to_hass()
 
         # Should be ON (daylight, positive price, under limit)
         assert sensor.is_on is True
 
     # Mock daylight to False (night)
-    with patch.object(tracker, "_is_daylight", return_value=False):
+    with patch.object(tracker, "is_daylight", return_value=False):
         await sensor._async_update_state()
 
         # Should be OFF (night time)
@@ -154,7 +154,7 @@ async def test_solar_bonus_active_negative_price(hass: HomeAssistant, device_inf
     )
 
     # Mock daylight to True
-    with patch.object(tracker, "_is_daylight", return_value=True):
+    with patch.object(tracker, "is_daylight", return_value=True):
         await sensor.async_added_to_hass()
 
         # Should be OFF (price -0.10 + 0.02 = -0.08, negative)
@@ -186,7 +186,7 @@ async def test_solar_bonus_active_at_limit(hass: HomeAssistant, device_info):
     )
 
     # Mock daylight to True
-    with patch.object(tracker, "_is_daylight", return_value=True):
+    with patch.object(tracker, "is_daylight", return_value=True):
         await sensor.async_added_to_hass()
 
         # Should be OFF (at limit)
@@ -212,7 +212,7 @@ async def test_solar_bonus_active_no_price_sensor(hass: HomeAssistant, device_in
         device_info=device_info,
     )
 
-    with patch.object(tracker, "_is_daylight", return_value=True):
+    with patch.object(tracker, "is_daylight", return_value=True):
         await sensor.async_added_to_hass()
 
         # Should be OFF when no price sensor

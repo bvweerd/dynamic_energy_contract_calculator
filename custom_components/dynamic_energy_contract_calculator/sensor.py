@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import pytz  # TODO Phase 3: replace with zoneinfo
+from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
@@ -10,11 +12,21 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
+    async_track_point_in_time,
     async_track_state_change_event,
     async_track_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.util import dt as dt_util
+
+try:
+    from astral import LocationInfo
+    from astral.sun import sun as _astral_sun
+
+    _ASTRAL_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _ASTRAL_AVAILABLE = False
 
 from .const import (
     DOMAIN,
@@ -36,8 +48,6 @@ from .solar_bonus import SolarBonusTracker
 import logging
 
 _LOGGER = logging.getLogger(__name__)
-
-PARALLEL_UPDATES = 1
 
 SENSOR_MODES_ELECTRICITY: list[dict[str, Any]] = [
     {
@@ -631,8 +641,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         exact sunrise/sunset times for the timestamp.
         Falls back to conservative hour-based estimate if calculation unavailable.
         """
-        from datetime import datetime
-
         # Parse timestamp first (outside try-except to use in fallback)
         try:
             if isinstance(timestamp, str):
@@ -644,11 +652,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
             return False
 
+        if not _ASTRAL_AVAILABLE:
+            return 7 <= dt.hour < 19
+
         # Try to use astral for precise calculation
         try:
-            from astral import LocationInfo
-            from astral.sun import sun
-
             # Get location from Home Assistant config
             latitude = self.hass.config.latitude
             longitude = self.hass.config.longitude
@@ -674,21 +682,17 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 check_date = dt.date()
             else:
                 # Convert to local timezone
-                import pytz  # type: ignore[import-untyped]
-
                 local_tz = pytz.timezone(timezone)
                 local_dt = dt.astimezone(local_tz)
                 check_date = local_dt.date()
 
-            s = sun(location.observer, date=check_date, tzinfo=timezone)
+            s = _astral_sun(location.observer, date=check_date, tzinfo=timezone)
             sunrise = s["sunrise"]
             sunset = s["sunset"]
 
             # Compare timestamp with sunrise/sunset
             # Make sure we're comparing timezone-aware datetimes
             if dt.tzinfo is None:
-                import pytz
-
                 local_tz = pytz.timezone(timezone)
                 dt = local_tz.localize(dt)
 
@@ -709,9 +713,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         """
         if not isinstance(raw_prices, list) or not raw_prices:
             return raw_prices
-
-        from datetime import datetime
-        from collections import defaultdict
 
         # Group entries by hour
         hourly_groups = defaultdict(list)
@@ -786,8 +787,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 hour_start = datetime(year, month, day, hour)
 
             # End time is one hour later
-            from datetime import timedelta
-
             hour_end = hour_start + timedelta(hours=1)
 
             if template_entry.get("start"):
@@ -814,10 +813,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         Returns tuple of (sunrise, sunset) as datetime objects, or (None, None) if unavailable.
         """
-        try:
-            from astral import LocationInfo
-            from astral.sun import sun
+        if not _ASTRAL_AVAILABLE:
+            return None, None
 
+        try:
             latitude = self.hass.config.latitude
             longitude = self.hass.config.longitude
             timezone = str(self.hass.config.time_zone)
@@ -830,7 +829,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 longitude=longitude,
             )
 
-            s = sun(location.observer, date=date_obj, tzinfo=timezone)
+            s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
             return s["sunrise"], s["sunset"]
         except Exception:
             return None, None
@@ -846,8 +845,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         - If sunset in timespan: returns [before_sunset, after_sunset]
         - If both in timespan: returns [before_sunrise, day, after_sunset]
         """
-        from datetime import datetime
-
         timestamp_start = entry.get("start") or entry.get("time")
         timestamp_end = entry.get("end")
 
@@ -935,8 +932,6 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         # If solar bonus is enabled AND averaging to hourly is enabled,
         # we need to split entries at sunrise/sunset
         if solar_bonus_enabled and average_to_hourly and raw_prices:
-            from datetime import datetime
-
             # Get all unique dates from entries
             dates_to_check = set()
             for entry in raw_prices:
@@ -1072,9 +1067,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if self.source_type == SOURCE_TYPE_PRODUCTION and self.price_settings.get(
             "solar_bonus_enabled", False
         ):
-            from datetime import datetime, timedelta
-
-            today = datetime.now().date()
+            today = dt_util.now().date()
             tomorrow = today + timedelta(days=1)
 
             sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
@@ -1114,12 +1107,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
     def _update_current_price(self) -> None:
         """Update the current price based on the current time and net_prices."""
-        from datetime import datetime
-        import pytz
-
-        # Get current time in the configured timezone
-        tz = pytz.timezone(str(self.hass.config.time_zone))
-        now = datetime.now(tz=tz)
+        now = dt_util.now()
 
         # Find current price from net_prices_today or net_prices_tomorrow
         current_price = None
@@ -1179,17 +1167,12 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
     def _schedule_next_price_change(self) -> None:
         """Schedule the next price change based on net_prices."""
-        from datetime import datetime
-        import pytz
-        from homeassistant.helpers.event import async_track_point_in_time
-
         # Cancel existing schedule
         if self._price_change_unsub:
             self._price_change_unsub()
             self._price_change_unsub = None
 
-        tz = pytz.timezone(str(self.hass.config.time_zone))
-        now = datetime.now(tz=tz)
+        now = dt_util.now()
         next_change: datetime | None = None
 
         # Find next price change time
@@ -1233,17 +1216,12 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         This is used when average_prices_to_hourly is False but solar_bonus is enabled.
         The sensor will update at sunrise/sunset to apply/remove the solar bonus.
         """
-        from datetime import datetime, timedelta
-        import pytz
-        from homeassistant.helpers.event import async_track_point_in_time
-
         # Cancel existing schedule
         if self._price_change_unsub:
             self._price_change_unsub()
             self._price_change_unsub = None
 
-        tz = pytz.timezone(str(self.hass.config.time_zone))
-        now = datetime.now(tz=tz)
+        now = dt_util.now()
 
         # Get sunrise/sunset times for today and tomorrow
         today = now.date()
@@ -1561,7 +1539,9 @@ async def async_setup_entry(
                 for entity in UTILITY_ENTITIES:
                     await entity.async_reset()
 
-        # Run at midnight every day
-        async_track_time_change(
-            hass, check_contract_anniversary, hour=0, minute=0, second=0
+        # Run at midnight every day; unsubscribe when entry is unloaded
+        entry.async_on_unload(
+            async_track_time_change(
+                hass, check_contract_anniversary, hour=0, minute=0, second=0
+            )
         )

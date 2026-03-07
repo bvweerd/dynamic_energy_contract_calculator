@@ -30,6 +30,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to current version."""
+    _LOGGER.debug("Migrating from version %s", entry.version)
+    if entry.version == 1:
+        return True
+    _LOGGER.error("Cannot migrate from version %s", entry.version)
+    return False
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry by forwarding to sensor & number platforms."""
     _LOGGER.info("Setting up entry %s", entry.entry_id)
@@ -37,9 +46,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data[DOMAIN].get("services_registered"):
         await async_register_services(hass)
         hass.data[DOMAIN]["services_registered"] = True
-
-    # Store entry data
-    hass.data[DOMAIN][entry.entry_id] = entry.data
 
     entry.async_on_unload(entry.add_update_listener(_update_listener))
 
@@ -65,7 +71,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             UTILITY_ENTITIES[:] = [
                 ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()
             ]
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
         netting_map = hass.data[DOMAIN].get("netting")
         if isinstance(netting_map, dict):
             netting_map.pop(entry.entry_id, None)

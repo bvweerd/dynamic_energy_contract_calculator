@@ -6,13 +6,10 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://www.github.com/bvweerd/dynamic_energy_contract_calculator",
-  "homekit": {},
+  "documentation": "https://github.com/bvweerd/dynamic_energy_calculator",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_contract_calculator/issues",
-  "quality_scale": "silver",
+  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_calculator/issues",
+  "quality_scale": "bronze",
   "requirements": [],
-  "ssdp": [],
-  "version": "1.3.6",
-  "zeroconf": []
+  "version": "1.3.6"
 }
