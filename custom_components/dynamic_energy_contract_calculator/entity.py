@@ -14,6 +14,7 @@ from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     SOURCE_TYPE_CONSUMPTION,
@@ -69,6 +70,7 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
         return round(self._attr_native_value or 0.0, 8)
 
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (
             "unknown",
@@ -137,7 +139,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self._netting_tracker = netting_tracker
         self._solar_bonus_tracker = solar_bonus_tracker
         self._last_energy: float | None = None
-        self._last_updated = datetime.now()
+        self._last_updated = dt_util.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
 
@@ -177,8 +179,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
             self._attr_available = False
             if self._energy_unavailable_since is None:
-                self._energy_unavailable_since = datetime.now()
-            if datetime.now() - self._energy_unavailable_since >= timedelta(
+                self._energy_unavailable_since = dt_util.now()
+            if dt_util.now() - self._energy_unavailable_since >= timedelta(
                 seconds=UNAVAILABLE_GRACE_SECONDS
             ):
                 _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
@@ -200,8 +202,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
         except ValueError:
             self._attr_available = False
             if self._energy_unavailable_since is None:
-                self._energy_unavailable_since = datetime.now()
-            if datetime.now() - self._energy_unavailable_since >= timedelta(
+                self._energy_unavailable_since = dt_util.now()
+            if dt_util.now() - self._energy_unavailable_since >= timedelta(
                 seconds=UNAVAILABLE_GRACE_SECONDS
             ):
                 _LOGGER.warning(
@@ -259,9 +261,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
             if not valid:
                 self._attr_available = False
                 if self._price_unavailable_since is None:
-                    self._price_unavailable_since = datetime.now()
+                    self._price_unavailable_since = dt_util.now()
                 if (
-                    datetime.now() - self._price_unavailable_since
+                    dt_util.now() - self._price_unavailable_since
                     >= timedelta(seconds=UNAVAILABLE_GRACE_SECONDS)
                     and self.price_sensor
                 ):
@@ -430,9 +432,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
     async def _handle_input_event(self, event: Event) -> None:
         new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            self._attr_available = False
-        else:
+        if new_state is not None and new_state.state not in ("unknown", "unavailable"):
             _LOGGER.debug(
                 "State change detected for %s: %s",
                 self.energy_sensor,
