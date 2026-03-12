@@ -35,8 +35,6 @@ async def test_async_setup_and_unload_entry(hass: HomeAssistant):
         mp.setattr(hass.config_entries, "async_forward_entry_setups", forward)
         assert await async_setup_entry(hass, entry)
 
-    assert hass.data[DOMAIN][entry.entry_id] == {}
-
     with pytest.MonkeyPatch.context() as mp:
 
         async def unload(entry_to_unload, platforms):

@@ -1,0 +1,32 @@
+{
+  "model": "sonnet",
+  "respectGitignore": true,
+  "permissions": {
+    "allow": [
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(git show*)",
+      "Bash(python -m pytest*)",
+      "Bash(python -m mypy*)",
+      "Bash(python -m flake8*)",
+      "Bash(pip install -r*)",
+      "Bash(ruff check*)",
+      "Bash(ruff format*)",
+      "Bash(pre-commit run*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import sys,json,subprocess,shutil; d=json.load(sys.stdin); f=d.get('tool_input',{}).get('file_path',''); [subprocess.run([t,f],capture_output=True) for t in (['ruff','check','--fix'] if f.endswith('.py') else []) if shutil.which('ruff')]\""
+          }
+        ]
+      }
+    ]
+  }
+}

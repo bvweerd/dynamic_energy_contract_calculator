@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorEntity,
-    RestoreEntity,
     SensorStateClass,
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import Event, HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     SOURCE_TYPE_CONSUMPTION,
@@ -34,7 +35,9 @@ _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE_GRACE_SECONDS = 60
 
 
-class BaseUtilitySensor(SensorEntity, RestoreEntity):
+class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
+    _attr_native_value: float  # narrow the base class StateType to float
+
     def __init__(
         self,
         name: str | None,
@@ -64,9 +67,10 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     @property
     def native_value(self) -> float:
-        return float(round(float(cast(float, self._attr_native_value or 0.0)), 8))
+        return round(self._attr_native_value or 0.0, 8)
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (
             "unknown",
@@ -134,8 +138,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
         self.price_settings = price_settings
         self._netting_tracker = netting_tracker
         self._solar_bonus_tracker = solar_bonus_tracker
-        self._last_energy = None
-        self._last_updated = datetime.now()
+        self._last_energy: float | None = None
+        self._last_updated = dt_util.now()
         self._energy_unavailable_since: datetime | None = None
         self._price_unavailable_since: datetime | None = None
 
@@ -147,7 +151,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             and self.mode == "cost_total"
         )
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         _LOGGER.debug(
             "Updating %s (mode=%s) using %s",
             self.entity_id,
@@ -175,8 +179,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if energy_state is None or energy_state.state in ("unknown", "unavailable"):
             self._attr_available = False
             if self._energy_unavailable_since is None:
-                self._energy_unavailable_since = datetime.now()
-            if datetime.now() - self._energy_unavailable_since >= timedelta(
+                self._energy_unavailable_since = dt_util.now()
+            if dt_util.now() - self._energy_unavailable_since >= timedelta(
                 seconds=UNAVAILABLE_GRACE_SECONDS
             ):
                 _LOGGER.warning("Energy source %s is unavailable", self.energy_sensor)
@@ -198,8 +202,8 @@ class DynamicEnergySensor(BaseUtilitySensor):
         except ValueError:
             self._attr_available = False
             if self._energy_unavailable_since is None:
-                self._energy_unavailable_since = datetime.now()
-            if datetime.now() - self._energy_unavailable_since >= timedelta(
+                self._energy_unavailable_since = dt_util.now()
+            if dt_util.now() - self._energy_unavailable_since >= timedelta(
                 seconds=UNAVAILABLE_GRACE_SECONDS
             ):
                 _LOGGER.warning(
@@ -257,9 +261,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
             if not valid:
                 self._attr_available = False
                 if self._price_unavailable_since is None:
-                    self._price_unavailable_since = datetime.now()
+                    self._price_unavailable_since = dt_util.now()
                 if (
-                    datetime.now() - self._price_unavailable_since
+                    dt_util.now() - self._price_unavailable_since
                     >= timedelta(seconds=UNAVAILABLE_GRACE_SECONDS)
                     and self.price_sensor
                 ):
@@ -302,9 +306,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 if self.price_settings.get("production_price_include_vat", True):
-                    unit_price = (total_price - markup_production) * vat_factor
+                    unit_price = (total_price + markup_production) * vat_factor
                 else:
-                    unit_price = total_price - markup_production
+                    unit_price = total_price + markup_production
                 value = delta * unit_price
                 adjusted_value = value
 
@@ -347,15 +351,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         _credited_kwh,
                         credited_value,
                         _,
-                    ) = await self._netting_tracker.async_record_production(  # type: ignore[union-attr]
+                    ) = await self._netting_tracker.async_record_production(
                         delta, tax * vat_factor
                     )
                     adjusted_value += credited_value
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
-            if adjusted_value is None:
-                adjusted_value = value
 
             if self.source_type == SOURCE_TYPE_CONSUMPTION:
                 unit_price_for_log = (
@@ -386,34 +388,34 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
             if self.mode == "cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value < 0:
-                        self._attr_native_value += abs(value)
+                    if adjusted_value < 0:
+                        self._attr_native_value += abs(adjusted_value)
             elif self.mode == "profit_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value < 0:
-                        self._attr_native_value += abs(value)
+                    if adjusted_value < 0:
+                        self._attr_native_value += abs(adjusted_value)
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
             elif self.mode == "kwh_during_cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += delta
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value < 0:
+                    if adjusted_value < 0:
                         self._attr_native_value += delta
             elif self.mode == "kwh_during_profit_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value < 0:
+                    if adjusted_value < 0:
                         self._attr_native_value += delta
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += delta
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
 
         if self._uses_netting:
@@ -428,11 +430,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 )
             )
 
-    async def _handle_input_event(self, event):
+    async def _handle_input_event(self, event: Event) -> None:
         new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            self._attr_available = False
-        else:
+        if new_state is not None and new_state.state not in ("unknown", "unavailable"):
             _LOGGER.debug(
                 "State change detected for %s: %s",
                 self.energy_sensor,
