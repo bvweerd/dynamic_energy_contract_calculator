@@ -306,9 +306,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
                 if self.price_settings.get("production_price_include_vat", True):
-                    unit_price = (total_price - markup_production) * vat_factor
+                    unit_price = (total_price + markup_production) * vat_factor
                 else:
-                    unit_price = total_price - markup_production
+                    unit_price = total_price + markup_production
                 value = delta * unit_price
                 adjusted_value = value
 
@@ -388,31 +388,31 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
             if self.mode == "cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value < 0:
-                        self._attr_native_value += abs(value)
+                    if adjusted_value < 0:
+                        self._attr_native_value += abs(adjusted_value)
             elif self.mode == "profit_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value < 0:
-                        self._attr_native_value += abs(value)
+                    if adjusted_value < 0:
+                        self._attr_native_value += abs(adjusted_value)
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
             elif self.mode == "kwh_during_cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += delta
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value < 0:
+                    if adjusted_value < 0:
                         self._attr_native_value += delta
             elif self.mode == "kwh_during_profit_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if value < 0:
+                    if adjusted_value < 0:
                         self._attr_native_value += delta
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if value >= 0:
+                    if adjusted_value >= 0:
                         self._attr_native_value += delta
 
     async def async_added_to_hass(self) -> None:
