@@ -1,10 +1,12 @@
 """Constants for the Dynamic Energy Contract Calculator integration."""
 
+from homeassistant.const import Platform
+
 # Domain of the integration
 DOMAIN = "dynamic_energy_contract_calculator"
 DOMAIN_ABBREVIATION = "DECC"
 
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 # Configuration keys
 CONF_SOURCE_TYPE = "source_type"

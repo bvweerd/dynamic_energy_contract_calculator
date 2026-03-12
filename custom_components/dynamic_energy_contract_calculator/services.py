@@ -1,4 +1,5 @@
 # custom_components/dynamic_energy_contract_calculator/services.py
+from __future__ import annotations
 
 import logging
 import voluptuous as vol

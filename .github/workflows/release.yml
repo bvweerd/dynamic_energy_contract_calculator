@@ -1,33 +1,59 @@
-name: Create release zip
+name: Create Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*.*.*"]
 
 permissions:
   contents: write
-  
+
 jobs:
-  build-and-upload:
-    name: "Create Release ZIP"
+  release:
+    name: Build ZIP and create GitHub Release
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Get version
+      - name: Get version from tag
         id: version
-        uses: home-assistant/actions/helpers/version@master
-
-      - name: Patch manifest and zip
         run: |
-          sed -i 's/0.0.0/${{ steps.version.outputs.version }}/' custom_components/dynamic_energy_contract_calculator/manifest.json
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create release ZIP
+        run: |
           cd custom_components/dynamic_energy_contract_calculator/
           zip ../../dynamic_energy_contract_calculator.zip -r ./
-      - uses: svenstaro/upload-release-action@master
+
+      - name: Generate changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v6
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./dynamic_energy_contract_calculator.zip
-          asset_name: dynamic_energy_contract_calculator.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          configuration: |
+            {
+              "categories": [
+                { "title": "## ✨ New features", "labels": ["enhancement", "feature"] },
+                { "title": "## 🐛 Bug fixes", "labels": ["bug", "fix"] },
+                { "title": "## 📚 Documentation", "labels": ["documentation"] },
+                { "title": "## 🔧 Other", "labels": [] }
+              ],
+              "template": "#{{CHANGELOG}}\n\n**Full changelog**: #{{RELEASE_DIFF}}"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dynamic_energy_contract_calculator.zip
+          body: |
+            ## Installation via HACS
+            Install or update via HACS — the new version will be offered automatically.
+
+            ## Manual installation
+            Download `dynamic_energy_contract_calculator.zip`, extract and copy `dynamic_energy_contract_calculator/` to your `custom_components/` directory.
+
+            ${{ steps.changelog.outputs.changelog }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

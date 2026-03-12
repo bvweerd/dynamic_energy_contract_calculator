@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers import config_validation as cv
@@ -18,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the base integration (no YAML)."""
     hass.data.setdefault(DOMAIN, {})
     if not hass.data[DOMAIN].get("services_registered"):
@@ -28,6 +30,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate config entry to current version."""
+    _LOGGER.debug("Migrating from version %s", entry.version)
+    if entry.version == 1:
+        return True
+    _LOGGER.error("Cannot migrate from version %s", entry.version)
+    return False
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry by forwarding to sensor & number platforms."""
     _LOGGER.info("Setting up entry %s", entry.entry_id)
@@ -35,9 +46,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data[DOMAIN].get("services_registered"):
         await async_register_services(hass)
         hass.data[DOMAIN]["services_registered"] = True
-
-    # Store entry data
-    hass.data[DOMAIN][entry.entry_id] = entry.data
 
     entry.async_on_unload(entry.add_update_listener(_update_listener))
 
@@ -56,14 +64,14 @@ async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry and its platforms."""
     _LOGGER.info("Unloading entry %s", entry.entry_id)
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = bool(await hass.config_entries.async_unload_platforms(entry, PLATFORMS))
     if unload_ok:
         entity_map = hass.data[DOMAIN].pop("entities", {})
         if entity_map:
             UTILITY_ENTITIES[:] = [
                 ent for ent in UTILITY_ENTITIES if ent not in entity_map.values()
             ]
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
         netting_map = hass.data[DOMAIN].get("netting")
         if isinstance(netting_map, dict):
             netting_map.pop(entry.entry_id, None)
