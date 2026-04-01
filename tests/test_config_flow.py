@@ -3,47 +3,76 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.dynamic_energy_contract_calculator.config_flow import (
     DynamicEnergyCalculatorConfigFlow,
+    SourceSubEntryFlow,
 )
 from custom_components.dynamic_energy_contract_calculator.const import (
-    CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
     DOMAIN,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
+    SUBENTRY_TYPE_SOURCE,
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
-async def test_flow_no_blocks(hass: HomeAssistant):
+async def test_flow_creates_entry_after_finish(hass: HomeAssistant):
+    """Test that the main config flow creates an entry when 'finish' is selected."""
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
     flow.context = {}
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
-    assert result["type"] == FlowResultType.FORM
-    assert result["errors"]["base"] == "no_blocks"
-
-
-async def test_full_flow(hass: HomeAssistant):
-    flow = DynamicEnergyCalculatorConfigFlow()
-    flow.hass = hass
-    flow.context = {}
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy"]})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
+    result = await flow.async_step_user({"action": "finish"})
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CONFIGS] == [
-        {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION, CONF_SOURCES: ["sensor.energy"]}
-    ]
+    assert result["title"] == "Dynamic Energy Contract Calculator"
+
+
+async def test_flow_price_settings_step(hass: HomeAssistant):
+    """Test that the price_settings step returns to user menu."""
+    flow = DynamicEnergyCalculatorConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+
+    result = await flow.async_step_user({"action": "price_settings"})
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "price_settings"
+
+    result = await flow.async_step_price_settings({"vat_percentage": 10.0})
+    assert flow.price_settings["vat_percentage"] == 10.0
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+
+async def test_flow_load_preset_step(hass: HomeAssistant):
+    """Test that load_preset step loads a preset and returns to user menu."""
+    flow = DynamicEnergyCalculatorConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+
+    result = await flow.async_step_user({"action": "load_preset"})
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "load_preset"
+
+    result = await flow.async_step_load_preset({"supplier_preset": "zonneplan_2026"})
+    assert flow.price_settings["netting_enabled"] is True
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+
+async def test_flow_load_preset_none(hass: HomeAssistant):
+    """Test that selecting 'none' preset keeps current settings."""
+    flow = DynamicEnergyCalculatorConfigFlow()
+    flow.hass = hass
+    flow.context = {}
+
+    original_vat = flow.price_settings["vat_percentage"]
+    result = await flow.async_step_load_preset({"supplier_preset": "none"})
+    assert flow.price_settings["vat_percentage"] == original_vat
+    assert result["type"] == FlowResultType.FORM
 
 
 async def test_single_instance_abort(hass: HomeAssistant):
+    """Test that a second instance is aborted."""
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
     flow.context = {}
@@ -56,31 +85,15 @@ async def test_single_instance_abort(hass: HomeAssistant):
     assert result["reason"] == "already_configured"
 
 
-async def test_edit_source_replaces_existing_config(hass: HomeAssistant):
+async def test_flow_shows_user_form_without_input(hass: HomeAssistant):
+    """Test that the user step shows a form when no input given."""
     flow = DynamicEnergyCalculatorConfigFlow()
     flow.hass = hass
     flow.context = {}
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
+    result = await flow.async_step_user()
     assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy"]})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy_2"]})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CONFIGS] == [
-        {
-            CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
-            CONF_SOURCES: ["sensor.energy_2"],
-        }
-    ]
+    assert result["step_id"] == "user"
 
 
 async def test_get_energy_sensors_filters_electricity(hass: HomeAssistant):
@@ -135,7 +148,6 @@ async def test_get_energy_sensors_filters_gas(hass: HomeAssistant):
 
 async def test_config_flow_accepts_input_number_price_sensors(hass: HomeAssistant):
     """Test that config flow accepts input_number entities for price sensors."""
-    # Set up various input_number entities with monetary attributes
     hass.states.async_set(
         "input_number.electricity_tariff",
         0.25,
@@ -157,7 +169,6 @@ async def test_config_flow_accepts_input_number_price_sensors(hass: HomeAssistan
         {"device_class": "monetary"},
     )
 
-    # Test that the filtering includes input_number entities
     all_prices = [
         state.entity_id
         for state in hass.states.async_all()
@@ -179,20 +190,17 @@ async def test_config_flow_accepts_input_number_price_sensors(hass: HomeAssistan
 
 async def test_config_flow_supports_eur_m3_unit(hass: HomeAssistant):
     """Test that config flow recognizes EUR/m³ unit for gas price sensors."""
-    # Set up gas price sensor with EUR/m³ unit
     hass.states.async_set(
         "sensor.gas_price_eur",
         0.75,
         {"unit_of_measurement": "EUR/m³"},
     )
-    # Also test the euro symbol variant
     hass.states.async_set(
         "sensor.gas_price_euro_symbol",
         0.80,
         {"unit_of_measurement": "€/m³"},
     )
 
-    # Test that the filtering includes EUR/m³ sensors
     all_prices = [
         state.entity_id
         for state in hass.states.async_all()
@@ -208,3 +216,71 @@ async def test_config_flow_supports_eur_m3_unit(hass: HomeAssistant):
 
     assert "sensor.gas_price_eur" in all_prices
     assert "sensor.gas_price_euro_symbol" in all_prices
+
+
+async def test_source_subentry_flow_user_step(hass: HomeAssistant):
+    """Test SourceSubEntryFlow user step selects source type."""
+    flow = SourceSubEntryFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_user(
+        {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "select_sources"
+    assert flow._source_type == SOURCE_TYPE_CONSUMPTION
+
+
+async def test_source_subentry_flow_shows_form_without_input(hass: HomeAssistant):
+    """Test SourceSubEntryFlow shows form when no input given."""
+    flow = SourceSubEntryFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_user()
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+
+async def test_source_subentry_flow_select_sources_creates_entry(hass: HomeAssistant):
+    """Test that SourceSubEntryFlow creates a sub-entry with source data."""
+    hass.states.async_set(
+        "sensor.energy_meter",
+        0,
+        {"device_class": "energy", "state_class": "total"},
+    )
+    flow = SourceSubEntryFlow()
+    flow.hass = hass
+    flow._source_type = SOURCE_TYPE_CONSUMPTION
+
+    result = await flow.async_step_select_sources(
+        {CONF_SOURCES: ["sensor.energy_meter"]}
+    )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SOURCE_TYPE] == SOURCE_TYPE_CONSUMPTION
+    assert result["data"][CONF_SOURCES] == ["sensor.energy_meter"]
+    assert result["title"] == SOURCE_TYPE_CONSUMPTION
+
+
+async def test_source_subentry_flow_shows_sources_form_without_input(
+    hass: HomeAssistant,
+):
+    """Test select_sources shows a form when no input given."""
+    hass.states.async_set(
+        "sensor.energy",
+        0,
+        {"device_class": "energy", "state_class": "total"},
+    )
+    flow = SourceSubEntryFlow()
+    flow.hass = hass
+    flow._source_type = SOURCE_TYPE_CONSUMPTION
+
+    result = await flow.async_step_select_sources()
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "select_sources"
+
+
+async def test_config_flow_get_supported_subentry_types(hass: HomeAssistant):
+    """Test that the config flow returns SourceSubEntryFlow for 'source' sub-entry type."""
+    supported = DynamicEnergyCalculatorConfigFlow.async_get_supported_subentry_types()
+    assert SUBENTRY_TYPE_SOURCE in supported
+    assert supported[SUBENTRY_TYPE_SOURCE] is SourceSubEntryFlow

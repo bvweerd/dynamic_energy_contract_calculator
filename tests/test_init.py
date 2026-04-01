@@ -3,6 +3,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dynamic_energy_contract_calculator import (
+    RuntimeData,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -11,7 +12,6 @@ from custom_components.dynamic_energy_contract_calculator.const import DOMAIN, P
 from custom_components.dynamic_energy_contract_calculator.entity import (
     BaseUtilitySensor,
 )
-from custom_components.dynamic_energy_contract_calculator.sensor import UTILITY_ENTITIES
 
 
 async def test_async_setup(hass: HomeAssistant):
@@ -92,19 +92,17 @@ async def test_async_unload_entry_failure_keeps_data(hass: HomeAssistant):
     assert hass.data[DOMAIN]["services_registered"]
 
 
-async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
+async def test_async_unload_clears_runtime_data(hass: HomeAssistant):
     entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     entry.add_to_hass(hass)
 
     dummy = BaseUtilitySensor("Test", "uid", "€", None, "mdi:flash", True)
     dummy.hass = hass
 
-    hass.data[DOMAIN] = {
-        entry.entry_id: {},
-        "services_registered": True,
-        "entities": {"dynamic_energy_contract_calculator.test": dummy},
-    }
-    UTILITY_ENTITIES.append(dummy)
+    hass.data[DOMAIN] = {"services_registered": True}
+
+    # Set up runtime_data on the entry as async_setup_entry would do
+    entry.runtime_data = RuntimeData(entities={"test_entity": dummy})
 
     with pytest.MonkeyPatch.context() as mp:
 
@@ -115,5 +113,5 @@ async def test_async_unload_removes_utility_entities(hass: HomeAssistant):
         result = await async_unload_entry(hass, entry)
 
     assert result
-    assert dummy not in UTILITY_ENTITIES
-    assert "entities" not in hass.data[DOMAIN]
+    # Entry should be removed from hass.data
+    assert entry.entry_id not in hass.data[DOMAIN]
