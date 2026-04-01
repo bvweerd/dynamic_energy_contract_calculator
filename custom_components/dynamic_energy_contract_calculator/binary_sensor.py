@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION
+from .const import DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION, SUBENTRY_TYPE_SOURCE
 from .solar_bonus import SolarBonusTracker
 
 import logging
@@ -27,7 +27,6 @@ async def async_setup_entry(
     """Set up binary sensors for this entry."""
     entities: list[BinarySensorEntity] = []
 
-    configs = entry.data.get("configurations", [])
     price_settings = entry.options.get(
         "price_settings", entry.data.get("price_settings", {})
     )
@@ -38,9 +37,11 @@ async def async_setup_entry(
     )
     production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
-    # Check if production is configured
+    # Check if production is configured via sub-entries
     has_production = any(
-        config.get("source_type") == SOURCE_TYPE_PRODUCTION for config in configs
+        subentry.data.get("source_type") == SOURCE_TYPE_PRODUCTION
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_SOURCE
     )
 
     # Create device info for Summary Sensors device (same as in sensor.py)

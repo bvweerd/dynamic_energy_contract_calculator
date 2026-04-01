@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime
+from unittest.mock import MagicMock
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from custom_components.dynamic_energy_contract_calculator.entity import (
@@ -11,19 +12,18 @@ from custom_components.dynamic_energy_contract_calculator.sensor import (
     DailyGasCostSensor,
     TotalEnergyCostSensor,
     CurrentElectricityPriceSensor,
-    UTILITY_ENTITIES,
 )
 from homeassistant.helpers import entity_registry as er
 from custom_components.dynamic_energy_contract_calculator.const import (
-    SOURCE_TYPE_CONSUMPTION,
-    SOURCE_TYPE_PRODUCTION,
-    SOURCE_TYPE_GAS,
-    CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
     CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
     DOMAIN,
+    SOURCE_TYPE_CONSUMPTION,
+    SOURCE_TYPE_GAS,
+    SOURCE_TYPE_PRODUCTION,
+    SUBENTRY_TYPE_SOURCE,
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -114,7 +114,6 @@ async def test_dynamic_sensor_added_to_hass(hass: HomeAssistant):
 
 
 async def test_total_cost_sensor_added(hass: HomeAssistant):
-    UTILITY_ENTITIES.clear()
     dummy = DynamicEnergySensor(
         hass,
         "D",
@@ -125,8 +124,13 @@ async def test_total_cost_sensor_added(hass: HomeAssistant):
         price_sensor="sensor.price",
         mode="cost_total",
     )
-    UTILITY_ENTITIES.append(dummy)
-    sensor = TotalCostSensor(hass, "Total", "tid", DeviceInfo(identifiers={("d", "1")}))
+    sensor = TotalCostSensor(
+        hass,
+        "Total",
+        "tid",
+        DeviceInfo(identifiers={("d", "1")}),
+        source_sensors=[dummy],
+    )
     called = []
 
     def fake_track(h, e_id, cb):
@@ -301,15 +305,14 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
     hass.states.async_set("sensor.gprice", 0)
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={
-            CONF_CONFIGS: [
-                {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]}
-            ],
-            CONF_PRICE_SENSOR_GAS: ["sensor.gprice"],
-        },
+        data={CONF_PRICE_SENSOR_GAS: ["sensor.gprice"]},
         options={CONF_PRICE_SETTINGS: {}},
     )
     entry.add_to_hass(hass)
+    subentry = MagicMock()
+    subentry.subentry_type = SUBENTRY_TYPE_SOURCE
+    subentry.data = {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]}
+    entry._subentries = {"gas-sub-1": subentry}
     added = []
 
     async def add_entities(entities, update=False):

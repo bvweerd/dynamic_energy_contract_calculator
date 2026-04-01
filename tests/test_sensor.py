@@ -15,7 +15,6 @@ from custom_components.dynamic_energy_contract_calculator.sensor import (
     DailyGasCostSensor,
     DailyElectricityCostSensor,
     CurrentElectricityPriceSensor,
-    UTILITY_ENTITIES,
 )
 from homeassistant.helpers import entity_registry as er
 from custom_components.dynamic_energy_contract_calculator.const import (
@@ -119,7 +118,6 @@ async def test_dynamic_gas_sensor_cost(hass: HomeAssistant):
 
 
 async def test_total_cost_sensor(hass: HomeAssistant):
-    UTILITY_ENTITIES.clear()
     cost = DynamicEnergySensor(
         hass,
         "Cost",
@@ -138,7 +136,6 @@ async def test_total_cost_sensor(hass: HomeAssistant):
         {},
         mode="profit_total",
     )
-    UTILITY_ENTITIES.extend([cost, profit])
     cost._attr_native_value = 5
     profit._attr_native_value = 2
     total = TotalCostSensor(
@@ -146,6 +143,7 @@ async def test_total_cost_sensor(hass: HomeAssistant):
         "Total",
         "t1",
         None,
+        source_sensors=[cost, profit],
         netting_tracker=None,
     )
     await total.async_update()
@@ -473,8 +471,6 @@ async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
     )
     cost_sensor.async_write_ha_state = lambda *args, **kwargs: None
     await tracker.async_register_sensor(cost_sensor)
-    UTILITY_ENTITIES.clear()
-    UTILITY_ENTITIES.append(cost_sensor)
 
     cost_sensor._last_energy = 0.0
     hass.states.async_set("sensor.energy", 1.0)
@@ -486,6 +482,7 @@ async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
         "Summary Total",
         "summary_uid",
         DeviceInfo(identifiers={("dec", "summary")}),
+        source_sensors=[cost_sensor],
         netting_tracker=tracker,
     )
     summary.async_write_ha_state = lambda *args, **kwargs: None
@@ -495,7 +492,6 @@ async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
     assert attrs["netting_enabled"] is True
     assert attrs["netting_net_consumption_kwh"] == pytest.approx(1.0, rel=1e-6)
     assert attrs["netting_tax_balance_eur"] == pytest.approx(0.121, rel=1e-6)
-    UTILITY_ENTITIES.clear()
 
 
 async def test_netting_tax_rate_change_mid_contract(hass: HomeAssistant):
@@ -608,7 +604,7 @@ async def test_base_sensor_restore_invalid_state(hass: HomeAssistant):
 
 
 async def test_total_cost_sensor_handle_event(hass: HomeAssistant):
-    sensor = TotalCostSensor(hass, "Total", "uid", None)
+    sensor = TotalCostSensor(hass, "Total", "uid", None, source_sensors=[])
     sensor.hass = hass
     sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
 
@@ -689,12 +685,7 @@ async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant
 
 
 async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
-    from custom_components.dynamic_energy_contract_calculator.sensor import (
-        TotalCostSensor,
-        UTILITY_ENTITIES,
-    )
-
-    UTILITY_ENTITIES.clear()
+    from custom_components.dynamic_energy_contract_calculator.sensor import TotalCostSensor
 
     class BadValueSensor(DynamicEnergySensor):
         @property
@@ -719,8 +710,9 @@ async def test_total_cost_sensor_handles_invalid_values(hass: HomeAssistant):
         {},
         mode="profit_total",
     )
-    UTILITY_ENTITIES.extend([bad_cost, bad_profit])
-    sensor = TotalCostSensor(hass, "Total", "t_invalid", None)
+    sensor = TotalCostSensor(
+        hass, "Total", "t_invalid", None, source_sensors=[bad_cost, bad_profit]
+    )
     await sensor.async_update()
     assert sensor.native_value == 0
 

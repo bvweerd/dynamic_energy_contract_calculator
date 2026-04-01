@@ -6,100 +6,95 @@ from custom_components.dynamic_energy_contract_calculator.config_flow import (
     DynamicEnergyCalculatorOptionsFlowHandler,
 )
 from custom_components.dynamic_energy_contract_calculator.const import (
-    CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
-    SOURCE_TYPE_CONSUMPTION,
+    CONF_PRICE_SETTINGS,
+    DOMAIN,
 )
 
 
-async def test_options_flow_no_blocks(hass: HomeAssistant):
-    entry = MockConfigEntry(
-        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
-    )
+async def test_options_flow_init_delegates(hass: HomeAssistant):
+    """Test that async_step_init delegates to async_step_user."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
+    result = await flow.async_step_init()
     assert result["type"] == FlowResultType.FORM
-    assert result["errors"]["base"] == "no_blocks"
+    assert result["step_id"] == "user"
 
 
-async def test_options_flow_full_flow(hass: HomeAssistant):
-    entry = MockConfigEntry(
-        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
-    )
+async def test_options_flow_shows_form_without_input(hass: HomeAssistant):
+    """Test that async_step_user shows form when no input given."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
+    result = await flow.async_step_user()
     assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
 
-    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy"]})
-    assert result["type"] == FlowResultType.FORM
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
+async def test_options_flow_finish_creates_entry(hass: HomeAssistant):
+    """Test that selecting 'finish' creates an options entry."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
+    flow.hass = hass
+
+    result = await flow.async_step_user({"action": "finish"})
     assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CONFIGS] == [
-        {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION, CONF_SOURCES: ["sensor.energy"]}
-    ]
+    assert CONF_PRICE_SETTINGS in result["data"]
 
 
 async def test_options_flow_price_settings(hass: HomeAssistant):
-    entry = MockConfigEntry(
-        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
-    )
+    """Test the price_settings action updates settings and returns to user menu."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
 
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "price_settings"})
+    result = await flow.async_step_user({"action": "price_settings"})
     assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "price_settings"
 
     result = await flow.async_step_price_settings({"vat_percentage": 10.0})
     assert flow.price_settings["vat_percentage"] == 10.0
     assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
 
 
-async def test_options_flow_init_delegates(hass: HomeAssistant):
-    entry = MockConfigEntry(
-        domain="dynamic_energy_contract_calculator", data={}, entry_id="1"
-    )
+async def test_options_flow_load_preset(hass: HomeAssistant):
+    """Test the load_preset action loads a preset and returns to user menu."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
     flow.hass = hass
-    result = await flow.async_step_init()
+
+    result = await flow.async_step_user({"action": "load_preset"})
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "load_preset"
+
+    result = await flow.async_step_load_preset({"supplier_preset": "zonneplan_2026"})
+    assert flow.price_settings["netting_enabled"] is True
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+
+async def test_options_flow_load_preset_none(hass: HomeAssistant):
+    """Test that selecting 'none' preset keeps current settings."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
+    flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
+    flow.hass = hass
+
+    original_vat = flow.price_settings.get("vat_percentage")
+    result = await flow.async_step_load_preset({"supplier_preset": "none"})
+    assert flow.price_settings.get("vat_percentage") == original_vat
     assert result["type"] == FlowResultType.FORM
 
 
-async def test_options_flow_edit_source_replaces_existing_config(
-    hass: HomeAssistant,
-):
+async def test_options_flow_reads_existing_price_settings(hass: HomeAssistant):
+    """Test that options flow initializes from existing entry options."""
     entry = MockConfigEntry(
-        domain="dynamic_energy_contract_calculator",
-        data={
-            CONF_CONFIGS: [
-                {
-                    CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
-                    CONF_SOURCES: ["sensor.energy"],
-                }
-            ]
-        },
+        domain=DOMAIN,
+        data={},
+        options={CONF_PRICE_SETTINGS: {"vat_percentage": 21.0}},
         entry_id="1",
     )
-
     flow = DynamicEnergyCalculatorOptionsFlowHandler(entry)
-    flow.hass = hass
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_select_sources({CONF_SOURCES: ["sensor.energy_2"]})
-    assert result["type"] == FlowResultType.FORM
-
-    result = await flow.async_step_user({CONF_SOURCE_TYPE: "finish"})
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CONFIGS] == [
-        {
-            CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
-            CONF_SOURCES: ["sensor.energy_2"],
-        }
-    ]
+    assert flow.price_settings["vat_percentage"] == 21.0

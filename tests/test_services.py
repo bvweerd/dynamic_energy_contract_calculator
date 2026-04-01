@@ -8,6 +8,7 @@ from custom_components.dynamic_energy_contract_calculator.services import (
 )
 from custom_components.dynamic_energy_contract_calculator.const import DOMAIN
 from custom_components.dynamic_energy_contract_calculator import (
+    RuntimeData,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -16,6 +17,19 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dynamic_energy_contract_calculator.entity import (
     BaseUtilitySensor,
 )
+
+
+def _make_loaded_entry_with_entities(hass: HomeAssistant, entities: dict) -> MockConfigEntry:
+    """Create a loaded MockConfigEntry with RuntimeData entities."""
+    from homeassistant.config_entries import ConfigEntryState
+
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="svc-test-1")
+    entry.add_to_hass(hass)
+    hass.data.setdefault(DOMAIN, {})
+    entry.runtime_data = RuntimeData(entities=entities)
+    # Mark as loaded so service handlers process it
+    entry._state = ConfigEntryState.LOADED
+    return entry
 
 
 async def test_service_registration(hass: HomeAssistant):
@@ -43,10 +57,10 @@ async def test_service_handlers(hass: HomeAssistant):
         async def async_set_value(self, value):
             called["set"] = value
 
-    hass.data[DOMAIN] = {
-        "entities": {"dynamic_energy_contract_calculator.test": Dummy()}
-    }
-    hass.states.async_set("dynamic_energy_contract_calculator.test", 1)
+    entity_id = "dynamic_energy_contract_calculator.test"
+    dummy = Dummy()
+    _make_loaded_entry_with_entities(hass, {entity_id: dummy})
+    hass.states.async_set(entity_id, 1)
 
     await _handle_reset_all(ServiceCall(hass, DOMAIN, "reset_all_meters", {}))
     assert called["reset"]
@@ -57,7 +71,7 @@ async def test_service_handlers(hass: HomeAssistant):
             hass,
             DOMAIN,
             "reset_selected_meters",
-            {"entity_ids": ["dynamic_energy_contract_calculator.test"]},
+            {"entity_ids": [entity_id]},
         )
     )
     assert called["reset"]
@@ -67,7 +81,7 @@ async def test_service_handlers(hass: HomeAssistant):
             hass,
             DOMAIN,
             "set_meter_value",
-            {"entity_id": "dynamic_energy_contract_calculator.test", "value": 5},
+            {"entity_id": entity_id, "value": 5},
         )
     )
     assert called["set"] == 5
