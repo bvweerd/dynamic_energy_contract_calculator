@@ -5,11 +5,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.config_entries import ConfigEntry
+from types import MappingProxyType
+
+from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, DOMAIN, PLATFORMS, SUBENTRY_TYPE_SOURCE
+from .const import CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, DOMAIN, PLATFORMS, SOURCE_TYPE_CONSUMPTION, SUBENTRY_TYPE_SOURCE
 from .services import async_register_services, async_unregister_services
 
 if TYPE_CHECKING:
@@ -62,16 +64,18 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Create a sub-entry for each configuration block
         for config in configs:
-            source_type = config.get(CONF_SOURCE_TYPE, "Unknown")
-            hass.config_entries.async_create_subentry(
+            source_type = config.get(CONF_SOURCE_TYPE, SOURCE_TYPE_CONSUMPTION)
+            hass.config_entries.async_add_subentry(
                 entry,
-                subentry_type=SUBENTRY_TYPE_SOURCE,
-                title=source_type,
-                data={
-                    CONF_SOURCE_TYPE: config.get(CONF_SOURCE_TYPE),
-                    CONF_SOURCES: config.get(CONF_SOURCES, []),
-                },
-                unique_id=None,
+                ConfigSubentry(
+                    subentry_type=SUBENTRY_TYPE_SOURCE,
+                    title=source_type,
+                    data=MappingProxyType({
+                        CONF_SOURCE_TYPE: source_type,
+                        CONF_SOURCES: config.get(CONF_SOURCES, []),
+                    }),
+                    unique_id=None,
+                ),
             )
             _LOGGER.debug("Created sub-entry for source type: %s", source_type)
 
@@ -119,8 +123,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
 
-        # Unregister services if no entries remain
-        remaining = hass.config_entries.async_entries(DOMAIN)
+        # Unregister services if no other entries remain
+        remaining = [
+            e for e in hass.config_entries.async_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
+        ]
         if not remaining and hass.data[DOMAIN].get("services_registered"):
             await async_unregister_services(hass)
             hass.data[DOMAIN]["services_registered"] = False

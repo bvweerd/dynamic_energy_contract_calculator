@@ -8,7 +8,8 @@ from homeassistant import config_entries
 from homeassistant.config_entries import (
     ConfigFlowContext,
     ConfigFlowResult,
-    SubEntryFlow,
+    ConfigSubentryFlow,
+    SubentryFlowResult,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.selector import selector
@@ -66,6 +67,22 @@ GENERAL_FIELDS = {
 }
 
 
+def _get_price_sensors(hass: HomeAssistant) -> list[str]:
+    """Return all price sensor entity_ids available in hass."""
+    return [
+        state.entity_id
+        for state in hass.states.async_all()
+        if (state.domain in ["sensor", "input_number"])
+        and (
+            state.attributes.get("device_class") == "monetary"
+            or state.attributes.get("unit_of_measurement") == "€/m³"
+            or state.attributes.get("unit_of_measurement") == "EUR/m³"
+            or state.attributes.get("unit_of_measurement") == "€/kWh"
+            or state.attributes.get("unit_of_measurement") == "EUR/kWh"
+        )
+    ]
+
+
 async def _get_energy_sensors(
     hass: HomeAssistant, source_type: str | None
 ) -> list[str]:
@@ -108,9 +125,9 @@ def _apply_preset(
 
 def _build_price_settings_schema(
     price_settings: dict[str, Any],
+    all_prices: list[str],
 ) -> vol.Schema:
     """Build the price settings form schema."""
-    all_prices = []  # Will be populated in context
     current_price_sensor = price_settings.get(CONF_PRICE_SENSOR, [])
     if isinstance(current_price_sensor, str):
         current_price_sensor = [current_price_sensor]
@@ -161,7 +178,7 @@ def _build_price_settings_schema(
     return vol.Schema(schema_fields)
 
 
-class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg,misc]
+class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Dynamic Energy Contract Calculator."""
 
     VERSION = 2
@@ -263,73 +280,14 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             self.price_settings = dict(user_input)
             return await self.async_step_user()
 
-        all_prices = [
-            state.entity_id
-            for state in self.hass.states.async_all()
-            if (state.domain in ["sensor", "input_number"])
-            and (
-                state.attributes.get("device_class") == "monetary"
-                or state.attributes.get("unit_of_measurement") == "€/m³"
-                or state.attributes.get("unit_of_measurement") == "EUR/m³"
-                or state.attributes.get("unit_of_measurement") == "€/kWh"
-                or state.attributes.get("unit_of_measurement") == "EUR/kWh"
-            )
-        ]
-        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
-        if isinstance(current_price_sensor, str):
-            current_price_sensor = [current_price_sensor]
-        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, [])
-        if isinstance(current_price_sensor_gas, str):
-            current_price_sensor_gas = [current_price_sensor_gas]
-
-        schema_fields: dict[Any, Any] = {
-            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
-                {
-                    "select": {
-                        "options": all_prices,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
-            vol.Required(
-                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
-            ): selector(
-                {
-                    "select": {
-                        "options": all_prices,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
-        }
-        for key, default in DEFAULT_PRICE_SETTINGS.items():
-            if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                continue
-            current = self.price_settings.get(key, default)
-            if isinstance(default, bool):
-                schema_fields[vol.Required(key, default=current)] = bool
-            elif isinstance(default, str):
-                if key == "contract_start_date":
-                    if current and current != "":
-                        schema_fields[vol.Optional(key, default=current)] = selector(
-                            {"date": {}}
-                        )
-                    else:
-                        schema_fields[vol.Optional(key)] = selector({"date": {}})
-                else:
-                    schema_fields[vol.Optional(key, default=current)] = str
-            else:
-                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
-
+        all_prices = _get_price_sensors(self.hass)
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
-            data_schema=vol.Schema(schema_fields),
+            data_schema=_build_price_settings_schema(self.price_settings, all_prices),
         )
 
     @staticmethod
-    @callback  # type: ignore[misc]
+    @callback
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
@@ -338,12 +296,13 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
     @classmethod
     def async_get_supported_subentry_types(
         cls,
-    ) -> dict[str, type[SubEntryFlow]]:
+        config_entry: config_entries.ConfigEntry,
+    ) -> dict[str, type[ConfigSubentryFlow]]:
         """Return supported sub-entry types."""
         return {SUBENTRY_TYPE_SOURCE: SourceSubEntryFlow}
 
 
-class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
+class SourceSubEntryFlow(ConfigSubentryFlow):
     """Flow handler for adding/editing a source sub-entry."""
 
     def __init__(self) -> None:
@@ -352,7 +311,7 @@ class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> SubentryFlowResult:
         """Select source type."""
         if user_input is not None:
             self._source_type = user_input[CONF_SOURCE_TYPE]
@@ -380,7 +339,7 @@ class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
 
     async def async_step_select_sources(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> SubentryFlowResult:
         """Select energy sensors for this source."""
         if user_input is not None:
             return self.async_create_entry(
@@ -412,8 +371,9 @@ class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    ) -> SubentryFlowResult:
         """Handle reconfiguration of an existing sub-entry."""
+        entry = self._get_entry()
         subentry = self._get_reconfigure_subentry()
         existing_source_type = subentry.data.get(CONF_SOURCE_TYPE)
         existing_sources = subentry.data.get(CONF_SOURCES, [])
@@ -421,7 +381,9 @@ class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
         if user_input is not None:
             source_type = user_input.get(CONF_SOURCE_TYPE, existing_source_type)
             sources = user_input.get(CONF_SOURCES, existing_sources)
-            return self.async_update_entry(
+            return self.async_update_and_abort(
+                entry,
+                subentry,
                 title=source_type or "Source",
                 data={
                     CONF_SOURCE_TYPE: source_type,
@@ -462,17 +424,8 @@ class SourceSubEntryFlow(SubEntryFlow):  # type: ignore[misc]
             ),
         )
 
-    def _get_reconfigure_subentry(self) -> config_entries.ConfigSubEntry:
-        """Get the sub-entry being reconfigured."""
-        entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        assert entry is not None
-        assert self._subentry_id is not None
-        subentry = entry.subentries.get(self._subentry_id)
-        assert subentry is not None
-        return subentry
 
-
-class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # type: ignore[misc]
+class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle updates to a config entry (options)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
@@ -577,67 +530,8 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):  # 
             self.price_settings = dict(user_input)
             return await self.async_step_user()
 
-        all_prices = [
-            state.entity_id
-            for state in self.hass.states.async_all()
-            if (state.domain in ["sensor", "input_number"])
-            and (
-                state.attributes.get("device_class") == "monetary"
-                or state.attributes.get("unit_of_measurement") == "€/m³"
-                or state.attributes.get("unit_of_measurement") == "EUR/m³"
-                or state.attributes.get("unit_of_measurement") == "€/kWh"
-                or state.attributes.get("unit_of_measurement") == "EUR/kWh"
-            )
-        ]
-        current_price_sensor = self.price_settings.get(CONF_PRICE_SENSOR, [])
-        if isinstance(current_price_sensor, str):
-            current_price_sensor = [current_price_sensor]
-        current_price_sensor_gas = self.price_settings.get(CONF_PRICE_SENSOR_GAS, [])
-        if isinstance(current_price_sensor_gas, str):
-            current_price_sensor_gas = [current_price_sensor_gas]
-
-        schema_fields: dict[Any, Any] = {
-            vol.Required(CONF_PRICE_SENSOR, default=current_price_sensor): selector(
-                {
-                    "select": {
-                        "options": all_prices,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
-            vol.Required(
-                CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
-            ): selector(
-                {
-                    "select": {
-                        "options": all_prices,
-                        "multiple": True,
-                        "mode": "dropdown",
-                    }
-                }
-            ),
-        }
-        for key, default in DEFAULT_PRICE_SETTINGS.items():
-            if key in (CONF_PRICE_SENSOR, CONF_PRICE_SENSOR_GAS):
-                continue
-            current = self.price_settings.get(key, default)
-            if isinstance(default, bool):
-                schema_fields[vol.Required(key, default=current)] = bool
-            elif isinstance(default, str):
-                if key == "contract_start_date":
-                    if current and current != "":
-                        schema_fields[vol.Optional(key, default=current)] = selector(
-                            {"date": {}}
-                        )
-                    else:
-                        schema_fields[vol.Optional(key)] = selector({"date": {}})
-                else:
-                    schema_fields[vol.Optional(key, default=current)] = str
-            else:
-                schema_fields[vol.Required(key, default=current)] = vol.Coerce(float)
-
+        all_prices = _get_price_sensors(self.hass)
         return self.async_show_form(
             step_id=STEP_PRICE_SETTINGS,
-            data_schema=vol.Schema(schema_fields),
+            data_schema=_build_price_settings_schema(self.price_settings, all_prices),
         )

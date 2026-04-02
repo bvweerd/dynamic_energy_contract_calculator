@@ -124,6 +124,7 @@ async def test_total_cost_sensor_added(hass: HomeAssistant):
         price_sensor="sensor.price",
         mode="cost_total",
     )
+    dummy.entity_id = "sensor.d_cost_d1"
     sensor = TotalCostSensor(
         hass,
         "Total",
@@ -307,12 +308,18 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
         domain=DOMAIN,
         data={CONF_PRICE_SENSOR_GAS: ["sensor.gprice"]},
         options={CONF_PRICE_SETTINGS: {}},
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_SOURCE,
+                "data": {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]},
+                "title": SOURCE_TYPE_GAS,
+                "unique_id": None,
+            }
+        ],
     )
     entry.add_to_hass(hass)
-    subentry = MagicMock()
-    subentry.subentry_type = SUBENTRY_TYPE_SOURCE
-    subentry.data = {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]}
-    entry._subentries = {"gas-sub-1": subentry}
+    from custom_components.dynamic_energy_contract_calculator import RuntimeData
+    entry.runtime_data = RuntimeData()
     added = []
 
     async def add_entities(entities, update=False):

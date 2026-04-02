@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import pytz  # TODO Phase 3: replace with zoneinfo
 from collections import defaultdict
 from collections.abc import Callable
@@ -44,8 +45,6 @@ from .const import (
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
 from .solar_bonus import SolarBonusTracker
-
-import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1314,7 +1313,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    from .__init__ import DynamicEnergyConfigEntry, RuntimeData
+    from .__init__ import DynamicEnergyConfigEntry
 
     typed_entry: DynamicEnergyConfigEntry = entry  # type: ignore[assignment]
     price_settings = entry.options.get(
