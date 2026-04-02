@@ -28,12 +28,16 @@ def _make_loaded_entry_with_entities(hass: HomeAssistant, entities: dict) -> Moc
     hass.data.setdefault(DOMAIN, {})
     entry.runtime_data = RuntimeData(entities=entities)
     # Mark as loaded so service handlers process it
-    entry._state = ConfigEntryState.LOADED
+    object.__setattr__(entry, "state", ConfigEntryState.LOADED)
     return entry
 
 
 async def test_service_registration(hass: HomeAssistant):
+    from custom_components.dynamic_energy_contract_calculator.services import (
+        async_register_services,
+    )
     await async_setup(hass, {})
+    await async_register_services(hass)
     assert hass.services.has_service(DOMAIN, "reset_all_meters")
     assert hass.services.has_service(DOMAIN, "reset_selected_meters")
     assert hass.services.has_service(DOMAIN, "set_meter_value")

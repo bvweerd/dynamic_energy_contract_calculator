@@ -14,26 +14,21 @@ from custom_components.dynamic_energy_contract_calculator.const import (
 )
 
 
-def _make_subentry(source_type: str, sources: list[str]) -> MagicMock:
-    """Return a mock sub-entry for the given source type and sensor list."""
-    subentry = MagicMock()
-    subentry.subentry_type = SUBENTRY_TYPE_SOURCE
-    subentry.data = {CONF_SOURCE_TYPE: source_type, CONF_SOURCES: sources}
-    subentry.subentry_id = "test-sub-1"
-    subentry.title = source_type
-    return subentry
-
-
 async def test_diagnostics_redaction_and_structure(hass: HomeAssistant):
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={},
         options={},
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_SOURCE,
+                "data": {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION, CONF_SOURCES: ["sensor.energy"]},
+                "title": SOURCE_TYPE_CONSUMPTION,
+                "unique_id": None,
+            }
+        ],
     )
     entry.add_to_hass(hass)
-    entry._subentries = {
-        "test-sub-1": _make_subentry(SOURCE_TYPE_CONSUMPTION, ["sensor.energy"])
-    }
     entry.runtime_data = RuntimeData()
     hass.states.async_set("sensor.energy", 1, {"attr": "val"})
 
@@ -67,7 +62,6 @@ async def test_diagnostics_with_netting_tracker(hass: HomeAssistant):
     """Test diagnostics when netting tracker is active."""
     entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
     entry.add_to_hass(hass)
-    entry._subentries = {}
 
     netting_tracker = MagicMock()
     netting_tracker.net_consumption_kwh = 10.5
@@ -92,7 +86,6 @@ async def test_diagnostics_with_solar_bonus_tracker(hass: HomeAssistant):
     """Test diagnostics when solar bonus tracker is active."""
     entry = MockConfigEntry(domain=DOMAIN, data={}, options={})
     entry.add_to_hass(hass)
-    entry._subentries = {}
 
     solar_tracker = MagicMock()
     solar_tracker.year_production_kwh = 250.0

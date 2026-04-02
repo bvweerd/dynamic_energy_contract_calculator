@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
@@ -11,10 +12,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION, SUBENTRY_TYPE_SOURCE
+from .const import CONF_PRICE_SENSOR, CONF_PRICE_SETTINGS, DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION, SUBENTRY_TYPE_SOURCE
 from .solar_bonus import SolarBonusTracker
-
-import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,12 +27,12 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = []
 
     price_settings = entry.options.get(
-        "price_settings", entry.data.get("price_settings", {})
+        CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
     )
 
     # Get the price sensor from entry data (used for production price calculations)
     price_sensor_list = entry.options.get(
-        "price_sensor", entry.data.get("price_sensor", [])
+        CONF_PRICE_SENSOR, entry.data.get(CONF_PRICE_SENSOR, [])
     )
     production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
