@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from types import MappingProxyType
 
@@ -11,7 +11,15 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_CONFIGS, CONF_SOURCE_TYPE, CONF_SOURCES, DOMAIN, PLATFORMS, SOURCE_TYPE_CONSUMPTION, SUBENTRY_TYPE_SOURCE
+from .const import (
+    CONF_CONFIGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
+    DOMAIN,
+    PLATFORMS,
+    SOURCE_TYPE_CONSUMPTION,
+    SUBENTRY_TYPE_SOURCE,
+)
 from .services import async_register_services, async_unregister_services
 
 if TYPE_CHECKING:
@@ -33,7 +41,7 @@ class RuntimeData:
     solar_bonus_tracker: SolarBonusTracker | None = None
 
 
-type DynamicEnergyConfigEntry = ConfigEntry[RuntimeData]
+DynamicEnergyConfigEntry: TypeAlias = ConfigEntry[RuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -70,10 +78,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 ConfigSubentry(
                     subentry_type=SUBENTRY_TYPE_SOURCE,
                     title=source_type,
-                    data=MappingProxyType({
-                        CONF_SOURCE_TYPE: source_type,
-                        CONF_SOURCES: config.get(CONF_SOURCES, []),
-                    }),
+                    data=MappingProxyType(
+                        {
+                            CONF_SOURCE_TYPE: source_type,
+                            CONF_SOURCES: config.get(CONF_SOURCES, []),
+                        }
+                    ),
                     unique_id=None,
                 ),
             )
@@ -86,7 +96,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return False
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: DynamicEnergyConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: DynamicEnergyConfigEntry
+) -> bool:
     """Set up a config entry by forwarding to sensor & binary_sensor platforms."""
     _LOGGER.info("Setting up entry %s", entry.entry_id)
 
@@ -116,16 +128,15 @@ async def _update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry and its platforms."""
     _LOGGER.info("Unloading entry %s", entry.entry_id)
-    unload_ok = bool(
-        await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    )
+    unload_ok = bool(await hass.config_entries.async_unload_platforms(entry, PLATFORMS))
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
 
         # Unregister services if no other entries remain
         remaining = [
-            e for e in hass.config_entries.async_entries(DOMAIN)
+            e
+            for e in hass.config_entries.async_entries(DOMAIN)
             if e.entry_id != entry.entry_id
         ]
         if not remaining and hass.data[DOMAIN].get("services_registered"):

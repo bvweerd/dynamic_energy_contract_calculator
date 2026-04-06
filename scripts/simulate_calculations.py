@@ -21,21 +21,25 @@ Run with:  python scripts/simulate_calculations.py
 from __future__ import annotations
 
 import asyncio
+import pathlib
 import sys
-from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Minimal HA mock — enough to run entity.py without a real hass instance
 # ---------------------------------------------------------------------------
 
+
 class _States:
     def __init__(self) -> None:
         self._store: dict[str, Any] = {}
 
-    def set(self, entity_id: str, state: str | float, attributes: dict | None = None) -> None:
+    def set(
+        self, entity_id: str, state: str | float, attributes: dict | None = None
+    ) -> None:
         s = SimpleNamespace(
             state=str(state),
             attributes=attributes or {},
@@ -56,12 +60,15 @@ class _MockHass:
 # Lightweight stand-ins for NettingTracker and SolarBonusTracker
 # ---------------------------------------------------------------------------
 
+
 class FakeNettingTracker:
     """Simplified FIFO netting tracker matching the real behaviour."""
 
     def __init__(self) -> None:
         self.net_consumption_kwh: float = 0.0
-        self._tax_contributions: list[tuple[float, float, float]] = []  # (kwh, rate, vat)
+        self._tax_contributions: list[
+            tuple[float, float, float]
+        ] = []  # (kwh, rate, vat)
         self.tax_balance_per_sensor: dict[str, float] = {}
 
     async def async_register_sensor(self, sensor: Any) -> None:
@@ -73,10 +80,14 @@ class FakeNettingTracker:
         """Record consumption. Returns (taxable_kwh, taxable_value)."""
         self.net_consumption_kwh += delta_kwh
         vat_factor = 1.21  # simplified
-        self._tax_contributions.append((delta_kwh, tax_unit_price / vat_factor, vat_factor))
+        self._tax_contributions.append(
+            (delta_kwh, tax_unit_price / vat_factor, vat_factor)
+        )
         taxable_value = delta_kwh * tax_unit_price
-        self.tax_balance_per_sensor[sensor.entity_id or "sensor"] = \
-            self.tax_balance_per_sensor.get(sensor.entity_id or "sensor", 0.0) + taxable_value
+        self.tax_balance_per_sensor[sensor.entity_id or "sensor"] = (
+            self.tax_balance_per_sensor.get(sensor.entity_id or "sensor", 0.0)
+            + taxable_value
+        )
         return delta_kwh, taxable_value
 
     async def async_record_production(
@@ -140,14 +151,11 @@ class FakeSolarBonusTracker:
 # Import the real DynamicEnergySensor from entity.py
 # ---------------------------------------------------------------------------
 
-import importlib, os, pathlib
-
 # Point Python at the integration source
 project_root = pathlib.Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Patch heavy HA imports before loading entity.py
-import unittest.mock as mock
 
 ha_mods = [
     "homeassistant",
@@ -166,8 +174,8 @@ for mod in ha_mods:
     sys.modules.setdefault(mod, MagicMock())
 
 # Provide real dt_util.now() so timedelta comparisons work
-from datetime import datetime, timezone, timedelta
 sys.modules["homeassistant.util.dt"].now = lambda: datetime.now(tz=timezone.utc)
+
 
 # Provide real SensorStateClass / SensorDeviceClass
 class _SensorStateClass:
@@ -175,10 +183,16 @@ class _SensorStateClass:
     TOTAL = "total"
     MEASUREMENT = "measurement"
 
+
 class _SensorDeviceClass:
     ENERGY = "energy"
-    def __init__(self, v: str) -> None: self.value = v
-    def __eq__(self, other: object) -> bool: return True
+
+    def __init__(self, v: str) -> None:
+        self.value = v
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
 
 sys.modules["homeassistant.components.sensor"].SensorStateClass = _SensorStateClass
 sys.modules["homeassistant.components.sensor"].SensorEntity = object
@@ -211,15 +225,24 @@ UNAVAILABLE_GRACE_SECONDS = 60  # from entity.py
 # Minimal BaseUtilitySensor stub so we can instantiate DynamicEnergySensor
 # ---------------------------------------------------------------------------
 
+
 class BaseUtilitySensor:
     _attr_native_value: float = 0.0
     _attr_available: bool = True
     _attr_state_class: str | None = None
     entity_id: str | None = None
 
-    def __init__(self, name: Any, unique_id: str, unit: str, device_class: Any,
-                 icon: str, visible: bool, device: Any = None,
-                 translation_key: str | None = None) -> None:
+    def __init__(
+        self,
+        name: Any,
+        unique_id: str,
+        unit: str,
+        device_class: Any,
+        icon: str,
+        visible: bool,
+        device: Any = None,
+        translation_key: str | None = None,
+    ) -> None:
         self._attr_unique_id = unique_id
         self._attr_native_unit_of_measurement = unit
 
@@ -251,8 +274,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
         netting_tracker: FakeNettingTracker | None = None,
         solar_bonus_tracker: FakeSolarBonusTracker | None = None,
     ) -> None:
-        super().__init__(None, unique_id, unit, None, "mdi:flash", True,
-                         translation_key=mode)
+        super().__init__(
+            None, unique_id, unit, None, "mdi:flash", True, translation_key=mode
+        )
         if mode in ("kwh_total", "m3_total"):
             self._attr_state_class = _SensorStateClass.TOTAL_INCREASING
         self.hass = hass
@@ -286,12 +310,18 @@ class DynamicEnergySensor(BaseUtilitySensor):
     async def async_update(self) -> None:
         """Exact copy of DynamicEnergySensor.async_update from entity.py."""
         if self.source_type == SOURCE_TYPE_GAS:
-            markup_consumption = self.price_settings.get("per_unit_supplier_gas_markup", 0.0)
+            markup_consumption = self.price_settings.get(
+                "per_unit_supplier_gas_markup", 0.0
+            )
             markup_production = 0.0
             tax = self.price_settings.get("per_unit_government_gas_tax", 0.0)
         else:
-            markup_consumption = self.price_settings.get("per_unit_supplier_electricity_markup", 0.0)
-            markup_production = self.price_settings.get("per_unit_supplier_electricity_production_markup", 0.0)
+            markup_consumption = self.price_settings.get(
+                "per_unit_supplier_electricity_markup", 0.0
+            )
+            markup_production = self.price_settings.get(
+                "per_unit_supplier_electricity_production_markup", 0.0
+            )
             tax = self.price_settings.get("per_unit_government_electricity_tax", 0.0)
 
         vat_factor = self.price_settings.get("vat_percentage", 21.0) / 100.0 + 1.0
@@ -329,7 +359,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
             valid = False
             for sensor_id in self.price_sensors:
                 price_state = self.hass.states.get(sensor_id)
-                if price_state is None or price_state.state in ("unknown", "unavailable"):
+                if price_state is None or price_state.state in (
+                    "unknown",
+                    "unavailable",
+                ):
                     continue
                 try:
                     total_price += float(price_state.state)
@@ -358,7 +391,10 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
                 if self._uses_netting:
                     base_value = delta * base_unit_price
-                    (_, taxable_value) = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    (
+                        _,
+                        taxable_value,
+                    ) = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
@@ -378,24 +414,33 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     and self._solar_bonus_tracker is not None
                     and self.price_settings.get("solar_bonus_enabled", False)
                 ):
-                    bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
-                    annual_limit = self.price_settings.get("solar_bonus_annual_kwh_limit", 7500.0)
-                    (solar_bonus_amount, _eligible_kwh) = \
-                        await self._solar_bonus_tracker.async_calculate_bonus(
-                            delta_kwh=delta,
-                            base_price=total_price,
-                            production_markup=markup_production,
-                            bonus_percentage=bonus_percentage,
-                            annual_limit_kwh=annual_limit,
-                        )
+                    bonus_percentage = self.price_settings.get(
+                        "solar_bonus_percentage", 10.0
+                    )
+                    annual_limit = self.price_settings.get(
+                        "solar_bonus_annual_kwh_limit", 7500.0
+                    )
+                    (
+                        solar_bonus_amount,
+                        _eligible_kwh,
+                    ) = await self._solar_bonus_tracker.async_calculate_bonus(
+                        delta_kwh=delta,
+                        base_price=total_price,
+                        production_markup=markup_production,
+                        bonus_percentage=bonus_percentage,
+                        annual_limit_kwh=annual_limit,
+                    )
                     if solar_bonus_amount > 0:
                         adjusted_value += solar_bonus_amount
 
                 if self.mode == "profit_total" and self._netting_tracker is not None:
-                    (_credited_kwh, credited_value, _) = \
-                        await self._netting_tracker.async_record_production(
-                            delta, tax * vat_factor
-                        )
+                    (
+                        _credited_kwh,
+                        credited_value,
+                        _,
+                    ) = await self._netting_tracker.async_record_production(
+                        delta, tax * vat_factor
+                    )
                     adjusted_value += credited_value
             else:
                 return
@@ -482,11 +527,14 @@ async def make_sensor(
 # SCENARIO 1: kwh_total — electricity consumption
 # ---------------------------------------------------------------------------
 
+
 async def test_kwh_total() -> None:
     print("\n=== 1. kwh_total (electricity consumption) ===")
     hass = _MockHass()
     ps = {"vat_percentage": 21.0}
-    s = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_total", ps, price_sensor=None)
+    s = await make_sensor(
+        hass, SOURCE_TYPE_CONSUMPTION, "kwh_total", ps, price_sensor=None
+    )
 
     # First update: energy=10, _last_energy=None → delta=0
     hass.states.set("sensor.energy", 10.0)
@@ -513,12 +561,19 @@ async def test_kwh_total() -> None:
 # SCENARIO 2: m3_total — gas
 # ---------------------------------------------------------------------------
 
+
 async def test_m3_total() -> None:
     print("\n=== 2. m3_total (gas) ===")
     hass = _MockHass()
     ps = {"vat_percentage": 9.0}
-    s = await make_sensor(hass, SOURCE_TYPE_GAS, "m3_total", ps, price_sensor=None,
-                          energy_sensor="sensor.gas")
+    s = await make_sensor(
+        hass,
+        SOURCE_TYPE_GAS,
+        "m3_total",
+        ps,
+        price_sensor=None,
+        energy_sensor="sensor.gas",
+    )
 
     hass.states.set("sensor.gas", 100.0)
     await s.async_update()
@@ -532,6 +587,7 @@ async def test_m3_total() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 3: cost_total — electricity consumption, positive price
 # ---------------------------------------------------------------------------
+
 
 async def test_cost_total_consumption() -> None:
     print("\n=== 3. cost_total (electricity consumption, positive price) ===")
@@ -559,6 +615,7 @@ async def test_cost_total_consumption() -> None:
 # SCENARIO 4: cost_total — negative price (consumption with negative market price)
 # ---------------------------------------------------------------------------
 
+
 async def test_cost_total_negative_price() -> None:
     print("\n=== 4. cost_total (negative price → no cost added) ===")
     hass = _MockHass()
@@ -585,6 +642,7 @@ async def test_cost_total_negative_price() -> None:
 # SCENARIO 5: profit_total — negative price adds to profit (consumption pays negative)
 # ---------------------------------------------------------------------------
 
+
 async def test_profit_total_negative_price_consumption() -> None:
     print("\n=== 5. profit_total (consumption at negative price → profit) ===")
     hass = _MockHass()
@@ -610,6 +668,7 @@ async def test_profit_total_negative_price_consumption() -> None:
 # SCENARIO 6: cost_total — gas consumption
 # ---------------------------------------------------------------------------
 
+
 async def test_gas_cost_total() -> None:
     print("\n=== 6. cost_total (gas) ===")
     hass = _MockHass()
@@ -619,8 +678,9 @@ async def test_gas_cost_total() -> None:
         "per_unit_government_gas_tax": 0.60,
     }
     # price=0.80, markup=0.05, tax=0.60 → unit_price = 1.45 * 1.21 = 1.7545 €/m³
-    s = await make_sensor(hass, SOURCE_TYPE_GAS, "cost_total", ps,
-                          energy_sensor="sensor.gas")
+    s = await make_sensor(
+        hass, SOURCE_TYPE_GAS, "cost_total", ps, energy_sensor="sensor.gas"
+    )
 
     hass.states.set("sensor.gas", 0.0)
     hass.states.set("sensor.price", 0.80)
@@ -635,6 +695,7 @@ async def test_gas_cost_total() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 7: profit_total — electricity production (positive price)
 # ---------------------------------------------------------------------------
+
 
 async def test_profit_total_production() -> None:
     print("\n=== 7. profit_total (electricity production, positive price) ===")
@@ -661,6 +722,7 @@ async def test_profit_total_production() -> None:
 # SCENARIO 8: profit_total — production WITHOUT VAT
 # ---------------------------------------------------------------------------
 
+
 async def test_profit_total_production_no_vat() -> None:
     print("\n=== 8. profit_total (production, production_price_include_vat=False) ===")
     hass = _MockHass()
@@ -684,6 +746,7 @@ async def test_profit_total_production_no_vat() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 9: cost_total — production at negative market price (adds to cost)
 # ---------------------------------------------------------------------------
+
 
 async def test_cost_total_production_negative_price() -> None:
     print("\n=== 9. cost_total (production at negative price → cost) ===")
@@ -711,6 +774,7 @@ async def test_cost_total_production_negative_price() -> None:
 # SCENARIO 10: kwh_during_cost_total / kwh_during_profit_total
 # ---------------------------------------------------------------------------
 
+
 async def test_kwh_during_modes() -> None:
     print("\n=== 10. kwh_during_cost_total and kwh_during_profit_total ===")
     hass = _MockHass()
@@ -721,32 +785,56 @@ async def test_kwh_during_modes() -> None:
     }
 
     # Positive price: consumption → kwh_during_cost_total accumulates, kwh_during_profit stays 0
-    sc = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_during_cost_total", ps,
-                           energy_sensor="sensor.energy_c")
-    sp = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_during_profit_total", ps,
-                           energy_sensor="sensor.energy_c")
+    sc = await make_sensor(
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "kwh_during_cost_total",
+        ps,
+        energy_sensor="sensor.energy_c",
+    )
+    sp = await make_sensor(
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "kwh_during_profit_total",
+        ps,
+        energy_sensor="sensor.energy_c",
+    )
 
     hass.states.set("sensor.price", 0.20)
     hass.states.set("sensor.energy_c", 0.0)
-    await sc.async_update(); await sp.async_update()
+    await sc.async_update()
+    await sp.async_update()
 
     hass.states.set("sensor.energy_c", 3.0)
-    await sc.async_update(); await sp.async_update()
+    await sc.async_update()
+    await sp.async_update()
     check("kwh_during_cost (positive price)", sc.native_value, 3.0)
     check("kwh_during_profit (positive price, stays 0)", sp.native_value, 0.0)
 
     # Negative price: consumption at negative price → kwh_during_profit accumulates
-    sc2 = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_during_cost_total", ps,
-                            energy_sensor="sensor.energy_n")
-    sp2 = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_during_profit_total", ps,
-                            energy_sensor="sensor.energy_n")
+    sc2 = await make_sensor(
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "kwh_during_cost_total",
+        ps,
+        energy_sensor="sensor.energy_n",
+    )
+    sp2 = await make_sensor(
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "kwh_during_profit_total",
+        ps,
+        energy_sensor="sensor.energy_n",
+    )
 
     hass.states.set("sensor.price", -0.50)
     hass.states.set("sensor.energy_n", 0.0)
-    await sc2.async_update(); await sp2.async_update()
+    await sc2.async_update()
+    await sp2.async_update()
 
     hass.states.set("sensor.energy_n", 4.0)
-    await sc2.async_update(); await sp2.async_update()
+    await sc2.async_update()
+    await sp2.async_update()
     check("kwh_during_cost (negative price, stays 0)", sc2.native_value, 0.0)
     check("kwh_during_profit (negative price)", sp2.native_value, 4.0)
 
@@ -754,6 +842,7 @@ async def test_kwh_during_modes() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 11: multiple price sensors summed
 # ---------------------------------------------------------------------------
+
 
 async def test_multiple_price_sensors() -> None:
     print("\n=== 11. Multiple price sensors (summed) ===")
@@ -764,7 +853,10 @@ async def test_multiple_price_sensors() -> None:
         "per_unit_government_electricity_tax": 0.0,
     }
     s = await make_sensor(
-        hass, SOURCE_TYPE_CONSUMPTION, "cost_total", ps,
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "cost_total",
+        ps,
         price_sensor=["sensor.price1", "sensor.price2"],
     )
 
@@ -783,11 +875,14 @@ async def test_multiple_price_sensors() -> None:
 # SCENARIO 12: unavailable energy sensor
 # ---------------------------------------------------------------------------
 
+
 async def test_unavailable_energy() -> None:
     print("\n=== 12. Unavailable energy sensor ===")
     hass = _MockHass()
     ps = {"vat_percentage": 21.0}
-    s = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "kwh_total", ps, price_sensor=None)
+    s = await make_sensor(
+        hass, SOURCE_TYPE_CONSUMPTION, "kwh_total", ps, price_sensor=None
+    )
 
     hass.states.set("sensor.energy", "unavailable")
     await s.async_update()
@@ -809,11 +904,15 @@ async def test_unavailable_energy() -> None:
 # SCENARIO 13: unavailable price sensor
 # ---------------------------------------------------------------------------
 
+
 async def test_unavailable_price() -> None:
     print("\n=== 13. Unavailable price sensor ===")
     hass = _MockHass()
-    ps = {"vat_percentage": 21.0, "per_unit_supplier_electricity_markup": 0.0,
-          "per_unit_government_electricity_tax": 0.0}
+    ps = {
+        "vat_percentage": 21.0,
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.0,
+    }
     s = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "cost_total", ps)
 
     hass.states.set("sensor.price", "unavailable")
@@ -828,6 +927,7 @@ async def test_unavailable_price() -> None:
 # SCENARIO 14: Netting — consumption followed by production credits tax
 # ---------------------------------------------------------------------------
 
+
 async def test_netting() -> None:
     print("\n=== 14. Netting (Dutch saldering) ===")
     hass = _MockHass()
@@ -840,13 +940,25 @@ async def test_netting() -> None:
     }
 
     # Consumption sensor
-    sc = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "cost_total", ps,
-                           energy_sensor="sensor.cons", netting_tracker=netting)
+    sc = await make_sensor(
+        hass,
+        SOURCE_TYPE_CONSUMPTION,
+        "cost_total",
+        ps,
+        energy_sensor="sensor.cons",
+        netting_tracker=netting,
+    )
     sc.entity_id = "sensor.cost"
 
     # Production sensor
-    sp = await make_sensor(hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps,
-                           energy_sensor="sensor.prod", netting_tracker=netting)
+    sp = await make_sensor(
+        hass,
+        SOURCE_TYPE_PRODUCTION,
+        "profit_total",
+        ps,
+        energy_sensor="sensor.prod",
+        netting_tracker=netting,
+    )
 
     # Step 1: consume 10 kWh at 0.20 base price
     # gross = (0.20+0.02+0.10)*1.21 = 0.3872, base = (0.20+0.02)*1.21 = 0.2662, tax = 0.10*1.21 = 0.121
@@ -857,26 +969,32 @@ async def test_netting() -> None:
 
     hass.states.set("sensor.cons", 10.0)
     await sc.async_update()
-    base_unit = (0.20 + 0.02) * 1.21
-    tax_unit = 0.10 * 1.21
-    # With netting: cost = base_value + taxable_value = 10*base_unit + 10*tax_unit = 10*gross_unit
+    # With netting: cost = base_value + taxable_value = 10*gross_unit
     expected_consumption_cost = 10.0 * (0.20 + 0.02 + 0.10) * 1.21
-    check("consumption cost (netting registered)", sc.native_value, expected_consumption_cost)
+    check(
+        "consumption cost (netting registered)",
+        sc.native_value,
+        expected_consumption_cost,
+    )
 
     # Step 2: produce 6 kWh — credits 6 kWh tax from consumption queue
     await sp.async_update()  # first read, delta=0
     hass.states.set("sensor.prod", 6.0)
     await sp.async_update()
     # profit = production value + credited tax
-    prod_unit = (0.20 + 0.02) * 1.21  # production_price_include_vat=True default, markup_prod=0 here
-    # Actually markup_production = per_unit_supplier_electricity_production_markup = 0 (not in ps)
     # For SOURCE_TYPE_PRODUCTION: unit_price = (total_price + markup_production) * vat_factor
+    # markup_production = per_unit_supplier_electricity_production_markup = 0 (not in ps)
     prod_unit_price = (0.20 + 0.0) * 1.21  # markup_production defaults to 0
     prod_value = 6.0 * prod_unit_price
     # credited_value = 6 kWh * tax_rate * vat_factor = 6 * 0.10 * 1.21
     credited_value = 6.0 * 0.10 * 1.21
     expected_profit = prod_value + credited_value
-    check("production profit (value + credited tax)", sp.native_value, expected_profit, tol=1e-5)
+    check(
+        "production profit (value + credited tax)",
+        sp.native_value,
+        expected_profit,
+        tol=1e-5,
+    )
 
     # Net consumption should be 10 - 6 = 4 kWh
     check("net consumption kWh", netting.net_consumption_kwh, 4.0, tol=1e-5)
@@ -885,6 +1003,7 @@ async def test_netting() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 15: Solar bonus
 # ---------------------------------------------------------------------------
+
 
 async def test_solar_bonus() -> None:
     print("\n=== 15. Solar bonus ===")
@@ -898,8 +1017,9 @@ async def test_solar_bonus() -> None:
         "solar_bonus_percentage": 10.0,
         "solar_bonus_annual_kwh_limit": 7500.0,
     }
-    s = await make_sensor(hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps,
-                          solar_bonus_tracker=solar)
+    s = await make_sensor(
+        hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps, solar_bonus_tracker=solar
+    )
 
     hass.states.set("sensor.price", 0.25)
     hass.states.set("sensor.energy", 0.0)
@@ -919,6 +1039,7 @@ async def test_solar_bonus() -> None:
 # SCENARIO 16: Solar bonus annual limit
 # ---------------------------------------------------------------------------
 
+
 async def test_solar_bonus_annual_limit() -> None:
     print("\n=== 16. Solar bonus annual limit ===")
     hass = _MockHass()
@@ -932,8 +1053,9 @@ async def test_solar_bonus_annual_limit() -> None:
         "solar_bonus_percentage": 10.0,
         "solar_bonus_annual_kwh_limit": 7500.0,
     }
-    s = await make_sensor(hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps,
-                          solar_bonus_tracker=solar)
+    s = await make_sensor(
+        hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps, solar_bonus_tracker=solar
+    )
 
     hass.states.set("sensor.price", 0.30)
     hass.states.set("sensor.energy", 0.0)
@@ -944,13 +1066,16 @@ async def test_solar_bonus_annual_limit() -> None:
     base_profit = 20.0 * 0.30 * 1.21
     bonus = 10.0 * 0.30 * 0.10  # only 10 kWh eligible
     expected = base_profit + bonus
-    check("profit with partial bonus (limit=7500, already 7490)", s.native_value, expected)
+    check(
+        "profit with partial bonus (limit=7500, already 7490)", s.native_value, expected
+    )
     check("year_production capped at 7500", solar.year_production_kwh, 7500.0)
 
 
 # ---------------------------------------------------------------------------
 # SCENARIO 17: TotalCostSensor aggregation
 # ---------------------------------------------------------------------------
+
 
 async def test_total_cost_sensor() -> None:
     print("\n=== 17. TotalCostSensor aggregation ===")
@@ -968,10 +1093,12 @@ async def test_total_cost_sensor() -> None:
 
     hass.states.set("sensor.price", 0.25)
 
-    sc = await make_sensor(hass, SOURCE_TYPE_CONSUMPTION, "cost_total", ps,
-                           energy_sensor="sensor.cons")
-    sp = await make_sensor(hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps,
-                           energy_sensor="sensor.prod")
+    sc = await make_sensor(
+        hass, SOURCE_TYPE_CONSUMPTION, "cost_total", ps, energy_sensor="sensor.cons"
+    )
+    sp = await make_sensor(
+        hass, SOURCE_TYPE_PRODUCTION, "profit_total", ps, energy_sensor="sensor.prod"
+    )
 
     hass.states.set("sensor.cons", 0.0)
     hass.states.set("sensor.prod", 0.0)
@@ -992,20 +1119,15 @@ async def test_total_cost_sensor() -> None:
 
     # Simulate TotalCostSensor aggregation
     total = sum(
-        float(e.native_value or 0.0)
-        for e in [sc, sp]
-        if e.mode == "cost_total"
-    ) - sum(
-        float(e.native_value or 0.0)
-        for e in [sc, sp]
-        if e.mode == "profit_total"
-    )
+        float(e.native_value or 0.0) for e in [sc, sp] if e.mode == "cost_total"
+    ) - sum(float(e.native_value or 0.0) for e in [sc, sp] if e.mode == "profit_total")
     check("TotalCostSensor net = cost - profit", total, net)
 
 
 # ---------------------------------------------------------------------------
 # SCENARIO 18: Zero VAT
 # ---------------------------------------------------------------------------
+
 
 async def test_zero_vat() -> None:
     print("\n=== 18. Zero VAT ===")
@@ -1030,6 +1152,7 @@ async def test_zero_vat() -> None:
 # ---------------------------------------------------------------------------
 # SCENARIO 19: Accumulation over many steps
 # ---------------------------------------------------------------------------
+
 
 async def test_accumulation() -> None:
     print("\n=== 19. Accumulation over 100 steps ===")
@@ -1058,6 +1181,7 @@ async def test_accumulation() -> None:
 # SCENARIO 20: Gas at zero price (only markup + tax)
 # ---------------------------------------------------------------------------
 
+
 async def test_gas_zero_base_price() -> None:
     print("\n=== 20. Gas with zero market price (fixed markup+tax only) ===")
     hass = _MockHass()
@@ -1066,8 +1190,9 @@ async def test_gas_zero_base_price() -> None:
         "per_unit_supplier_gas_markup": 0.05,
         "per_unit_government_gas_tax": 0.60,
     }
-    s = await make_sensor(hass, SOURCE_TYPE_GAS, "cost_total", ps,
-                          energy_sensor="sensor.gas")
+    s = await make_sensor(
+        hass, SOURCE_TYPE_GAS, "cost_total", ps, energy_sensor="sensor.gas"
+    )
 
     hass.states.set("sensor.price", 0.0)
     hass.states.set("sensor.gas", 0.0)
@@ -1082,6 +1207,7 @@ async def test_gas_zero_base_price() -> None:
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
+
 
 async def main() -> None:
     print("=" * 60)

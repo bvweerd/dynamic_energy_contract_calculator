@@ -19,7 +19,9 @@ from custom_components.dynamic_energy_contract_calculator.entity import (
 )
 
 
-def _make_loaded_entry_with_entities(hass: HomeAssistant, entities: dict) -> MockConfigEntry:
+def _make_loaded_entry_with_entities(
+    hass: HomeAssistant, entities: dict
+) -> MockConfigEntry:
     """Create a loaded MockConfigEntry with RuntimeData entities."""
     from homeassistant.config_entries import ConfigEntryState
 
@@ -36,6 +38,7 @@ async def test_service_registration(hass: HomeAssistant):
     from custom_components.dynamic_energy_contract_calculator.services import (
         async_register_services,
     )
+
     await async_setup(hass, {})
     await async_register_services(hass)
     assert hass.services.has_service(DOMAIN, "reset_all_meters")
