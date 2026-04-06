@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -230,7 +230,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         _LOGGER.debug(
             "%s changed, updating %s", event.data.get("entity_id"), self.entity_id
         )
@@ -467,7 +467,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         _LOGGER.debug(
             "Recalculating total energy cost due to %s", event.data.get("entity_id")
         )
@@ -1296,7 +1296,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             self._price_change_unsub = None
         await super().async_will_remove_from_hass()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change - rebuild net_prices and reschedule."""
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):

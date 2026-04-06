@@ -145,9 +145,7 @@ def _build_price_settings_schema(
                 }
             }
         ),
-        vol.Required(
-            CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas
-        ): selector(
+        vol.Required(CONF_PRICE_SENSOR_GAS, default=current_price_sensor_gas): selector(
             {
                 "select": {
                     "options": all_prices,
@@ -204,16 +202,16 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 return self.async_create_entry(
                     title="Dynamic Energy Contract Calculator",
                     data={
-                        CONF_PRICE_SENSOR: self.price_settings.get(CONF_PRICE_SENSOR, []),
+                        CONF_PRICE_SENSOR: self.price_settings.get(
+                            CONF_PRICE_SENSOR, []
+                        ),
                         CONF_PRICE_SENSOR_GAS: self.price_settings.get(
                             CONF_PRICE_SENSOR_GAS, []
                         ),
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
-        return self.async_show_form(
-            step_id="user", data_schema=self._schema_user()
-        )
+        return self.async_show_form(step_id="user", data_schema=self._schema_user())
 
     def _schema_user(self) -> vol.Schema:
         options = [
@@ -454,16 +452,16 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                 return self.async_create_entry(
                     title="",
                     data={
-                        CONF_PRICE_SENSOR: self.price_settings.get(CONF_PRICE_SENSOR, []),
+                        CONF_PRICE_SENSOR: self.price_settings.get(
+                            CONF_PRICE_SENSOR, []
+                        ),
                         CONF_PRICE_SENSOR_GAS: self.price_settings.get(
                             CONF_PRICE_SENSOR_GAS, []
                         ),
                         CONF_PRICE_SETTINGS: self.price_settings,
                     },
                 )
-        return self.async_show_form(
-            step_id="user", data_schema=self._schema_user()
-        )
+        return self.async_show_form(step_id="user", data_schema=self._schema_user())
 
     def _schema_user(self) -> vol.Schema:
         options = [

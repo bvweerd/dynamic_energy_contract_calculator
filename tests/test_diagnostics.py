@@ -22,7 +22,10 @@ async def test_diagnostics_redaction_and_structure(hass: HomeAssistant):
         subentries_data=[
             {
                 "subentry_type": SUBENTRY_TYPE_SOURCE,
-                "data": {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION, CONF_SOURCES: ["sensor.energy"]},
+                "data": {
+                    CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
+                    CONF_SOURCES: ["sensor.energy"],
+                },
                 "title": SOURCE_TYPE_CONSUMPTION,
                 "unique_id": None,
             }

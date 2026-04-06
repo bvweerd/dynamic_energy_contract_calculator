@@ -7,12 +7,19 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import CONF_PRICE_SENSOR, CONF_PRICE_SETTINGS, DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION, SUBENTRY_TYPE_SOURCE
+from .const import (
+    CONF_PRICE_SENSOR,
+    CONF_PRICE_SETTINGS,
+    DOMAIN,
+    DOMAIN_ABBREVIATION,
+    SOURCE_TYPE_PRODUCTION,
+    SUBENTRY_TYPE_SOURCE,
+)
 from .solar_bonus import SolarBonusTracker
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,7 +103,7 @@ async def async_setup_entry(
         async_add_entities(entities)
 
 
-class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
+class SolarBonusActiveBinarySensor(BinarySensorEntity):
     """Binary sensor showing if solar bonus is currently active."""
 
     def __init__(
@@ -133,7 +140,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
         # Initial update
         await self._async_update_state()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change."""
         await self._async_update_state()
 
@@ -172,7 +179,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
             self.async_write_ha_state()
 
 
-class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
+class ProductionPricePositiveBinarySensor(BinarySensorEntity):
     """Binary sensor showing if production price is positive."""
 
     def __init__(
@@ -207,7 +214,7 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[m
         # Initial update
         await self._async_update_state()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change."""
         await self._async_update_state()
 

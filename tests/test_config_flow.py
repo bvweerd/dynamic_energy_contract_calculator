@@ -223,9 +223,7 @@ async def test_source_subentry_flow_user_step(hass: HomeAssistant):
     flow = SourceSubEntryFlow()
     flow.hass = hass
 
-    result = await flow.async_step_user(
-        {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION}
-    )
+    result = await flow.async_step_user({CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION})
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "select_sources"
     assert flow._source_type == SOURCE_TYPE_CONSUMPTION
@@ -283,6 +281,8 @@ async def test_source_subentry_flow_shows_sources_form_without_input(
 async def test_config_flow_get_supported_subentry_types(hass: HomeAssistant):
     """Test that the config flow returns SourceSubEntryFlow for 'source' sub-entry type."""
     entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="1")
-    supported = DynamicEnergyCalculatorConfigFlow.async_get_supported_subentry_types(entry)
+    supported = DynamicEnergyCalculatorConfigFlow.async_get_supported_subentry_types(
+        entry
+    )
     assert SUBENTRY_TYPE_SOURCE in supported
     assert supported[SUBENTRY_TYPE_SOURCE] is SourceSubEntryFlow

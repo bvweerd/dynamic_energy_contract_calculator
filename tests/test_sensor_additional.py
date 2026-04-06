@@ -1,6 +1,5 @@
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from custom_components.dynamic_energy_contract_calculator.entity import (
@@ -311,7 +310,10 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
         subentries_data=[
             {
                 "subentry_type": SUBENTRY_TYPE_SOURCE,
-                "data": {CONF_SOURCE_TYPE: SOURCE_TYPE_GAS, CONF_SOURCES: ["sensor.gas"]},
+                "data": {
+                    CONF_SOURCE_TYPE: SOURCE_TYPE_GAS,
+                    CONF_SOURCES: ["sensor.gas"],
+                },
                 "title": SOURCE_TYPE_GAS,
                 "unique_id": None,
             }
@@ -319,6 +321,7 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
     )
     entry.add_to_hass(hass)
     from custom_components.dynamic_energy_contract_calculator import RuntimeData
+
     entry.runtime_data = RuntimeData()
     added = []
 
