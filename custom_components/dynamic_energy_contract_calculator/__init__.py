@@ -22,7 +22,7 @@ from .const import (
 )
 from .services import async_register_services, async_unregister_services
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from .entity import BaseUtilitySensor
     from .netting import NettingTracker
     from .solar_bonus import SolarBonusTracker

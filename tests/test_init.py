@@ -134,7 +134,9 @@ async def test_migrate_entry_v1_to_v2_creates_subentries(hass: HomeAssistant) ->
 async def test_migrate_entry_v1_to_v2_empty_configs(hass: HomeAssistant) -> None:
     """Migration with empty CONF_CONFIGS creates no sub-entries."""
     old_data = {CONF_CONFIGS: [], CONF_PRICE_SETTINGS: {}}
-    entry = MockConfigEntry(domain=DOMAIN, data=old_data, version=1, entry_id="migtest2")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=old_data, version=1, entry_id="migtest2"
+    )
     entry.add_to_hass(hass)
 
     result = await async_migrate_entry(hass, entry)
@@ -178,3 +180,38 @@ async def test_async_unload_clears_runtime_data(hass: HomeAssistant):
     assert result
     # Entry should be removed from hass.data
     assert entry.entry_id not in hass.data[DOMAIN]
+
+
+async def test_async_unload_cleans_tracker_maps_and_keeps_services_for_other_entries(
+    hass: HomeAssistant,
+):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="entry-1")
+    other = MockConfigEntry(domain=DOMAIN, data={}, entry_id="entry-2")
+    entry.add_to_hass(hass)
+    other.add_to_hass(hass)
+    hass.data[DOMAIN] = {
+        "services_registered": True,
+        "netting": {"entry-1": object()},
+        "solar_bonus": {"entry-1": object()},
+    }
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        async def unregister_services(hass_arg):
+            raise AssertionError("services should stay registered")
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.async_unregister_services",
+            unregister_services,
+        )
+
+        result = await async_unload_entry(hass, entry)
+
+    assert result is True
+    assert "netting" not in hass.data[DOMAIN]
+    assert "solar_bonus" not in hass.data[DOMAIN]
+    assert hass.data[DOMAIN]["services_registered"] is True
