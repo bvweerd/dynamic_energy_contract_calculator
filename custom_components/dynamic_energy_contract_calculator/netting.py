@@ -211,7 +211,7 @@ class NettingTracker:
 
         Tax balance is calculated from the contributions queue.
         """
-        pass
+        return None  # pragma: no cover
 
     async def async_record_consumption(
         self,

@@ -753,7 +753,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         # Calculate averages and create hourly entries
         averaged = []
         for hour_key, entries in sorted(hourly_groups.items()):
-            if not entries:
+            if not entries:  # pragma: no cover
                 continue
 
             # Calculate average price
