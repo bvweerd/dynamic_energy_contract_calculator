@@ -130,7 +130,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Unloading entry %s", entry.entry_id)
     unload_ok = bool(await hass.config_entries.async_unload_platforms(entry, PLATFORMS))
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        netting_map = hass.data[DOMAIN].get("netting")
+        if isinstance(netting_map, dict):
+            netting_map.pop(entry.entry_id, None)
+            if not netting_map:
+                hass.data[DOMAIN].pop("netting")
+        solar_map = hass.data[DOMAIN].get("solar_bonus")
+        if isinstance(solar_map, dict):
+            solar_map.pop(entry.entry_id, None)
+            if not solar_map:
+                hass.data[DOMAIN].pop("solar_bonus")
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
 
         # Unregister services if no other entries remain
