@@ -1,5 +1,7 @@
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.device_registry import DeviceEntryType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dynamic_energy_contract_calculator import (
@@ -145,6 +147,64 @@ async def test_migrate_entry_v1_to_v2_empty_configs(hass: HomeAssistant) -> None
     assert entry.version == 2
     assert CONF_CONFIGS not in entry.data
     assert len(entry.subentries) == 0
+
+
+async def test_migrate_entry_v1_to_v2_migrates_registries(hass: HomeAssistant) -> None:
+    """Migration moves existing entity/device registry entries to their sub-entry."""
+    sensor_id = "sensor.elec"
+    base_id = sensor_id.replace(".", "_")
+    old_data = {
+        CONF_CONFIGS: [
+            {CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION, CONF_SOURCES: [sensor_id]},
+        ],
+        CONF_PRICE_SETTINGS: {},
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data=old_data, version=1, entry_id="migreg")
+    entry.add_to_hass(hass)
+
+    # Pre-populate device registry with old entry (no subentry)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, base_id)},
+        entry_type=DeviceEntryType.SERVICE,
+    )
+    # Verify device starts under main entry (no subentry)
+    assert entry.entry_id in device.config_entries
+    initial_subentries = device.config_entries_subentries.get(entry.entry_id, set())
+    assert None in initial_subentries
+
+    # Pre-populate entity registry with old entity (no subentry)
+    ent_reg = er.async_get(hass)
+    entity_entry = ent_reg.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{DOMAIN}_{base_id}_cost_total",
+        config_entry=entry,
+        device_id=device.id,
+    )
+    assert entity_entry.config_subentry_id is None
+
+    result = await async_migrate_entry(hass, entry)
+    assert result is True
+
+    subentries = list(entry.subentries.values())
+    assert len(subentries) == 1
+    expected_subentry_id = subentries[0].subentry_id
+
+    # Entity registry entry must now point to the sub-entry
+    updated_entity = ent_reg.async_get(entity_entry.entity_id)
+    assert updated_entity is not None
+    assert updated_entity.config_subentry_id == expected_subentry_id
+
+    # Device registry must have sub-entry association and no main-entry (None) association
+    updated_device = dev_reg.async_get(device.id)
+    assert updated_device is not None
+    subentries_for_entry = updated_device.config_entries_subentries.get(
+        entry.entry_id, set()
+    )
+    assert expected_subentry_id in subentries_for_entry
+    assert None not in subentries_for_entry
 
 
 async def test_migrate_entry_unknown_version_returns_false(hass: HomeAssistant) -> None:

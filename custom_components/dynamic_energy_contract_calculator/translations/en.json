@@ -41,7 +41,7 @@
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
-    },
+    }
   },
   "options": {
     "step": {
@@ -85,10 +85,11 @@
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
-    },
+    }
   },
   "subentries": {
     "source": {
+      "title": "Energy source",
       "initiate_flow": {
         "user": {
           "title": "Add energy source",

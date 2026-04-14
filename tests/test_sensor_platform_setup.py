@@ -42,7 +42,7 @@ async def test_async_setup_entry(hass: HomeAssistant):
     entry.runtime_data = RuntimeData()
     added = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend(entities)
 
     await async_setup_entry(hass, entry, add_entities)
@@ -77,7 +77,7 @@ async def test_setup_entry_without_price_sensor(hass: HomeAssistant):
 
     added: list[str] = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend([e.unique_id for e in entities])
 
     await async_setup_entry(hass, entry, add_entities)
