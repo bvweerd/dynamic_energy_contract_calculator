@@ -18,6 +18,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.util import dt as dt_util
 
@@ -1358,19 +1359,18 @@ async def async_setup_entry(
             solar_bonus_map[entry.entry_id] = sb_tracker
         solar_bonus_tracker = sb_tracker
 
-    # Build configs list from sub-entries
-    configs: list[dict[str, Any]] = [
-        dict(subentry.data)
-        for subentry in entry.subentries.values()
-        if subentry.subentry_type == SUBENTRY_TYPE_SOURCE
-    ]
-
     # Per-entry list of DynamicEnergySensors (for TotalCostSensor aggregation)
     source_sensors: list[DynamicEnergySensor] = []
 
-    for block in configs:
+    # Register source entities grouped per sub-entry so HA associates them correctly
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_SOURCE:
+            continue
+
+        block = dict(subentry.data)
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
+        subentry_entities: list[BaseUtilitySensor] = []
 
         mode_defs: list[dict[str, Any]]
         if source_type == SOURCE_TYPE_GAS:
@@ -1424,8 +1424,34 @@ async def async_setup_entry(
                     netting_tracker=tracker_arg,
                     solar_bonus_tracker=solar_tracker_arg,
                 )
-                entities.append(sensor_entity)
+                subentry_entities.append(sensor_entity)
                 source_sensors.append(sensor_entity)
+
+        # Remove any stale None-subentry device associations left over from pre-subentry
+        # installs. This must happen before async_add_entities so the device already has
+        # the real subentry association when HA processes the entities.
+        dev_reg = dr.async_get(hass)
+        for sensor in sources:
+            base_id = sensor.replace(".", "_")
+            existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
+            if existing is not None:
+                entry_subentries = existing.config_entries_subentries.get(
+                    entry.entry_id, set()
+                )
+                if None in entry_subentries:
+                    dev_reg.async_update_device(
+                        existing.id,
+                        add_config_entry_id=entry.entry_id,
+                        add_config_subentry_id=subentry.subentry_id,
+                    )
+                    dev_reg.async_update_device(
+                        existing.id,
+                        remove_config_entry_id=entry.entry_id,
+                        remove_config_subentry_id=None,
+                    )
+
+        async_add_entities(subentry_entities, True, config_subentry_id=subentry.subentry_id)
+        entities.extend(subentry_entities)
 
     base_id = "daily_electricity_cost"
     unique_id = f"{DOMAIN}_{base_id}"
@@ -1445,7 +1471,6 @@ async def async_setup_entry(
         device=device_info,
         netting_tracker=netting_tracker,
     )
-    entities.append(daily_electricity)
 
     daily_gas = DailyGasCostSensor(
         hass=hass,
@@ -1454,7 +1479,6 @@ async def async_setup_entry(
         price_settings=price_settings,
         device=device_info,
     )
-    entities.append(daily_gas)
 
     net_cost = TotalCostSensor(
         hass=hass,
@@ -1464,7 +1488,6 @@ async def async_setup_entry(
         source_sensors=source_sensors,
         netting_tracker=netting_tracker,
     )
-    entities.append(net_cost)
 
     energy_cost = TotalEnergyCostSensor(
         hass=hass,
@@ -1478,21 +1501,28 @@ async def async_setup_entry(
         device=device_info,
         netting_tracker=netting_tracker,
     )
-    entities.append(energy_cost)
+
+    summary_entities: list[BaseUtilitySensor] = [
+        daily_electricity,
+        daily_gas,
+        net_cost,
+        energy_cost,
+    ]
 
     # Add solar bonus sensor if enabled
     if solar_bonus_tracker is not None:
-        solar_bonus_sensor = SolarBonusStatusSensor(
-            hass=hass,
-            name="Solar Bonus (Total)",
-            unique_id=f"{DOMAIN}_solar_bonus_total",
-            device=device_info,
-            solar_bonus_tracker=solar_bonus_tracker,
+        summary_entities.append(
+            SolarBonusStatusSensor(
+                hass=hass,
+                name="Solar Bonus (Total)",
+                unique_id=f"{DOMAIN}_solar_bonus_total",
+                device=device_info,
+                solar_bonus_tracker=solar_bonus_tracker,
+            )
         )
-        entities.append(solar_bonus_sensor)
 
     if price_sensor:
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Consumption Price",
@@ -1504,7 +1534,7 @@ async def async_setup_entry(
                 device=device_info,
             )
         )
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Production Price",
@@ -1518,7 +1548,7 @@ async def async_setup_entry(
         )
 
     if price_sensor_gas:
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Gas Consumption Price",
@@ -1531,7 +1561,9 @@ async def async_setup_entry(
             )
         )
 
-    async_add_entities(entities, True)
+    # Summary sensors belong to the main config entry (no sub-entry)
+    async_add_entities(summary_entities, True)
+    entities.extend(summary_entities)
 
     # Store entities and trackers in per-entry runtime_data
     typed_entry.runtime_data.entities = {ent.entity_id: ent for ent in entities}

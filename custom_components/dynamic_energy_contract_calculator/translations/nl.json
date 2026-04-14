@@ -41,7 +41,7 @@
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
-    },
+    }
   },
   "options": {
     "step": {
@@ -85,10 +85,11 @@
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
-    },
+    }
   },
   "subentries": {
     "source": {
+      "title": "Energiebron",
       "initiate_flow": {
         "user": {
           "title": "Energiebron toevoegen",

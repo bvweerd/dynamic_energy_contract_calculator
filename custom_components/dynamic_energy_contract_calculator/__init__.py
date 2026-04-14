@@ -10,6 +10,7 @@ from types import MappingProxyType
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
     CONF_CONFIGS,
@@ -67,27 +68,68 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Build new entry data without CONF_CONFIGS
         new_data = {k: v for k, v in entry.data.items() if k != CONF_CONFIGS}
 
-        # Update entry to version 2 first
-        hass.config_entries.async_update_entry(entry, data=new_data, version=2)
-
-        # Create a sub-entry for each configuration block
+        # Pre-create ConfigSubentry objects so their auto-generated subentry_id is available
+        subentries: list[tuple[ConfigSubentry, list[str]]] = []
         for config in configs:
             source_type = config.get(CONF_SOURCE_TYPE, SOURCE_TYPE_CONSUMPTION)
-            hass.config_entries.async_add_subentry(
-                entry,
-                ConfigSubentry(
-                    subentry_type=SUBENTRY_TYPE_SOURCE,
-                    title=source_type,
-                    data=MappingProxyType(
-                        {
-                            CONF_SOURCE_TYPE: source_type,
-                            CONF_SOURCES: config.get(CONF_SOURCES, []),
-                        }
-                    ),
-                    unique_id=None,
+            sources: list[str] = config.get(CONF_SOURCES, [])
+            subentry = ConfigSubentry(
+                subentry_type=SUBENTRY_TYPE_SOURCE,
+                title=source_type,
+                data=MappingProxyType(
+                    {
+                        CONF_SOURCE_TYPE: source_type,
+                        CONF_SOURCES: sources,
+                    }
                 ),
+                unique_id=None,
             )
-            _LOGGER.debug("Created sub-entry for source type: %s", source_type)
+            subentries.append((subentry, sources))
+
+        # Update entry to version 2 and register all sub-entries
+        hass.config_entries.async_update_entry(entry, data=new_data, version=2)
+        for subentry, _ in subentries:
+            hass.config_entries.async_add_subentry(entry, subentry)
+            _LOGGER.debug("Created sub-entry for source type: %s", subentry.title)
+
+        # Build base_id -> subentry_id mapping for registry migration
+        base_id_to_subentry: dict[str, str] = {
+            sensor.replace(".", "_"): subentry.subentry_id
+            for subentry, sources in subentries
+            for sensor in sources
+        }
+
+        # Migrate entity registry: move source entities to their sub-entry
+        ent_reg = er.async_get(hass)
+        for entity_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+            if entity_entry.config_subentry_id is not None:
+                continue
+            uid = entity_entry.unique_id or ""
+            for base_id, subentry_id in base_id_to_subentry.items():
+                if base_id in uid:
+                    ent_reg.async_update_entity(
+                        entity_entry.entity_id,
+                        config_subentry_id=subentry_id,
+                    )
+                    break
+
+        # Migrate device registry: move source devices to their sub-entry
+        dev_reg = dr.async_get(hass)
+        for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+            for domain, identifier in device.identifiers:
+                if domain == DOMAIN and identifier in base_id_to_subentry:
+                    subentry_id = base_id_to_subentry[identifier]
+                    dev_reg.async_update_device(
+                        device.id,
+                        add_config_entry_id=entry.entry_id,
+                        add_config_subentry_id=subentry_id,
+                    )
+                    dev_reg.async_update_device(
+                        device.id,
+                        remove_config_entry_id=entry.entry_id,
+                        remove_config_subentry_id=None,
+                    )
+                    break
 
         _LOGGER.info("Migration to v2 complete for entry %s", entry.entry_id)
         return True

@@ -330,7 +330,7 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
     entry.runtime_data = RuntimeData()
     added = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend(entities)
 
     await async_setup_entry(hass, entry, add_entities)
@@ -1188,7 +1188,7 @@ async def test_sensor_async_setup_entry_creates_new_trackers(hass: HomeAssistant
     entry.runtime_data = RuntimeData()
     added = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend(entities)
 
     with pytest.MonkeyPatch.context() as mp:
@@ -1343,7 +1343,7 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
     added = []
     unloads = []
 
-    def add_entities(entities, update=False):
+    def add_entities(entities, update=False, config_subentry_id=None):
         added.extend(entities)
 
     entry.async_on_unload = lambda unsub: unloads.append(unsub)
