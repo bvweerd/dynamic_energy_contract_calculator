@@ -87,9 +87,13 @@
       }
     }
   },
-  "subentries": {
+  "config_subentries": {
     "source": {
+      "entry_type": "Energy source",
       "initiate_flow": {
+        "user": "Add energy source"
+      },
+      "step": {
         "user": {
           "title": "Add energy source",
           "description": "Select the type of energy source to track.",
@@ -103,9 +107,7 @@
           "data": {
             "sources": "Energy sensors"
           }
-        }
-      },
-      "reconfigure_flow": {
+        },
         "reconfigure": {
           "title": "Edit energy source",
           "description": "Update the source type and sensors for this energy source.",
