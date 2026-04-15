@@ -89,7 +89,6 @@
   },
   "subentries": {
     "source": {
-      "title": "Energiebron",
       "initiate_flow": {
         "user": {
           "title": "Energiebron toevoegen",

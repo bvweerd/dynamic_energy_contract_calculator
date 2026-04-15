@@ -89,7 +89,6 @@
   },
   "subentries": {
     "source": {
-      "title": "Energy source",
       "initiate_flow": {
         "user": {
           "title": "Add energy source",
