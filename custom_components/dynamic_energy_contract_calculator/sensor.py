@@ -1450,7 +1450,9 @@ async def async_setup_entry(
                         remove_config_subentry_id=None,
                     )
 
-        async_add_entities(subentry_entities, True, config_subentry_id=subentry.subentry_id)
+        async_add_entities(
+            subentry_entities, True, config_subentry_id=subentry.subentry_id
+        )
         entities.extend(subentry_entities)
 
     base_id = "daily_electricity_cost"

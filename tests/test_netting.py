@@ -91,11 +91,20 @@ async def test_netting_tracker_distribution_without_consumption_sensors(
     hass: HomeAssistant,
 ) -> None:
     tracker = NettingTracker(hass, "entry-else", AsyncMock(), None, None)
-    tracker._tax_contributions = [TaxContribution(kwh=1.0, tax_rate=0.1, vat_factor=1.21)]
-    await tracker.async_register_sensor(_make_sensor("profit", "Electricity production", "profit_total"))
+    tracker._tax_contributions = [
+        TaxContribution(kwh=1.0, tax_rate=0.1, vat_factor=1.21)
+    ]
+    await tracker.async_register_sensor(
+        _make_sensor("profit", "Electricity production", "profit_total")
+    )
 
     assert tracker.tax_balance_per_sensor == {"profit": 0.0}
-    assert await tracker.async_reset_sensor(_make_sensor("profit", "Electricity production", "profit_total")) is None
+    assert (
+        await tracker.async_reset_sensor(
+            _make_sensor("profit", "Electricity production", "profit_total")
+        )
+        is None
+    )
 
 
 async def test_netting_tracker_records_consumption_and_saves(
@@ -123,9 +132,7 @@ async def test_netting_tracker_records_consumption_and_saves(
     store.async_save.assert_awaited_once_with(
         {
             "net_consumption_kwh": 2.0,
-            "tax_contributions": [
-                {"kwh": 2.0, "tax_rate": 0.11, "vat_factor": 1.21}
-            ],
+            "tax_contributions": [{"kwh": 2.0, "tax_rate": 0.11, "vat_factor": 1.21}],
         }
     )
 
