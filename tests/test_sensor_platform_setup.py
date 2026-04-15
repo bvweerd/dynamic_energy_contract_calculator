@@ -1,16 +1,18 @@
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.dynamic_energy_contract_calculator import RuntimeData
 from custom_components.dynamic_energy_contract_calculator.sensor import (
     async_setup_entry,
 )
 from custom_components.dynamic_energy_contract_calculator.const import (
     DOMAIN,
-    CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
     CONF_PRICE_SENSOR,
     CONF_PRICE_SETTINGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
     SOURCE_TYPE_CONSUMPTION,
+    SUBENTRY_TYPE_SOURCE,
 )
 
 
@@ -18,32 +20,34 @@ async def test_async_setup_entry(hass: HomeAssistant):
     from custom_components.dynamic_energy_contract_calculator import async_setup
 
     await async_setup(hass, {})
-    assert hass.services.has_service(DOMAIN, "reset_all_meters")
     hass.states.async_set("sensor.energy", 0)
     hass.states.async_set("sensor.price", 0)
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={
-            CONF_CONFIGS: [
-                {
+        data={CONF_PRICE_SENSOR: ["sensor.price"]},
+        options={CONF_PRICE_SETTINGS: {}},
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_SOURCE,
+                "data": {
                     CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
                     CONF_SOURCES: ["sensor.energy"],
-                }
-            ],
-            CONF_PRICE_SENSOR: ["sensor.price"],
-        },
-        options={CONF_PRICE_SETTINGS: {}},
+                },
+                "title": SOURCE_TYPE_CONSUMPTION,
+                "unique_id": None,
+            }
+        ],
     )
     entry.add_to_hass(hass)
+    entry.runtime_data = RuntimeData()
     added = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend(entities)
 
     await async_setup_entry(hass, entry, add_entities)
     await hass.async_block_till_done()
     assert isinstance(added, list)
-    assert hass.services.has_service(DOMAIN, "reset_all_meters")
 
 
 async def test_setup_entry_without_price_sensor(hass: HomeAssistant):
@@ -54,21 +58,26 @@ async def test_setup_entry_without_price_sensor(hass: HomeAssistant):
 
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={
-            CONF_CONFIGS: [
-                {
+        data={},
+        options={CONF_PRICE_SETTINGS: {}},
+        subentries_data=[
+            {
+                "subentry_type": SUBENTRY_TYPE_SOURCE,
+                "data": {
                     CONF_SOURCE_TYPE: SOURCE_TYPE_CONSUMPTION,
                     CONF_SOURCES: ["sensor.energy"],
-                }
-            ],
-        },
-        options={CONF_PRICE_SETTINGS: {}},
+                },
+                "title": SOURCE_TYPE_CONSUMPTION,
+                "unique_id": None,
+            }
+        ],
     )
     entry.add_to_hass(hass)
+    entry.runtime_data = RuntimeData()
 
     added: list[str] = []
 
-    async def add_entities(entities, update=False):
+    async def add_entities(entities, update=False, config_subentry_id=None):
         added.extend([e.unique_id for e in entities])
 
     await async_setup_entry(hass, entry, add_entities)

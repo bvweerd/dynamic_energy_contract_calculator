@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import DOMAIN, DOMAIN_ABBREVIATION, SOURCE_TYPE_PRODUCTION
+from .const import (
+    CONF_PRICE_SENSOR,
+    CONF_PRICE_SETTINGS,
+    DOMAIN,
+    DOMAIN_ABBREVIATION,
+    SOURCE_TYPE_PRODUCTION,
+    SUBENTRY_TYPE_SOURCE,
+)
 from .solar_bonus import SolarBonusTracker
-
-import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,20 +33,21 @@ async def async_setup_entry(
     """Set up binary sensors for this entry."""
     entities: list[BinarySensorEntity] = []
 
-    configs = entry.data.get("configurations", [])
     price_settings = entry.options.get(
-        "price_settings", entry.data.get("price_settings", {})
+        CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
     )
 
     # Get the price sensor from entry data (used for production price calculations)
     price_sensor_list = entry.options.get(
-        "price_sensor", entry.data.get("price_sensor", [])
+        CONF_PRICE_SENSOR, entry.data.get(CONF_PRICE_SENSOR, [])
     )
     production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
-    # Check if production is configured
+    # Check if production is configured via sub-entries
     has_production = any(
-        config.get("source_type") == SOURCE_TYPE_PRODUCTION for config in configs
+        subentry.data.get("source_type") == SOURCE_TYPE_PRODUCTION
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_SOURCE
     )
 
     # Create device info for Summary Sensors device (same as in sensor.py)
@@ -96,7 +103,7 @@ async def async_setup_entry(
         async_add_entities(entities)
 
 
-class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
+class SolarBonusActiveBinarySensor(BinarySensorEntity):
     """Binary sensor showing if solar bonus is currently active."""
 
     def __init__(
@@ -133,7 +140,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
         # Initial update
         await self._async_update_state()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change."""
         await self._async_update_state()
 
@@ -172,7 +179,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
             self.async_write_ha_state()
 
 
-class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[misc]
+class ProductionPricePositiveBinarySensor(BinarySensorEntity):
     """Binary sensor showing if production price is positive."""
 
     def __init__(
@@ -207,7 +214,7 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):  # type: ignore[m
         # Initial update
         await self._async_update_state()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change."""
         await self._async_update_state()
 

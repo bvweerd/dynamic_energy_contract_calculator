@@ -3,20 +3,14 @@
     "step": {
       "user": {
         "title": "Dynamic Energy Contract Calculator",
-        "description": "Configure energy sources and price settings. Add sensors, load presets, or configure prices.",
+        "description": "Configure price settings and load supplier presets. Energy sources are added as sub-entries after setup.",
         "data": {
-          "source_type": "Select option: Electricity/Gas sensors, Load Preset, Price Settings, or Finish"
-        }
-      },
-      "select_sources": {
-        "title": "Select sources",
-        "data": {
-          "sources": "Energy sensors"
+          "action": "Select option: Load Preset, Price Settings, or Finish"
         }
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2025' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -47,29 +41,20 @@
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
-    },
-    "error": {
-      "no_blocks": "You must add at least one configuration block."
     }
   },
   "options": {
     "step": {
       "user": {
         "title": "Dynamic Energy Contract Calculator",
-        "description": "Update energy sources and price settings. Add/remove sensors, reload presets, or modify prices.",
+        "description": "Update price settings and supplier presets. Energy sources are managed as sub-entries.",
         "data": {
-          "source_type": "Select option: Electricity/Gas sensors, Load Preset, Price Settings, or Finish"
-        }
-      },
-      "select_sources": {
-        "title": "Select sources",
-        "data": {
-          "sources": "Energy sensors"
+          "action": "Select option: Load Preset, Price Settings, or Finish"
         }
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2025' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -100,9 +85,38 @@
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
       }
-    },
-    "error": {
-      "no_blocks": "You must add at least one configuration block."
+    }
+  },
+  "config_subentries": {
+    "source": {
+      "entry_type": "Energy source",
+      "initiate_flow": {
+        "user": "Add energy source"
+      },
+      "step": {
+        "user": {
+          "title": "Add energy source",
+          "description": "Select the type of energy source to track.",
+          "data": {
+            "source_type": "Source type"
+          }
+        },
+        "select_sources": {
+          "title": "Select sensors",
+          "description": "Select the energy sensors to track for this source.",
+          "data": {
+            "sources": "Energy sensors"
+          }
+        },
+        "reconfigure": {
+          "title": "Edit energy source",
+          "description": "Update the source type and sensors for this energy source.",
+          "data": {
+            "source_type": "Source type",
+            "sources": "Energy sensors"
+          }
+        }
+      }
     }
   },
   "services": {
