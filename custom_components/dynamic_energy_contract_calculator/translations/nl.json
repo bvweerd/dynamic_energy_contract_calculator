@@ -3,15 +3,9 @@
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
-        "description": "Configureer energiebronnen en prijsinstellingen. Voeg sensoren toe, laad een leverancier preset, of configureer prijzen.",
+        "description": "Configureer prijsinstellingen en laad leverancier presets. Energiebronnen worden als sub-items toegevoegd na de setup.",
         "data": {
-          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
-        }
-      },
-      "select_sources": {
-        "title": "Selecteer bronnen",
-        "data": {
-          "sources": "Energiesensoren"
+          "action": "Kies optie: Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "load_preset": {
@@ -47,24 +41,15 @@
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
-    },
-    "error": {
-      "no_blocks": "Je moet ten minste één configuratieblok toevoegen."
     }
   },
   "options": {
     "step": {
       "user": {
         "title": "Dynamische Energiecontract Calculator",
-        "description": "Wijzig energiebronnen en prijsinstellingen. Voeg sensoren toe/verwijder, herlaad presets, of pas prijzen aan.",
+        "description": "Wijzig prijsinstellingen en leverancier presets. Energiebronnen worden beheerd als sub-items.",
         "data": {
-          "source_type": "Kies optie: Elektriciteit/Gas sensoren, Preset Laden, Prijsinstellingen, of Voltooien"
-        }
-      },
-      "select_sources": {
-        "title": "Selecteer bronnen",
-        "data": {
-          "sources": "Energiesensoren"
+          "action": "Kies optie: Preset Laden, Prijsinstellingen, of Voltooien"
         }
       },
       "load_preset": {
@@ -100,9 +85,38 @@
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
       }
-    },
-    "error": {
-      "no_blocks": "Je moet ten minste één configuratieblok toevoegen."
+    }
+  },
+  "config_subentries": {
+    "source": {
+      "entry_type": "Energiebron",
+      "initiate_flow": {
+        "user": "Energiebron toevoegen"
+      },
+      "step": {
+        "user": {
+          "title": "Energiebron toevoegen",
+          "description": "Selecteer het type energiebron dat je wilt bijhouden.",
+          "data": {
+            "source_type": "Brontype"
+          }
+        },
+        "select_sources": {
+          "title": "Sensoren selecteren",
+          "description": "Selecteer de energiesensoren die je wilt bijhouden voor deze bron.",
+          "data": {
+            "sources": "Energiesensoren"
+          }
+        },
+        "reconfigure": {
+          "title": "Energiebron bewerken",
+          "description": "Pas het brontype en de sensoren aan voor deze energiebron.",
+          "data": {
+            "source_type": "Brontype",
+            "sources": "Energiesensoren"
+          }
+        }
+      }
     }
   },
   "services": {
