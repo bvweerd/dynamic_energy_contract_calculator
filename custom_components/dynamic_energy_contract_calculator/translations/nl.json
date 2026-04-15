@@ -87,9 +87,13 @@
       }
     }
   },
-  "subentries": {
+  "config_subentries": {
     "source": {
+      "entry_type": "Energiebron",
       "initiate_flow": {
+        "user": "Energiebron toevoegen"
+      },
+      "step": {
         "user": {
           "title": "Energiebron toevoegen",
           "description": "Selecteer het type energiebron dat je wilt bijhouden.",
@@ -103,9 +107,7 @@
           "data": {
             "sources": "Energiesensoren"
           }
-        }
-      },
-      "reconfigure_flow": {
+        },
         "reconfigure": {
           "title": "Energiebron bewerken",
           "description": "Pas het brontype en de sensoren aan voor deze energiebron.",
