@@ -121,8 +121,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
             device=device,
             translation_key=mode,
         )
-        if mode in ("kwh_total", "m3_total"):
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
         if isinstance(price_sensor, list):
