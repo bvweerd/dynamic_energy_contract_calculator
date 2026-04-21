@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -35,7 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE_GRACE_SECONDS = 60
 
 
-class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
+class BaseUtilitySensor(SensorEntity, RestoreEntity):
     _attr_native_value: float  # narrow the base class StateType to float
 
     def __init__(
@@ -429,7 +429,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 )
             )
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data.get("new_state")
         if new_state is not None and new_state.state not in ("unknown", "unavailable"):
             _LOGGER.debug(

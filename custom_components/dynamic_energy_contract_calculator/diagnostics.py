@@ -8,7 +8,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_CONFIGS, CONF_SOURCES, DOMAIN
+from .const import CONF_SOURCES, SUBENTRY_TYPE_SOURCE
 
 REDACT_CONFIG: set[str] = set()
 REDACT_STATE = {"context"}
@@ -25,10 +25,20 @@ async def async_get_config_entry_diagnostics(
             "data": async_redact_data(dict(entry.data), REDACT_CONFIG),
             "options": async_redact_data(dict(entry.options), REDACT_CONFIG),
         },
+        "subentries": [
+            {
+                "subentry_id": se.subentry_id,
+                "subentry_type": se.subentry_type,
+                "title": se.title,
+                "data": async_redact_data(dict(se.data), REDACT_CONFIG),
+            }
+            for se in entry.subentries.values()
+        ],
         "sources": sources,
     }
 
-    tracker = hass.data.get(DOMAIN, {}).get("netting", {}).get(entry.entry_id)
+    runtime = getattr(entry, "runtime_data", None)
+    tracker = runtime.netting_tracker if runtime is not None else None
     if tracker:
         data["netting"] = {
             "enabled": True,
@@ -38,10 +48,7 @@ async def async_get_config_entry_diagnostics(
     else:
         data["netting"] = {"enabled": False}
 
-    # Add solar bonus tracker info if available
-    solar_bonus_tracker = (
-        hass.data.get(DOMAIN, {}).get("solar_bonus", {}).get(entry.entry_id)
-    )
+    solar_bonus_tracker = runtime.solar_bonus_tracker if runtime is not None else None
     if solar_bonus_tracker:
         data["solar_bonus"] = {
             "enabled": True,
@@ -51,16 +58,13 @@ async def async_get_config_entry_diagnostics(
     else:
         data["solar_bonus"] = {"enabled": False}
 
-    # Add binary sensor states by searching for them
+    # Add binary sensor states
     binary_sensors = {}
-
-    # Search through all binary_sensor entities that might belong to this integration
     for state in hass.states.async_all("binary_sensor"):
         if state and (
             "solar_bonus_active" in state.entity_id.lower()
             or "production_price_positive" in state.entity_id.lower()
         ):
-            # Try to match by checking the unique_id or attributes
             sensor_name = state.entity_id.replace("binary_sensor.", "")
             binary_sensors[sensor_name] = async_redact_data(
                 state.as_dict(), REDACT_STATE
@@ -69,17 +73,19 @@ async def async_get_config_entry_diagnostics(
     if binary_sensors:
         data["binary_sensors"] = binary_sensors
 
-    for block in entry.data.get(CONF_CONFIGS, []):
-        for source in block.get(CONF_SOURCES, []):
-            state = hass.states.get(source)
-            state_dict = None
-            if state:
-                state_dict = async_redact_data(state.as_dict(), REDACT_STATE)
-            sources.append(
-                {
-                    "entity_id": source,
-                    "state": state_dict,
-                }
-            )
+    # Build sources from sub-entries
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type == SUBENTRY_TYPE_SOURCE:
+            for source in subentry.data.get(CONF_SOURCES, []):
+                state = hass.states.get(source)
+                state_dict = None
+                if state:
+                    state_dict = async_redact_data(state.as_dict(), REDACT_STATE)
+                sources.append(
+                    {
+                        "entity_id": source,
+                        "state": state_dict,
+                    }
+                )
 
     return data

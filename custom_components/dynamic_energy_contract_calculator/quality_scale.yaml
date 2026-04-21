@@ -1,22 +1,21 @@
 rules:
   # Bronze
   action-setup:
-    status: exempt
+    status: done
     comment: |
-      This integration does not define custom actions.
+      Services are registered in async_setup_entry and removed in async_unload_entry
+      when no entries remain.
   appropriate-polling:
     status: exempt
     comment: |
-      This integration does not poll for data.
+      This integration does not poll for data. All updates are event-driven via
+      state change listeners.
   brands: done
   common-modules: done
   config-flow-test-coverage: done
   config-flow: done
   dependency-transparency: done
-  docs-actions:
-    status: exempt
-    comment: |
-      No custom actions.
+  docs-actions: done
   docs-high-level-description: done
   docs-installation-instructions: done
   docs-removal-instructions: done
@@ -24,7 +23,11 @@ rules:
     status: done
   entity-unique-id: done
   has-entity-name: done
-  runtime-data: done
+  runtime-data:
+    status: done
+    comment: |
+      Per-entry runtime data is stored in entry.runtime_data (RuntimeData dataclass)
+      containing entities dict, netting_tracker and solar_bonus_tracker.
   test-before-configure: done
   test-before-setup:
     status: exempt
@@ -36,14 +39,17 @@ rules:
   action-exceptions:
     status: exempt
     comment: |
-      No custom actions.
+      No custom actions that raise exceptions in user-visible ways.
   config-entry-unloading: done
   docs-configuration-parameters: done
   docs-installation-parameters: done
   entity-unavailable: done
   integration-owner: done
   log-when-unavailable: done
-  parallel-updates: done
+  parallel-updates:
+    status: done
+    comment: |
+      PARALLEL_UPDATES = 0 is set in sensor.py to allow unlimited async updates.
   reauthentication-flow:
     status: exempt
     comment: |
@@ -71,7 +77,7 @@ rules:
   dynamic-devices:
     status: exempt
     comment: |
-      Static set of devices.
+      Static set of devices per config entry.
   entity-category: done
   entity-device-class: done
   entity-disabled-by-default: done
@@ -83,9 +89,16 @@ rules:
   stale-devices:
     status: exempt
     comment: |
-      No device removal support.
+      No dynamic device removal needed.
 
   # Platinum
-  async-dependency: todo
-  inject-websession: todo
+  async-dependency:
+    status: exempt
+    comment: |
+      No runtime dependencies (requirements: [] in manifest). The astral library
+      used for sunrise/sunset is a pure calculation library with no async needs.
+  inject-websession:
+    status: exempt
+    comment: |
+      No HTTP requests are made by this integration.
   strict-typing: done
