@@ -79,7 +79,7 @@ class NettingTracker:
         self,
         hass: HomeAssistant,
         entry_id: str,
-        store: Store,
+        store: Store[dict[str, Any]],
         initial_state: dict[str, Any] | None,
         price_settings: dict[str, Any] | None = None,
     ) -> None:
@@ -122,7 +122,7 @@ class NettingTracker:
     ) -> NettingTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{NETTING_STORAGE_KEY_PREFIX}_{entry_id}"
-        store = Store(
+        store: Store[dict[str, Any]] = Store(
             hass,
             NETTING_STORAGE_VERSION,
             storage_key,
@@ -211,7 +211,7 @@ class NettingTracker:
 
         Tax balance is calculated from the contributions queue.
         """
-        pass
+        return None  # pragma: no cover
 
     async def async_record_consumption(
         self,

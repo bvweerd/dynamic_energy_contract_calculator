@@ -26,7 +26,7 @@ class SolarBonusTracker:
         self,
         hass: HomeAssistant,
         entry_id: str,
-        store: Store,
+        store: Store[dict[str, Any]],
         initial_state: dict[str, Any] | None,
         contract_start_date: str | None = None,
     ) -> None:
@@ -99,7 +99,7 @@ class SolarBonusTracker:
     ) -> SolarBonusTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{SOLAR_BONUS_STORAGE_KEY_PREFIX}_{entry_id}"
-        store = Store(
+        store: Store[dict[str, Any]] = Store(
             hass,
             SOLAR_BONUS_STORAGE_VERSION,
             storage_key,
