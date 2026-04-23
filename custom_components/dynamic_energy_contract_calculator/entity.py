@@ -293,11 +293,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 value = delta * gross_unit_price
 
                 if self._uses_netting:
+                    netting_tracker = self._netting_tracker
+                    assert netting_tracker is not None  # guaranteed by _uses_netting
                     base_value = delta * base_unit_price
                     (
                         _,
                         taxable_value,
-                    ) = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    ) = await netting_tracker.async_record_consumption(
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
@@ -418,7 +420,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
         await super().async_added_to_hass()
 
         if self._uses_netting:
-            await self._netting_tracker.async_register_sensor(self)  # type: ignore[union-attr]
+            netting_tracker = self._netting_tracker
+            assert netting_tracker is not None  # guaranteed by _uses_netting
+            await netting_tracker.async_register_sensor(self)
 
         for entity_id in self.input_sensors:
             self.async_on_remove(
@@ -442,7 +446,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._uses_netting:
-            await self._netting_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
+            netting_tracker = self._netting_tracker
+            assert netting_tracker is not None  # guaranteed by _uses_netting
+            await netting_tracker.async_unregister_sensor(self)
         await super().async_will_remove_from_hass()
 
     async def async_reset(self) -> None:

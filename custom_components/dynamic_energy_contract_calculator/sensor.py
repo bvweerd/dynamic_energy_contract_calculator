@@ -4,7 +4,7 @@ import logging
 import pytz  # TODO Phase 3: replace with zoneinfo
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
@@ -48,6 +48,23 @@ from .netting import NettingTracker
 from .solar_bonus import SolarBonusTracker
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_contract_anniversary(contract_start_date: str, check_date: date) -> bool:
+    """Return True if check_date falls on a contract anniversary (same month/day)."""
+    if not contract_start_date:
+        return False
+    try:
+        start = datetime.fromisoformat(contract_start_date).date()
+    except (ValueError, AttributeError):
+        return False
+    try:
+        anniversary = start.replace(year=check_date.year)
+    except ValueError:
+        # Feb 29 in a non-leap year — use Feb 28
+        anniversary = start.replace(year=check_date.year, day=28)
+    return check_date == anniversary
+
 
 SENSOR_MODES_ELECTRICITY: list[dict[str, Any]] = [
     {
@@ -833,7 +850,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
             return s["sunrise"], s["sunset"]
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("Sunrise/sunset calculation failed for %s: %s", date_obj, e)
             return None, None
 
     def _split_entry_at_sunrise_sunset(
@@ -866,7 +884,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 end_dt = datetime.fromisoformat(timestamp_end.replace("Z", "+00:00"))
             else:
                 end_dt = timestamp_end
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("Failed to parse timestamps in price entry: %s", e)
             return [entry]
 
         # Check if sunrise or sunset occur within this period
@@ -947,8 +966,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                         else:
                             dt = timestamp
                         dates_to_check.add(dt.date())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _LOGGER.debug("Skipping entry with unparsable timestamp: %s", e)
 
             # Get sunrise/sunset for all dates
             sun_times = {}
@@ -976,7 +995,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                             entry, sunrise, sunset
                         )
                         split_prices.extend(segments)
-                    except Exception:
+                    except Exception as e:
+                        _LOGGER.debug("Skipping entry split due to parse error: %s", e)
                         split_prices.append(entry)
                 else:
                     split_prices.append(entry)
@@ -1335,7 +1355,7 @@ async def async_setup_entry(
     netting_enabled = bool(price_settings.get("netting_enabled"))
     netting_tracker: NettingTracker | None = None
     if netting_enabled:
-        netting_map = hass.data[DOMAIN].setdefault("netting", {})
+        netting_map = hass.data.setdefault(DOMAIN, {}).setdefault("netting", {})
         tracker = netting_map.get(entry.entry_id)
         if tracker is None:
             tracker = await NettingTracker.async_create(
@@ -1349,7 +1369,7 @@ async def async_setup_entry(
     solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
     solar_bonus_tracker: SolarBonusTracker | None = None
     if solar_bonus_enabled:
-        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        solar_bonus_map = hass.data.setdefault(DOMAIN, {}).setdefault("solar_bonus", {})
         sb_tracker = solar_bonus_map.get(entry.entry_id)
         contract_start_date = price_settings.get("contract_start_date", "")
         if sb_tracker is None:
@@ -1574,15 +1594,16 @@ async def async_setup_entry(
 
     # Schedule contract anniversary reset if enabled
     reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
-    if reset_on_anniversary and solar_bonus_tracker:
+    contract_start_date = price_settings.get("contract_start_date", "")
+    if reset_on_anniversary and contract_start_date:
 
         async def check_contract_anniversary(now: datetime) -> None:
             """Check if today is the contract anniversary and reset if needed."""
-            next_anniversary = solar_bonus_tracker.get_next_anniversary_date()
-            if next_anniversary and now.date() == next_anniversary:
+            if _is_contract_anniversary(contract_start_date, now.date()):
                 _LOGGER.info("Contract anniversary reached, resetting all meters")
-                # Reset solar bonus tracker
-                await solar_bonus_tracker.async_reset_year()
+                # Reset solar bonus tracker if present
+                if solar_bonus_tracker:
+                    await solar_bonus_tracker.async_reset_year()
                 # Reset all utility entities for this entry
                 for entity in entities:
                     await entity.async_reset()

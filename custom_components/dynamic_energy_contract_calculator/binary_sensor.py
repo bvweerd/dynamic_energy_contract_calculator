@@ -64,7 +64,7 @@ async def async_setup_entry(
     solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
     if solar_bonus_enabled and has_production:
         # Get or create the solar bonus tracker
-        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        solar_bonus_map = hass.data.setdefault(DOMAIN, {}).setdefault("solar_bonus", {})
         solar_bonus_tracker = solar_bonus_map.get(entry.entry_id)
 
         # Create tracker if it doesn't exist yet
