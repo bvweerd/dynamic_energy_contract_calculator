@@ -1304,7 +1304,7 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
                 "netting_enabled": True,
                 "solar_bonus_enabled": True,
                 "reset_on_contract_anniversary": True,
-                "contract_start_date": "2025-01-01",
+                "contract_start_date": "2025-01-02",
             }
         },
         entry_id="entry-reuse",
@@ -1373,3 +1373,73 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
 
     await scheduled["callback"](datetime(2026, 1, 2, 0, 0, tzinfo=timezone.utc))
     assert existing_solar.reset == 1
+
+
+async def test_get_sunrise_sunset_times_astral_failure_returns_none(
+    hass: HomeAssistant,
+):
+    """_get_sunrise_sunset_times returns (None, None) and logs debug when astral raises."""
+    from datetime import date
+    from unittest.mock import patch
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "SunFail",
+        "sunfail-id",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={"vat_percentage": 21.0, "solar_bonus_enabled": True},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "sunfail")}),
+    )
+    with patch(
+        "custom_components.dynamic_energy_contract_calculator.sensor._astral_sun",
+        side_effect=ValueError("astral boom"),
+    ):
+        sunrise, sunset = sensor._get_sunrise_sunset_times(date(2025, 6, 1))
+    assert sunrise is None
+    assert sunset is None
+
+
+async def test_split_entry_at_sunrise_sunset_bad_timestamps_returns_original(
+    hass: HomeAssistant,
+):
+    """_split_entry_at_sunrise_sunset returns [entry] for unparsable timestamps."""
+    from datetime import datetime as dt, timezone as tz
+
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "SplitFail",
+        "splitfail-id",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={"vat_percentage": 21.0},
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "splitfail")}),
+    )
+    entry = {"start": "not-a-date", "end": "also-not", "value": 0.1}
+    sentinel_sunrise = dt(2025, 6, 1, 5, 0, tzinfo=tz.utc)
+    sentinel_sunset = dt(2025, 6, 1, 21, 0, tzinfo=tz.utc)
+    result = sensor._split_entry_at_sunrise_sunset(
+        entry, sentinel_sunrise, sentinel_sunset
+    )
+    assert result == [entry]
+
+
+async def test_is_contract_anniversary_helper():
+    """_is_contract_anniversary returns True only on exact anniversary month/day."""
+    from datetime import date
+    from custom_components.dynamic_energy_contract_calculator.sensor import (
+        _is_contract_anniversary,
+    )
+
+    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 15)) is True
+    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 16)) is False
+    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 14)) is False
+    assert _is_contract_anniversary("", date(2026, 3, 15)) is False
+    assert _is_contract_anniversary("not-a-date", date(2026, 3, 15)) is False
+    # Feb 29 on non-leap year falls back to Feb 28
+    assert _is_contract_anniversary("2020-02-29", date(2025, 2, 28)) is True
+    assert _is_contract_anniversary("2020-02-29", date(2025, 3, 1)) is False
+    # Feb 29 on actual leap year matches exactly
+    assert _is_contract_anniversary("2020-02-29", date(2024, 2, 29)) is True

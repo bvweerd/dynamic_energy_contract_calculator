@@ -123,15 +123,22 @@ class SolarBonusTracker:
         try:
             # Try to get sun data from Home Assistant
             sun_state = self._hass.states.get("sun.sun")
-            if sun_state and sun_state.state == "above_horizon":
-                return True
-            return False
+            if sun_state:
+                if sun_state.state == "above_horizon":
+                    return True
+                if sun_state.state == "below_horizon":
+                    return False
+                # Unknown/unavailable sun state — fall through to hour-based fallback
+                _LOGGER.debug(
+                    "sun.sun has unexpected state %r, using hour-based fallback",
+                    sun_state.state,
+                )
         except Exception as err:
             _LOGGER.debug(
                 "sun.sun state unavailable, using hour-based fallback: %s", err
             )
-            now = dt_util.now()
-            return bool(6 <= now.hour < 20)
+        now = dt_util.now()
+        return bool(6 <= now.hour < 20)
 
     async def async_calculate_bonus(
         self,
