@@ -106,7 +106,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 continue
             uid = entity_entry.unique_id or ""
             for base_id, subentry_id in base_id_to_subentry.items():
-                if base_id in uid:
+                if uid.startswith(f"{DOMAIN}_{base_id}_"):
                     ent_reg.async_update_entity(
                         entity_entry.entity_id,
                         config_subentry_id=subentry_id,

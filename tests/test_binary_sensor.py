@@ -422,7 +422,7 @@ async def test_delivery_price_positive_sensor(hass: HomeAssistant, device_info):
         hass=hass,
         unique_id="test_delivery_positive",
         entry_id="test_entry",
-        price_sensor="sensor.electricity_price",
+        price_sensors=["sensor.electricity_price"],
         price_settings=price_settings,
         device_info=device_info,
     )
@@ -455,7 +455,7 @@ async def test_delivery_price_positive_no_price_sensor(
         hass=hass,
         unique_id="test_delivery_no_sensor",
         entry_id="test_entry",
-        price_sensor=None,
+        price_sensors=[],
         price_settings={},
         device_info=device_info,
     )
@@ -471,7 +471,7 @@ async def test_delivery_price_positive_invalid_state(hass: HomeAssistant, device
         hass=hass,
         unique_id="test_delivery_invalid",
         entry_id="test_entry",
-        price_sensor="sensor.electricity_price",
+        price_sensors=["sensor.electricity_price"],
         price_settings={"per_unit_supplier_electricity_markup": 0.02},
         device_info=device_info,
     )
@@ -489,7 +489,7 @@ async def test_delivery_price_positive_entity_write_and_handler(
         hass=hass,
         unique_id="delivery-write",
         entry_id="test_entry",
-        price_sensor="sensor.electricity_price",
+        price_sensors=["sensor.electricity_price"],
         price_settings={},
         device_info=device_info,
     )
