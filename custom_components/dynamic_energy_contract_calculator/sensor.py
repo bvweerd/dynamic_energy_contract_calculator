@@ -1604,6 +1604,9 @@ async def async_setup_entry(
                 # Reset solar bonus tracker if present
                 if solar_bonus_tracker:
                     await solar_bonus_tracker.async_reset_year()
+                # Reset netting tracker if present
+                if netting_tracker:
+                    await netting_tracker.async_reset_all()
                 # Reset all utility entities for this entry
                 for entity in entities:
                     await entity.async_reset()
