@@ -1,0 +1,23 @@
+bug:
+  - changed-files:
+    - any-glob-to-any-file: []  # no file-based bug detection; use issue labels or manual
+
+enhancement:
+  - changed-files:
+    - any-glob-to-any-file:
+      - custom_components/dynamic_energy_contract_calculator/**
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "*.md"
+      - docs/**
+      - custom_components/dynamic_energy_contract_calculator/translations/**
+      - custom_components/dynamic_energy_contract_calculator/strings.json
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - requirements*.txt
+      - custom_components/dynamic_energy_contract_calculator/manifest.json
+      - setup.cfg
