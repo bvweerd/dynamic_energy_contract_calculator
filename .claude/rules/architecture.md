@@ -6,7 +6,7 @@ custom_components/dynamic_energy_contract_calculator/
   __init__.py       — config entry setup/unload, coordinator init
   config_flow.py    — UI setup wizard and options flow
   sensor.py         — cost/profit/kWh sensors (per source + summaries)
-  binary_sensor.py  — solar_bonus_active, production_price_positive
+  binary_sensor.py  — solar_bonus_active, production_price_positive, delivery_price_positive
   entity.py         — base entity with state restoration logic
   const.py          — all constants, config keys, supplier presets
   netting.py        — Dutch saldering (netting) calculation
