@@ -93,6 +93,59 @@ async def test_dynamic_energy_sensor_multiple_prices(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(0.5)
 
 
+async def test_dynamic_energy_sensor_one_price_sensor_unavailable(hass: HomeAssistant):
+    """When one of multiple price sensors is unavailable, only valid ones are summed."""
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.0,
+        "vat_percentage": 0.0,
+    }
+    sensor = DynamicEnergySensor(
+        hass,
+        "TestPartialUnavail",
+        "uidpartial",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor=["sensor.price1", "sensor.price2"],
+        mode="cost_total",
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.price1", "unavailable")
+    hass.states.async_set("sensor.price2", 0.4)
+    await sensor.async_update()
+    # Only price2 contributes; sensor stays available
+    assert sensor._attr_available is True
+    assert sensor.native_value == pytest.approx(0.4)
+
+
+async def test_dynamic_energy_sensor_all_price_sensors_unavailable(hass: HomeAssistant):
+    """When all price sensors are unavailable, sensor goes unavailable."""
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.0,
+        "vat_percentage": 0.0,
+    }
+    sensor = DynamicEnergySensor(
+        hass,
+        "TestAllUnavail",
+        "uidallunavail",
+        "sensor.energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor=["sensor.price1", "sensor.price2"],
+        mode="cost_total",
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.price1", "unavailable")
+    hass.states.async_set("sensor.price2", "unavailable")
+    await sensor.async_update()
+    assert sensor._attr_available is False
+    assert sensor.native_value == pytest.approx(0.0)
+
+
 async def test_dynamic_gas_sensor_cost(hass: HomeAssistant):
     price_settings = {
         "per_unit_supplier_gas_markup": 0.0,

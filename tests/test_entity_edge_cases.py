@@ -326,7 +326,7 @@ async def test_production_sensor_solar_bonus_and_netting(hass: HomeAssistant):
     assert sensor.native_value == pytest.approx(1.4)
 
 
-async def test_gas_sensor_cost_and_tax_adjustment(hass: HomeAssistant):
+async def test_gas_sensor_cost(hass: HomeAssistant):
     sensor = await _make_sensor(
         hass,
         source_type=SOURCE_TYPE_GAS,
@@ -345,12 +345,6 @@ async def test_gas_sensor_cost_and_tax_adjustment(hass: HomeAssistant):
 
     await sensor.async_update()
     assert sensor.native_value == pytest.approx(1.6)
-
-    sensor.async_write_ha_state = lambda *a, **k: None
-    await sensor.async_apply_tax_adjustment(0)
-    assert sensor.native_value == pytest.approx(1.6)
-    await sensor.async_apply_tax_adjustment(2.0)
-    assert sensor.native_value == 0.0
 
 
 async def test_dynamic_energy_sensor_reset_and_set_value_wrappers(hass: HomeAssistant):

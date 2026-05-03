@@ -213,3 +213,34 @@ async def test_netting_tracker_set_net_consumption_and_reset_all(
     assert tracker.net_consumption_kwh == 0.0
     assert tracker._tax_contributions == []
     assert store.async_save.await_count == 3
+
+
+async def test_netting_tracker_production_drains_entire_queue(
+    hass: HomeAssistant,
+) -> None:
+    """Production exceeding the full tax-contribution queue drains queue to empty."""
+    store = AsyncMock()
+    tracker = NettingTracker(
+        hass,
+        "entry-drain",
+        store,
+        None,
+        {"per_unit_government_electricity_tax": 0.10, "vat_percentage": 21.0},
+    )
+    tracker._net_consumption_kwh = 5.0
+    tracker._tax_contributions = [
+        TaxContribution(kwh=2.0, tax_rate=0.10, vat_factor=1.21),
+        TaxContribution(kwh=3.0, tax_rate=0.10, vat_factor=1.21),
+    ]
+
+    # Production of 10 kWh exceeds the entire 5 kWh queue
+    credited_kwh, credited_value, adjustments = await tracker.async_record_production(
+        10.0, 0.121
+    )
+
+    # Only 5 kWh was in positive territory, so only 5 kWh is credited
+    assert credited_kwh == pytest.approx(5.0)
+    assert credited_value == pytest.approx(5.0 * 0.121)
+    assert adjustments == []
+    assert tracker.net_consumption_kwh == pytest.approx(-5.0)
+    assert tracker._tax_contributions == []
