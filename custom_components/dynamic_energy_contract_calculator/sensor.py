@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-import pytz  # TODO Phase 3: replace with zoneinfo
 from collections import defaultdict
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
@@ -701,8 +701,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 check_date = dt.date()
             else:
                 # Convert to local timezone
-                local_tz = pytz.timezone(timezone)
-                local_dt = dt.astimezone(local_tz)
+                local_dt = dt.astimezone(ZoneInfo(timezone))
                 check_date = local_dt.date()
 
             s = _astral_sun(location.observer, date=check_date, tzinfo=timezone)
@@ -712,8 +711,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Compare timestamp with sunrise/sunset
             # Make sure we're comparing timezone-aware datetimes
             if dt.tzinfo is None:
-                local_tz = pytz.timezone(timezone)
-                dt = local_tz.localize(dt)
+                dt = dt.replace(tzinfo=ZoneInfo(timezone))
 
             return bool(sunrise <= dt < sunset)
 

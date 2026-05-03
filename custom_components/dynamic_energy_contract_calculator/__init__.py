@@ -17,10 +17,16 @@ from .const import (
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
     DOMAIN,
+    NETTING_STORAGE_KEY_PREFIX,
+    NETTING_STORAGE_VERSION,
     PLATFORMS,
+    SOLAR_BONUS_STORAGE_KEY_PREFIX,
+    SOLAR_BONUS_STORAGE_VERSION,
     SOURCE_TYPE_CONSUMPTION,
     SUBENTRY_TYPE_SOURCE,
 )
+from homeassistant.helpers.storage import Store
+
 from .services import async_register_services, async_unregister_services
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -43,6 +49,19 @@ class RuntimeData:
 
 
 DynamicEnergyConfigEntry: TypeAlias = ConfigEntry[RuntimeData]
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up persistent storage when a config entry is deleted."""
+    for prefix, version in (
+        (NETTING_STORAGE_KEY_PREFIX, NETTING_STORAGE_VERSION),
+        (SOLAR_BONUS_STORAGE_KEY_PREFIX, SOLAR_BONUS_STORAGE_VERSION),
+    ):
+        store: Store[dict[str, Any]] = Store(
+            hass, version, f"{prefix}_{entry.entry_id}", private=True
+        )
+        await store.async_remove()
+    _LOGGER.debug("Removed persistent storage for entry %s", entry.entry_id)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:

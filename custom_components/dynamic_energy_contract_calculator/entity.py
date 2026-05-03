@@ -463,19 +463,5 @@ class DynamicEnergySensor(BaseUtilitySensor):
         # change the sensor value, not affect the netting state
         await super().async_set_value(value)
 
-    async def async_apply_tax_adjustment(self, deduction: float) -> None:
-        """Reduce previously booked tax from this sensor.
-
-        Note: This method is deprecated and no longer used. Tax balance is now
-        calculated dynamically based on net_consumption_kwh and the fixed
-        energy tax rate, as per Dutch netting regulations.
-        """
-        if deduction <= 0:
-            return
-        self._attr_native_value = round(self._attr_native_value - deduction, 8)
-        if self._attr_native_value < 0:
-            self._attr_native_value = 0.0
-        self.async_write_ha_state()
-
 
 __all__ = ["BaseUtilitySensor", "DynamicEnergySensor"]

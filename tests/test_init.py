@@ -7,6 +7,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dynamic_energy_contract_calculator import (
     RuntimeData,
     async_migrate_entry,
+    async_remove_entry,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -275,3 +276,30 @@ async def test_async_unload_cleans_tracker_maps_and_keeps_services_for_other_ent
     assert "netting" not in hass.data[DOMAIN]
     assert "solar_bonus" not in hass.data[DOMAIN]
     assert hass.data[DOMAIN]["services_registered"] is True
+
+
+async def test_async_remove_entry_deletes_store_data(hass: HomeAssistant) -> None:
+    """Deleting a config entry removes persistent Store files for netting and solar bonus."""
+    from unittest.mock import patch
+
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="remove-me")
+    entry.add_to_hass(hass)
+
+    removed_keys: list[str] = []
+
+    class FakeStore:
+        def __init__(self, hass, version, key, **kwargs):
+            self._key = key
+
+        async def async_remove(self):
+            removed_keys.append(self._key)
+
+    with patch(
+        "custom_components.dynamic_energy_contract_calculator.Store",
+        FakeStore,
+    ):
+        await async_remove_entry(hass, entry)
+
+    assert any("netting" in k for k in removed_keys)
+    assert any("solar_bonus" in k for k in removed_keys)
+    assert all("remove-me" in k for k in removed_keys)

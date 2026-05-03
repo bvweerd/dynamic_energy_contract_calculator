@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -176,42 +176,17 @@ def _build_price_settings_schema(
     return vol.Schema(schema_fields)
 
 
-class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Dynamic Energy Contract Calculator."""
+class _PriceSettingsMixin:
+    """Shared price-settings steps used by both config and options flows."""
 
-    VERSION = 2
+    price_settings: dict[str, Any]
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.context: ConfigFlowContext = {}
-        self.price_settings: dict[str, Any] = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
+    if TYPE_CHECKING:
+        hass: HomeAssistant
 
-    async def async_step_user(
-        self, user_input: dict[str, str] | None = None
-    ) -> ConfigFlowResult:
-        await self.async_set_unique_id(DOMAIN)
-        if self._async_current_entries():
-            return self.async_abort(reason="already_configured")
-        if user_input is not None:
-            choice = user_input.get("action", "")
-            if choice == "load_preset":
-                return await self.async_step_load_preset()
-            elif choice == "price_settings":
-                return await self.async_step_price_settings()
-            elif choice == "finish":
-                return self.async_create_entry(
-                    title="Dynamic Energy Contract Calculator",
-                    data={
-                        CONF_PRICE_SENSOR: self.price_settings.get(
-                            CONF_PRICE_SENSOR, []
-                        ),
-                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(
-                            CONF_PRICE_SENSOR_GAS, []
-                        ),
-                        CONF_PRICE_SETTINGS: self.price_settings,
-                    },
-                )
-        return self.async_show_form(step_id="user", data_schema=self._schema_user())
+        async def async_step_user(
+            self, user_input: dict[str, Any] | None = None
+        ) -> ConfigFlowResult: ...
 
     def _schema_user(self) -> vol.Schema:
         options = [
@@ -255,7 +230,7 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
                 {"value": preset_key, "label": preset_key.replace("_", " ").title()}
             )
 
-        return self.async_show_form(
+        return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
             step_id=STEP_LOAD_PRESET,
             data_schema=vol.Schema(
                 {
@@ -279,10 +254,50 @@ class DynamicEnergyCalculatorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN
             return await self.async_step_user()
 
         all_prices = _get_price_sensors(self.hass)
-        return self.async_show_form(
+        return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
             step_id=STEP_PRICE_SETTINGS,
             data_schema=_build_price_settings_schema(self.price_settings, all_prices),
         )
+
+
+class DynamicEnergyCalculatorConfigFlow(
+    _PriceSettingsMixin, config_entries.ConfigFlow, domain=DOMAIN
+):
+    """Handle a config flow for Dynamic Energy Contract Calculator."""
+
+    VERSION = 2
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.context: ConfigFlowContext = {}
+        self.price_settings: dict[str, Any] = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
+
+    async def async_step_user(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        await self.async_set_unique_id(DOMAIN)
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
+        if user_input is not None:
+            choice = user_input.get("action", "")
+            if choice == "load_preset":
+                return await self.async_step_load_preset()
+            elif choice == "price_settings":
+                return await self.async_step_price_settings()
+            elif choice == "finish":
+                return self.async_create_entry(
+                    title="Dynamic Energy Contract Calculator",
+                    data={
+                        CONF_PRICE_SENSOR: self.price_settings.get(
+                            CONF_PRICE_SENSOR, []
+                        ),
+                        CONF_PRICE_SENSOR_GAS: self.price_settings.get(
+                            CONF_PRICE_SENSOR_GAS, []
+                        ),
+                        CONF_PRICE_SETTINGS: self.price_settings,
+                    },
+                )
+        return self.async_show_form(step_id="user", data_schema=self._schema_user())
 
     @staticmethod
     @callback
@@ -423,7 +438,9 @@ class SourceSubEntryFlow(ConfigSubentryFlow):
         )
 
 
-class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
+class DynamicEnergyCalculatorOptionsFlowHandler(
+    _PriceSettingsMixin, config_entries.OptionsFlow
+):
     """Handle updates to a config entry (options)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
@@ -462,74 +479,3 @@ class DynamicEnergyCalculatorOptionsFlowHandler(config_entries.OptionsFlow):
                     },
                 )
         return self.async_show_form(step_id="user", data_schema=self._schema_user())
-
-    def _schema_user(self) -> vol.Schema:
-        options = [
-            {"value": "load_preset", "label": "Load Supplier Preset"},
-            {"value": "price_settings", "label": "Price Settings"},
-            {"value": "finish", "label": "Finish"},
-        ]
-        return vol.Schema(
-            {
-                vol.Required("action", default="finish"): selector(
-                    {
-                        "select": {
-                            "options": options,
-                            "mode": "dropdown",
-                            "custom_value": False,
-                        }
-                    }
-                )
-            }
-        )
-
-    async def async_step_load_preset(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle loading a supplier preset."""
-        if user_input is not None:
-            selected_preset = user_input.get("supplier_preset")
-            if (
-                selected_preset
-                and selected_preset != "none"
-                and selected_preset in SUPPLIER_PRESETS
-            ):
-                self.price_settings = _apply_preset(
-                    self.price_settings, SUPPLIER_PRESETS[selected_preset]
-                )
-            return await self.async_step_user()
-
-        preset_options = [{"value": "none", "label": "None (keep current settings)"}]
-        for preset_key in SUPPLIER_PRESETS:
-            preset_options.append(
-                {"value": preset_key, "label": preset_key.replace("_", " ").title()}
-            )
-
-        return self.async_show_form(
-            step_id=STEP_LOAD_PRESET,
-            data_schema=vol.Schema(
-                {
-                    vol.Required("supplier_preset", default="none"): selector(
-                        {
-                            "select": {
-                                "options": preset_options,
-                                "mode": "dropdown",
-                            }
-                        }
-                    )
-                }
-            ),
-        )
-
-    async def async_step_price_settings(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        if user_input is not None:
-            self.price_settings = dict(user_input)
-            return await self.async_step_user()
-
-        all_prices = _get_price_sensors(self.hass)
-        return self.async_show_form(
-            step_id=STEP_PRICE_SETTINGS,
-            data_schema=_build_price_settings_schema(self.price_settings, all_prices),
-        )
