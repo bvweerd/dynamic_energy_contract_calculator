@@ -45,6 +45,7 @@ from .const import (
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
+from .network_tariff import NetworkTariffCalculator
 from .solar_bonus import SolarBonusTracker
 
 _LOGGER = logging.getLogger(__name__)
@@ -1329,6 +1330,103 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         self.async_write_ha_state()
 
 
+class NetworkTariffCostSensor(BaseUtilitySensor):
+    """Accumulates electricity costs from time-dependent network tariffs (2029).
+
+    Listens to all configured consumption energy sensors and applies the
+    season- and time-of-use-based network tariff to each kWh delta.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        unique_id: str,
+        consumption_sensors: list[str],
+        price_settings: dict[str, Any],
+        device: DeviceInfo,
+    ) -> None:
+        super().__init__(
+            name=None,
+            unique_id=unique_id,
+            unit="€",
+            device_class=None,
+            icon="mdi:transmission-tower",
+            visible=True,
+            device=device,
+            translation_key="network_tariff_cost_total",
+        )
+        self.hass = hass
+        self._consumption_sensors = consumption_sensors
+        self._price_settings = price_settings
+        self._calculator = NetworkTariffCalculator(price_settings)
+        self._last_energy: dict[str, float | None] = {s: None for s in consumption_sensors}
+
+    def _vat_factor(self) -> float:
+        return 1.0 + float(self._price_settings.get("vat_percentage", 21.0)) / 100.0
+
+    def _tariff_attributes(self) -> dict[str, Any]:
+        result = self._calculator.get_tariff_for_datetime(dt_util.now())
+        vat = self._vat_factor()
+        return {
+            "current_band": result.band,
+            "current_tariff_per_kwh_excl_vat": round(result.tariff_per_kwh, 6),
+            "current_tariff_per_kwh_incl_vat": round(result.tariff_per_kwh * vat, 6),
+        }
+
+    async def async_update(self) -> None:
+        self._attr_extra_state_attributes = self._tariff_attributes()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        for sensor_id in self._consumption_sensors:
+            state = self.hass.states.get(sensor_id)
+            if state and state.state not in ("unknown", "unavailable"):
+                try:
+                    self._last_energy[sensor_id] = float(state.state)
+                except ValueError:
+                    pass
+        self._attr_extra_state_attributes = self._tariff_attributes()
+        for sensor_id in self._consumption_sensors:
+            self.async_on_remove(
+                async_track_state_change_event(
+                    self.hass,
+                    sensor_id,
+                    self._handle_energy_change,
+                )
+            )
+
+    async def _handle_energy_change(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
+        sensor_id = str(event.data.get("entity_id", ""))
+        new_state = event.data.get("new_state")
+        if new_state is None or new_state.state in ("unknown", "unavailable"):
+            return
+        try:
+            current_energy = float(new_state.state)
+        except ValueError:
+            return
+
+        last = self._last_energy.get(sensor_id)
+        if last is not None:
+            delta = current_energy - last
+            if delta > 0:
+                result = self._calculator.get_tariff_for_datetime(dt_util.now())
+                cost = round(delta * result.tariff_per_kwh * self._vat_factor(), 8)
+                self._attr_native_value = round(self._attr_native_value + cost, 8)
+                _LOGGER.debug(
+                    "Network tariff cost: %.4f kWh × %.5f €/kWh × %.4f VAT = %.6f € [%s]",
+                    delta,
+                    result.tariff_per_kwh,
+                    self._vat_factor(),
+                    cost,
+                    result.band,
+                )
+        self._last_energy[sensor_id] = current_energy
+        self._attr_extra_state_attributes = self._tariff_attributes()
+        self.async_write_ha_state()
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
@@ -1379,6 +1477,8 @@ async def async_setup_entry(
 
     # Per-entry list of DynamicEnergySensors (for TotalCostSensor aggregation)
     source_sensors: list[DynamicEnergySensor] = []
+    # Electricity consumption sensor entity_ids for NetworkTariffCostSensor
+    consumption_sources: list[str] = []
 
     # Register source entities grouped per sub-entry so HA associates them correctly
     for subentry in entry.subentries.values():
@@ -1389,6 +1489,9 @@ async def async_setup_entry(
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
         subentry_entities: list[BaseUtilitySensor] = []
+
+        if source_type == SOURCE_TYPE_CONSUMPTION:
+            consumption_sources.extend(sources)
 
         mode_defs: list[dict[str, Any]]
         if source_type == SOURCE_TYPE_GAS:
@@ -1509,15 +1612,30 @@ async def async_setup_entry(
         netting_tracker=netting_tracker,
     )
 
+    network_tariff_enabled = bool(price_settings.get("network_tariff_enabled", False))
+    network_tariff_sensor: NetworkTariffCostSensor | None = None
+    if network_tariff_enabled and consumption_sources:
+        network_tariff_sensor = NetworkTariffCostSensor(
+            hass=hass,
+            unique_id=f"{DOMAIN}_network_tariff_cost",
+            consumption_sensors=consumption_sources,
+            price_settings=price_settings,
+            device=device_info,
+        )
+
+    fixed_cost_unique_ids = [
+        daily_electricity.unique_id or "",
+        daily_gas.unique_id or "",
+    ]
+    if network_tariff_sensor is not None:
+        fixed_cost_unique_ids.append(network_tariff_sensor.unique_id or "")
+
     energy_cost = TotalEnergyCostSensor(
         hass=hass,
         name="Energy Contract Cost (Total)",
         unique_id=f"{DOMAIN}_total_energy_cost",
         net_cost_unique_id=net_cost.unique_id or "",
-        fixed_cost_unique_ids=[
-            daily_electricity.unique_id or "",
-            daily_gas.unique_id or "",
-        ],
+        fixed_cost_unique_ids=fixed_cost_unique_ids,
         device=device_info,
         netting_tracker=netting_tracker,
     )
@@ -1528,6 +1646,8 @@ async def async_setup_entry(
         net_cost,
         energy_cost,
     ]
+    if network_tariff_sensor is not None:
+        summary_entities.append(network_tariff_sensor)
 
     # Add solar bonus sensor if enabled
     if solar_bonus_tracker is not None:

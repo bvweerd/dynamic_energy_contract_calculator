@@ -136,3 +136,74 @@ NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"
 
 SOLAR_BONUS_STORAGE_VERSION = 1
 SOLAR_BONUS_STORAGE_KEY_PREFIX = f"{DOMAIN}_solar_bonus"
+
+# Time-dependent network tariff (tijdsafhankelijke nettarief) — Dutch 2029 implementation
+NETWORK_TARIFF_KEYS = [
+    "network_tariff_enabled",
+    "network_tariff_winter_peak_per_kwh",
+    "network_tariff_winter_offpeak_per_kwh",
+    "network_tariff_summer_peak_per_kwh",
+    "network_tariff_summer_offpeak_per_kwh",
+    "network_tariff_peak_start_hour",
+    "network_tariff_peak_end_hour",
+    "network_tariff_winter_start_month",
+    "network_tariff_winter_end_month",
+]
+
+DEFAULT_NETWORK_TARIFF_SETTINGS: dict[str, bool | float | int] = {
+    "network_tariff_enabled": False,
+    "network_tariff_winter_peak_per_kwh": 0.0,
+    "network_tariff_winter_offpeak_per_kwh": 0.0,
+    "network_tariff_summer_peak_per_kwh": 0.0,
+    "network_tariff_summer_offpeak_per_kwh": 0.0,
+    "network_tariff_peak_start_hour": 7,
+    "network_tariff_peak_end_hour": 23,
+    "network_tariff_winter_start_month": 11,
+    "network_tariff_winter_end_month": 3,
+}
+
+# Indicative 2029 presets per Dutch grid operator (netbeheerder).
+# Values are EXCLUSIVE of VAT and are INDICATIVE — actual tariffs will be published
+# by ACM and the netbeheerders closer to the 2029 implementation date.
+# Peak period: weekdays 07:00–23:00. Winter season: November–March.
+NETWORK_TARIFF_PRESET_LIANDER_2029: dict[str, bool | float | int] = {
+    "network_tariff_enabled": True,
+    "network_tariff_winter_peak_per_kwh": 0.09,
+    "network_tariff_winter_offpeak_per_kwh": 0.025,
+    "network_tariff_summer_peak_per_kwh": 0.045,
+    "network_tariff_summer_offpeak_per_kwh": 0.013,
+    "network_tariff_peak_start_hour": 7,
+    "network_tariff_peak_end_hour": 23,
+    "network_tariff_winter_start_month": 11,
+    "network_tariff_winter_end_month": 3,
+}
+
+NETWORK_TARIFF_PRESET_STEDIN_2029: dict[str, bool | float | int] = {
+    "network_tariff_enabled": True,
+    "network_tariff_winter_peak_per_kwh": 0.08,
+    "network_tariff_winter_offpeak_per_kwh": 0.022,
+    "network_tariff_summer_peak_per_kwh": 0.040,
+    "network_tariff_summer_offpeak_per_kwh": 0.012,
+    "network_tariff_peak_start_hour": 7,
+    "network_tariff_peak_end_hour": 23,
+    "network_tariff_winter_start_month": 11,
+    "network_tariff_winter_end_month": 3,
+}
+
+NETWORK_TARIFF_PRESET_ENEXIS_2029: dict[str, bool | float | int] = {
+    "network_tariff_enabled": True,
+    "network_tariff_winter_peak_per_kwh": 0.07,
+    "network_tariff_winter_offpeak_per_kwh": 0.020,
+    "network_tariff_summer_peak_per_kwh": 0.035,
+    "network_tariff_summer_offpeak_per_kwh": 0.010,
+    "network_tariff_peak_start_hour": 7,
+    "network_tariff_peak_end_hour": 23,
+    "network_tariff_winter_start_month": 11,
+    "network_tariff_winter_end_month": 3,
+}
+
+NETWORK_TARIFF_PRESETS: dict[str, dict[str, bool | float | int]] = {
+    "liander_2029_indicatief": NETWORK_TARIFF_PRESET_LIANDER_2029,
+    "stedin_2029_indicatief": NETWORK_TARIFF_PRESET_STEDIN_2029,
+    "enexis_2029_indicatief": NETWORK_TARIFF_PRESET_ENEXIS_2029,
+}

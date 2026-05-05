@@ -40,6 +40,28 @@
           "contract_start_date": "Contract startdatum",
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
+      },
+      "load_network_tariff_preset": {
+        "title": "Nettarief Preset Laden (2029)",
+        "description": "Selecteer een Nederlandse netbeheerder preset om indicatieve tijdsafhankelijke nettarieven voor 2029 automatisch in te vullen. Waarden zijn INDICATIEF — controleer bij uw netbeheerder vóór 2029. Alle tarieven zijn exclusief BTW.",
+        "data": {
+          "network_tariff_preset": "Netbeheerder preset"
+        }
+      },
+      "network_tariff": {
+        "title": "Nettarief Instellingen (tijdsafhankelijk nettarief 2029)",
+        "description": "Configureer tijdsafhankelijke nettarieven. Het piektarief geldt op werkdagen binnen de ingestelde uren. Het winterseizoen wordt bepaald door begin- en eindmaand (jaar-omslag mogelijk). Alle tarieven zijn exclusief BTW.",
+        "data": {
+          "network_tariff_enabled": "Tijdsafhankelijk nettarief inschakelen (2029)",
+          "network_tariff_winter_peak_per_kwh": "Winter piektarief (€/kWh excl. BTW)",
+          "network_tariff_winter_offpeak_per_kwh": "Winter daltarief (€/kWh excl. BTW)",
+          "network_tariff_summer_peak_per_kwh": "Zomer piektarief (€/kWh excl. BTW)",
+          "network_tariff_summer_offpeak_per_kwh": "Zomer daltarief (€/kWh excl. BTW)",
+          "network_tariff_peak_start_hour": "Begin piekperiode (uur 0–23, inclusief)",
+          "network_tariff_peak_end_hour": "Einde piekperiode (uur 1–24, exclusief)",
+          "network_tariff_winter_start_month": "Begin winterseizoen (maand 1–12)",
+          "network_tariff_winter_end_month": "Einde winterseizoen (maand 1–12)"
+        }
       }
     }
   },
@@ -83,6 +105,28 @@
           "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet",
           "contract_start_date": "Contract startdatum",
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
+        }
+      },
+      "load_network_tariff_preset": {
+        "title": "Nettarief Preset Laden (2029)",
+        "description": "Selecteer een Nederlandse netbeheerder preset om indicatieve tijdsafhankelijke nettarieven voor 2029 automatisch in te vullen. Waarden zijn INDICATIEF — controleer bij uw netbeheerder vóór 2029. Alle tarieven zijn exclusief BTW.",
+        "data": {
+          "network_tariff_preset": "Netbeheerder preset"
+        }
+      },
+      "network_tariff": {
+        "title": "Nettarief Instellingen (tijdsafhankelijk nettarief 2029)",
+        "description": "Configureer tijdsafhankelijke nettarieven. Het piektarief geldt op werkdagen binnen de ingestelde uren. Het winterseizoen wordt bepaald door begin- en eindmaand (jaar-omslag mogelijk). Alle tarieven zijn exclusief BTW.",
+        "data": {
+          "network_tariff_enabled": "Tijdsafhankelijk nettarief inschakelen (2029)",
+          "network_tariff_winter_peak_per_kwh": "Winter piektarief (€/kWh excl. BTW)",
+          "network_tariff_winter_offpeak_per_kwh": "Winter daltarief (€/kWh excl. BTW)",
+          "network_tariff_summer_peak_per_kwh": "Zomer piektarief (€/kWh excl. BTW)",
+          "network_tariff_summer_offpeak_per_kwh": "Zomer daltarief (€/kWh excl. BTW)",
+          "network_tariff_peak_start_hour": "Begin piekperiode (uur 0–23, inclusief)",
+          "network_tariff_peak_end_hour": "Einde piekperiode (uur 1–24, exclusief)",
+          "network_tariff_winter_start_month": "Begin winterseizoen (maand 1–12)",
+          "network_tariff_winter_end_month": "Einde winterseizoen (maand 1–12)"
         }
       }
     }
@@ -212,6 +256,9 @@
       },
       "solar_bonus_total": {
         "name": "Zonnebonus (totaal)"
+      },
+      "network_tariff_cost_total": {
+        "name": "Nettarief kosten (totaal)"
       }
     },
     "binary_sensor": {

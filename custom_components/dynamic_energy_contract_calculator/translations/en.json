@@ -5,7 +5,7 @@
         "title": "Dynamic Energy Contract Calculator",
         "description": "Configure price settings and load supplier presets. Energy sources are added as sub-entries after setup.",
         "data": {
-          "action": "Select option: Load Preset, Price Settings, or Finish"
+          "action": "Select option: Load Preset, Price Settings, Network Tariff Settings, or Finish"
         }
       },
       "load_preset": {
@@ -39,6 +39,28 @@
           "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
           "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
+        }
+      },
+      "load_network_tariff_preset": {
+        "title": "Load Network Tariff Preset (2029)",
+        "description": "Select a Dutch grid operator (netbeheerder) preset to automatically fill in indicative 2029 time-of-use network tariff rates. Values are INDICATIVE — verify with your grid operator before 2029. All rates are exclusive of VAT.",
+        "data": {
+          "network_tariff_preset": "Grid operator preset"
+        }
+      },
+      "network_tariff": {
+        "title": "Network Tariff Settings (tijdsafhankelijk nettarief 2029)",
+        "description": "Configure time-dependent network tariffs. Peak period applies on weekdays between the configured hours. Winter season is defined by start and end month (wraps year boundary). All rates are exclusive of VAT.",
+        "data": {
+          "network_tariff_enabled": "Enable time-dependent network tariffs (2029)",
+          "network_tariff_winter_peak_per_kwh": "Winter peak rate (€/kWh excl. VAT)",
+          "network_tariff_winter_offpeak_per_kwh": "Winter off-peak rate (€/kWh excl. VAT)",
+          "network_tariff_summer_peak_per_kwh": "Summer peak rate (€/kWh excl. VAT)",
+          "network_tariff_summer_offpeak_per_kwh": "Summer off-peak rate (€/kWh excl. VAT)",
+          "network_tariff_peak_start_hour": "Peak period start hour (0–23, inclusive)",
+          "network_tariff_peak_end_hour": "Peak period end hour (1–24, exclusive)",
+          "network_tariff_winter_start_month": "Winter season start month (1–12)",
+          "network_tariff_winter_end_month": "Winter season end month (1–12)"
         }
       }
     }
@@ -49,7 +71,7 @@
         "title": "Dynamic Energy Contract Calculator",
         "description": "Update price settings and supplier presets. Energy sources are managed as sub-entries.",
         "data": {
-          "action": "Select option: Load Preset, Price Settings, or Finish"
+          "action": "Select option: Load Preset, Price Settings, Network Tariff Settings, or Finish"
         }
       },
       "load_preset": {
@@ -83,6 +105,28 @@
           "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
           "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
+        }
+      },
+      "load_network_tariff_preset": {
+        "title": "Load Network Tariff Preset (2029)",
+        "description": "Select a Dutch grid operator (netbeheerder) preset to automatically fill in indicative 2029 time-of-use network tariff rates. Values are INDICATIVE — verify with your grid operator before 2029. All rates are exclusive of VAT.",
+        "data": {
+          "network_tariff_preset": "Grid operator preset"
+        }
+      },
+      "network_tariff": {
+        "title": "Network Tariff Settings (tijdsafhankelijk nettarief 2029)",
+        "description": "Configure time-dependent network tariffs. Peak period applies on weekdays between the configured hours. Winter season is defined by start and end month (wraps year boundary). All rates are exclusive of VAT.",
+        "data": {
+          "network_tariff_enabled": "Enable time-dependent network tariffs (2029)",
+          "network_tariff_winter_peak_per_kwh": "Winter peak rate (€/kWh excl. VAT)",
+          "network_tariff_winter_offpeak_per_kwh": "Winter off-peak rate (€/kWh excl. VAT)",
+          "network_tariff_summer_peak_per_kwh": "Summer peak rate (€/kWh excl. VAT)",
+          "network_tariff_summer_offpeak_per_kwh": "Summer off-peak rate (€/kWh excl. VAT)",
+          "network_tariff_peak_start_hour": "Peak period start hour (0–23, inclusive)",
+          "network_tariff_peak_end_hour": "Peak period end hour (1–24, exclusive)",
+          "network_tariff_winter_start_month": "Winter season start month (1–12)",
+          "network_tariff_winter_end_month": "Winter season end month (1–12)"
         }
       }
     }
@@ -184,14 +228,15 @@
       "current_consumption_price": {"name": "Current Consumption Price"},
       "current_production_price": {"name": "Current Production Price"},
       "current_gas_consumption_price": {"name": "Current Gas Consumption Price"},
-      "solar_bonus_total": {"name": "Solar Bonus (Total)"}
+      "solar_bonus_total": {"name": "Solar Bonus (Total)"},
+      "network_tariff_cost_total": {"name": "Network Tariff Cost (Total)"}
     },
     "binary_sensor": {
       "solar_bonus_active": {"name": "Solar Bonus Active"},
       "production_price_positive": {"name": "Production Price Positive"}
     }
   },
-    "issues": {
+  "issues": {
     "energy_source_unavailable": {
       "title": "Energy source unavailable",
       "description": "Energy sensor {sensor} is unavailable or has invalid data."

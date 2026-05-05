@@ -20,8 +20,10 @@ from .const import (
     CONF_PRICE_SETTINGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
+    DEFAULT_NETWORK_TARIFF_SETTINGS,
     DEFAULT_PRICE_SETTINGS,
     DOMAIN,
+    NETWORK_TARIFF_PRESETS,
     SOURCE_TYPE_GAS,
     SOURCE_TYPES,
     SUBENTRY_TYPE_SOURCE,
@@ -31,6 +33,8 @@ from .const import (
 STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
 STEP_LOAD_PRESET = "load_preset"
+STEP_NETWORK_TARIFF = "network_tariff"
+STEP_LOAD_NETWORK_TARIFF_PRESET = "load_network_tariff_preset"
 
 # Field categories for smart preset loading
 GAS_CORE_FIELDS = {
@@ -51,6 +55,18 @@ ELECTRICITY_CORE_FIELDS = {
 
 GAS_FIELDS = GAS_CORE_FIELDS
 
+NETWORK_TARIFF_FIELDS = {
+    "network_tariff_enabled",
+    "network_tariff_winter_peak_per_kwh",
+    "network_tariff_winter_offpeak_per_kwh",
+    "network_tariff_summer_peak_per_kwh",
+    "network_tariff_summer_offpeak_per_kwh",
+    "network_tariff_peak_start_hour",
+    "network_tariff_peak_end_hour",
+    "network_tariff_winter_start_month",
+    "network_tariff_winter_end_month",
+}
+
 ELECTRICITY_FIELDS = ELECTRICITY_CORE_FIELDS | {
     "production_price_include_vat",
     "netting_enabled",
@@ -59,7 +75,7 @@ ELECTRICITY_FIELDS = ELECTRICITY_CORE_FIELDS | {
     "solar_bonus_annual_kwh_limit",
     "contract_start_date",
     "reset_on_contract_anniversary",
-}
+} | NETWORK_TARIFF_FIELDS
 
 GENERAL_FIELDS = {
     "vat_percentage",
@@ -192,6 +208,8 @@ class _PriceSettingsMixin:
         options = [
             {"value": "load_preset", "label": "Load Supplier Preset"},
             {"value": "price_settings", "label": "Price Settings"},
+            {"value": "load_network_tariff_preset", "label": "Load Network Tariff Preset (2029)"},
+            {"value": "network_tariff", "label": "Network Tariff Settings (2029)"},
             {"value": "finish", "label": "Finish"},
         ]
         return vol.Schema(
@@ -250,13 +268,145 @@ class _PriceSettingsMixin:
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
-            self.price_settings = dict(user_input)
+            # Merge into existing settings so network tariff settings are preserved
+            new_settings = dict(self.price_settings)
+            new_settings.update(user_input)
+            self.price_settings = new_settings
             return await self.async_step_user()
 
         all_prices = _get_price_sensors(self.hass)
         return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
             step_id=STEP_PRICE_SETTINGS,
             data_schema=_build_price_settings_schema(self.price_settings, all_prices),
+        )
+
+
+    async def async_step_load_network_tariff_preset(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle loading a network tariff preset for a Dutch grid operator."""
+        if user_input is not None:
+            selected = user_input.get("network_tariff_preset")
+            if selected and selected != "none" and selected in NETWORK_TARIFF_PRESETS:
+                preset = NETWORK_TARIFF_PRESETS[selected]
+                for key, value in preset.items():
+                    self.price_settings[key] = value
+            return await self.async_step_user()
+
+        preset_options = [{"value": "none", "label": "None (keep current settings)"}]
+        for preset_key in NETWORK_TARIFF_PRESETS:
+            preset_options.append(
+                {"value": preset_key, "label": preset_key.replace("_", " ").title()}
+            )
+
+        return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
+            step_id=STEP_LOAD_NETWORK_TARIFF_PRESET,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("network_tariff_preset", default="none"): selector(
+                        {
+                            "select": {
+                                "options": preset_options,
+                                "mode": "dropdown",
+                            }
+                        }
+                    )
+                }
+            ),
+        )
+
+    async def async_step_network_tariff(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Configure time-dependent network tariff bands and rates."""
+        if user_input is not None:
+            for key in DEFAULT_NETWORK_TARIFF_SETTINGS:
+                if key in user_input:
+                    self.price_settings[key] = user_input[key]
+            return await self.async_step_user()
+
+        settings = self.price_settings
+        schema_fields: dict[Any, Any] = {
+            vol.Required(
+                "network_tariff_enabled",
+                default=bool(settings.get("network_tariff_enabled", False)),
+            ): bool,
+            vol.Required(
+                "network_tariff_winter_peak_per_kwh",
+                default=float(settings.get("network_tariff_winter_peak_per_kwh", 0.0)),
+            ): vol.Coerce(float),
+            vol.Required(
+                "network_tariff_winter_offpeak_per_kwh",
+                default=float(
+                    settings.get("network_tariff_winter_offpeak_per_kwh", 0.0)
+                ),
+            ): vol.Coerce(float),
+            vol.Required(
+                "network_tariff_summer_peak_per_kwh",
+                default=float(settings.get("network_tariff_summer_peak_per_kwh", 0.0)),
+            ): vol.Coerce(float),
+            vol.Required(
+                "network_tariff_summer_offpeak_per_kwh",
+                default=float(
+                    settings.get("network_tariff_summer_offpeak_per_kwh", 0.0)
+                ),
+            ): vol.Coerce(float),
+            vol.Required(
+                "network_tariff_peak_start_hour",
+                default=int(settings.get("network_tariff_peak_start_hour", 7)),
+            ): selector(
+                {
+                    "number": {
+                        "min": 0,
+                        "max": 23,
+                        "mode": "box",
+                        "step": 1,
+                    }
+                }
+            ),
+            vol.Required(
+                "network_tariff_peak_end_hour",
+                default=int(settings.get("network_tariff_peak_end_hour", 23)),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 24,
+                        "mode": "box",
+                        "step": 1,
+                    }
+                }
+            ),
+            vol.Required(
+                "network_tariff_winter_start_month",
+                default=int(settings.get("network_tariff_winter_start_month", 11)),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 12,
+                        "mode": "box",
+                        "step": 1,
+                    }
+                }
+            ),
+            vol.Required(
+                "network_tariff_winter_end_month",
+                default=int(settings.get("network_tariff_winter_end_month", 3)),
+            ): selector(
+                {
+                    "number": {
+                        "min": 1,
+                        "max": 12,
+                        "mode": "box",
+                        "step": 1,
+                    }
+                }
+            ),
+        }
+        return self.async_show_form(  # type: ignore[attr-defined, no-any-return]
+            step_id=STEP_NETWORK_TARIFF,
+            data_schema=vol.Schema(schema_fields),
         )
 
 
@@ -270,7 +420,10 @@ class DynamicEnergyCalculatorConfigFlow(
     def __init__(self) -> None:
         super().__init__()
         self.context: ConfigFlowContext = {}
-        self.price_settings: dict[str, Any] = copy.deepcopy(DEFAULT_PRICE_SETTINGS)
+        self.price_settings: dict[str, Any] = {
+            **copy.deepcopy(DEFAULT_PRICE_SETTINGS),
+            **DEFAULT_NETWORK_TARIFF_SETTINGS,
+        }
 
     async def async_step_user(
         self, user_input: dict[str, str] | None = None
@@ -284,6 +437,10 @@ class DynamicEnergyCalculatorConfigFlow(
                 return await self.async_step_load_preset()
             elif choice == "price_settings":
                 return await self.async_step_price_settings()
+            elif choice == "load_network_tariff_preset":
+                return await self.async_step_load_network_tariff_preset()
+            elif choice == "network_tariff":
+                return await self.async_step_network_tariff()
             elif choice == "finish":
                 return self.async_create_entry(
                     title="Dynamic Energy Contract Calculator",
@@ -444,12 +601,17 @@ class DynamicEnergyCalculatorOptionsFlowHandler(
     """Handle updates to a config entry (options)."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.price_settings: dict[str, Any] = copy.deepcopy(
+        stored = copy.deepcopy(
             config_entry.options.get(
                 CONF_PRICE_SETTINGS,
                 config_entry.data.get(CONF_PRICE_SETTINGS, DEFAULT_PRICE_SETTINGS),
             )
         )
+        # Seed network tariff defaults for entries created before this feature existed
+        self.price_settings: dict[str, Any] = {
+            **DEFAULT_NETWORK_TARIFF_SETTINGS,
+            **stored,
+        }
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -465,6 +627,10 @@ class DynamicEnergyCalculatorOptionsFlowHandler(
                 return await self.async_step_load_preset()
             elif choice == "price_settings":
                 return await self.async_step_price_settings()
+            elif choice == "load_network_tariff_preset":
+                return await self.async_step_load_network_tariff_preset()
+            elif choice == "network_tariff":
+                return await self.async_step_network_tariff()
             elif choice == "finish":
                 return self.async_create_entry(
                     title="",
