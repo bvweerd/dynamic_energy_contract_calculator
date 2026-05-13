@@ -8,6 +8,7 @@ from homeassistant.helpers.entity import DeviceInfo
 
 from custom_components.dynamic_energy_contract_calculator.binary_sensor import (
     async_setup_entry,
+    DeliveryPricePositiveBinarySensor,
     SolarBonusActiveBinarySensor,
     ProductionPricePositiveBinarySensor,
 )
@@ -359,10 +360,11 @@ async def test_binary_sensor_setup_entry_creates_expected_entities(hass: HomeAss
 
     await async_setup_entry(hass, entry, add_entities)
 
-    assert len(added_entities) == 2
+    assert len(added_entities) == 3
     assert {entity.translation_key for entity in added_entities} == {
         "solar_bonus_active",
         "production_price_positive",
+        "delivery_price_positive",
     }
     assert "binary-setup" in hass.data[DOMAIN]["solar_bonus"]
 
@@ -405,6 +407,100 @@ async def test_binary_sensor_setup_entry_reuses_existing_tracker(hass: HomeAssis
 
     create_tracker.assert_not_called()
     assert added_entities[0]._solar_bonus_tracker is existing_tracker
+
+
+async def test_delivery_price_positive_sensor(hass: HomeAssistant, device_info):
+    """Test the delivery price positive binary sensor."""
+    hass.states.async_set("sensor.electricity_price", "0.10")
+
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.02,
+        "per_unit_government_electricity_tax": 0.11,
+    }
+
+    sensor = DeliveryPricePositiveBinarySensor(
+        hass=hass,
+        unique_id="test_delivery_positive",
+        entry_id="test_entry",
+        price_sensors=["sensor.electricity_price"],
+        price_settings=price_settings,
+        device_info=device_info,
+    )
+
+    await sensor.async_added_to_hass()
+
+    # Should be ON (positive: 0.10 + 0.02 + 0.11 = 0.23)
+    assert sensor.is_on is True
+
+    # Change price to negative but still positive with markup+tax
+    hass.states.async_set("sensor.electricity_price", "-0.10")
+    await hass.async_block_till_done()
+
+    # Should be ON (positive: -0.10 + 0.02 + 0.11 = 0.03)
+    assert sensor.is_on is True
+
+    # Change price to very negative
+    hass.states.async_set("sensor.electricity_price", "-0.20")
+    await hass.async_block_till_done()
+
+    # Should be OFF (negative: -0.20 + 0.02 + 0.11 = -0.07)
+    assert sensor.is_on is False
+
+
+async def test_delivery_price_positive_no_price_sensor(
+    hass: HomeAssistant, device_info
+):
+    """Test delivery price positive sensor without price sensor."""
+    sensor = DeliveryPricePositiveBinarySensor(
+        hass=hass,
+        unique_id="test_delivery_no_sensor",
+        entry_id="test_entry",
+        price_sensors=[],
+        price_settings={},
+        device_info=device_info,
+    )
+
+    await sensor.async_added_to_hass()
+
+    assert sensor.is_on is False
+
+
+async def test_delivery_price_positive_invalid_state(hass: HomeAssistant, device_info):
+    hass.states.async_set("sensor.electricity_price", "not-a-number")
+    sensor = DeliveryPricePositiveBinarySensor(
+        hass=hass,
+        unique_id="test_delivery_invalid",
+        entry_id="test_entry",
+        price_sensors=["sensor.electricity_price"],
+        price_settings={"per_unit_supplier_electricity_markup": 0.02},
+        device_info=device_info,
+    )
+
+    await sensor.async_added_to_hass()
+
+    assert sensor.is_on is False
+
+
+async def test_delivery_price_positive_entity_write_and_handler(
+    hass: HomeAssistant, device_info
+):
+    hass.states.async_set("sensor.electricity_price", "bad")
+    sensor = DeliveryPricePositiveBinarySensor(
+        hass=hass,
+        unique_id="delivery-write",
+        entry_id="test_entry",
+        price_sensors=["sensor.electricity_price"],
+        price_settings={},
+        device_info=device_info,
+    )
+    sensor.entity_id = "binary_sensor.delivery_write"
+    writes = []
+    sensor.async_write_ha_state = lambda: writes.append("write")
+
+    await sensor._async_update_state()
+    await sensor._handle_price_change(type("Event", (), {"data": {}})())
+
+    assert writes == ["write", "write"]
 
 
 async def test_binary_sensor_setup_entry_without_matching_configuration(

@@ -220,6 +220,9 @@
       },
       "production_price_positive": {
         "name": "Terugleverprijs positief"
+      },
+      "delivery_price_positive": {
+        "name": "Leveringsprijs positief"
       }
     }
   },

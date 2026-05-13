@@ -15,7 +15,7 @@ Home Assistant custom integration (HACS) that calculates electricity and gas cos
   - `__init__.py` — setup, config entry load/unload
   - `config_flow.py` — UI setup and options flow
   - `sensor.py` — energy/cost/profit sensors
-  - `binary_sensor.py` — solar_bonus_active, production_price_positive
+  - `binary_sensor.py` — solar_bonus_active, production_price_positive, delivery_price_positive
   - `entity.py` — base entity with state restoration
   - `const.py` — constants, price keys, supplier presets
   - `netting.py` — Dutch saldering (netting) logic
