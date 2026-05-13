@@ -64,6 +64,7 @@ async def async_get_config_entry_diagnostics(
         if state and (
             "solar_bonus_active" in state.entity_id.lower()
             or "production_price_positive" in state.entity_id.lower()
+            or "delivery_price_positive" in state.entity_id.lower()
         ):
             sensor_name = state.entity_id.replace("binary_sensor.", "")
             binary_sensors[sensor_name] = async_redact_data(

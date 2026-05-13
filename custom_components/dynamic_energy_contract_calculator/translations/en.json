@@ -188,7 +188,8 @@
     },
     "binary_sensor": {
       "solar_bonus_active": {"name": "Solar Bonus Active"},
-      "production_price_positive": {"name": "Production Price Positive"}
+      "production_price_positive": {"name": "Production Price Positive"},
+      "delivery_price_positive": {"name": "Delivery Price Positive"}
     }
   },
     "issues": {

@@ -1280,6 +1280,9 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
         async def async_reset_year(self):
             self.reset += 1
 
+        async def async_reset_all(self):
+            self.reset += 1
+
         def get_next_anniversary_date(self):
             return self.next_anniversary
 

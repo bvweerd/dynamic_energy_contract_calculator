@@ -121,6 +121,15 @@ class DynamicEnergySensor(BaseUtilitySensor):
             device=device,
             translation_key=mode,
         )
+        # TOTAL_INCREASING is used for all sensor modes, including cost/profit sensors.
+        # Rationale: on an unclean shutdown (power interrupt), the .storage/core.restore_state
+        # file can be corrupted, causing async_get_last_state() to return None and the
+        # sensor to start at 0. With TOTAL_INCREASING, HA's long-term statistics (LTS)
+        # recorder detects the drop as a "meter reset" and adds the previous accumulated
+        # value to its running sum, so the energy dashboard shows a continuous total.
+        # With TOTAL, a reset to 0 would be taken at face value and history would be lost.
+        # Trade-off: set_meter_value or tax adjustments that lower the value will also be
+        # interpreted as a reset by LTS, causing double-counting in statistics.
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
