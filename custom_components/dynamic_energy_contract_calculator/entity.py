@@ -229,7 +229,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if self._last_energy is not None:
             delta = current_energy - self._last_energy
             if delta < 0:
+                # Meter reset: re-baseline so future deltas are measured from
+                # the new meter value.
                 delta = 0.0
+                self._last_energy = current_energy
+        else:
+            self._last_energy = current_energy
 
         _LOGGER.debug(
             "Current energy=%s, Last energy=%s, Delta=%s",
@@ -237,8 +242,6 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._last_energy,
             delta,
         )
-
-        self._last_energy = current_energy
 
         if self.mode not in ("kwh_total", "m3_total") and not self.price_sensors:
             _LOGGER.debug(
@@ -249,6 +252,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         if self.mode in ("kwh_total", "m3_total"):
             self._attr_native_value += delta
+            self._last_energy = current_energy
         elif self.price_sensors:
             total_price = 0.0
             valid = False
@@ -287,6 +291,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 async_clear_issue(self.hass, f"price_unavailable_{self.price_sensor}")
                 async_clear_issue(self.hass, f"price_invalid_{self.price_sensor}")
                 self._price_unavailable_since = None
+
+            # The delta is consumed below; only advance the baseline now so
+            # that the early return above (no valid price) keeps the delta
+            # pending until the price sensors recover instead of dropping it.
+            self._last_energy = current_energy
 
             adjusted_value = None
             taxable_value = 0.0

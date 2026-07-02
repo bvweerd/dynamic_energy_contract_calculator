@@ -111,6 +111,58 @@ async def test_price_unavailable(hass: HomeAssistant):
     assert not sensor.available
 
 
+async def test_delta_kept_pending_while_price_unavailable(hass: HomeAssistant):
+    """Energy consumed during a price outage is priced once the price recovers."""
+    sensor = await _make_sensor(
+        hass,
+        price_settings={
+            "per_unit_supplier_electricity_markup": 0.0,
+            "per_unit_government_electricity_tax": 0.0,
+            "vat_percentage": 0.0,
+        },
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.price", "unavailable")
+    await sensor.async_update()
+    # Delta of 1 kWh is pending, not dropped
+    assert sensor._last_energy == 0
+    assert sensor.native_value == 0.0
+
+    hass.states.async_set("sensor.energy", 2)
+    hass.states.async_set("sensor.price", 0.5)
+    await sensor.async_update()
+    # Full 2 kWh since the baseline is priced on recovery
+    assert sensor._last_energy == 2
+    assert sensor.native_value == pytest.approx(1.0)
+
+
+async def test_meter_reset_rebaselines_even_when_price_unavailable(
+    hass: HomeAssistant,
+):
+    """A meter reset re-baselines immediately so no phantom delta is created."""
+    sensor = await _make_sensor(
+        hass,
+        price_settings={
+            "per_unit_supplier_electricity_markup": 0.0,
+            "per_unit_government_electricity_tax": 0.0,
+            "vat_percentage": 0.0,
+        },
+    )
+    sensor._last_energy = 10
+    hass.states.async_set("sensor.energy", 2)
+    hass.states.async_set("sensor.price", "unavailable")
+    await sensor.async_update()
+    # Baseline follows the reset meter value
+    assert sensor._last_energy == 2
+
+    hass.states.async_set("sensor.energy", 3)
+    hass.states.async_set("sensor.price", 0.5)
+    await sensor.async_update()
+    # Only the 1 kWh after the reset is priced
+    assert sensor.native_value == pytest.approx(0.5)
+
+
 async def test_price_invalid(hass: HomeAssistant):
     sensor = await _make_sensor(hass)
     sensor._last_energy = 0
