@@ -299,6 +299,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
             adjusted_value = None
             taxable_value = 0.0
+            # Solar bonus and netting tax credit for production. Kept separate
+            # from adjusted_value: the sign of adjusted_value decides whether
+            # the energy itself is cost or profit, while these credits are
+            # always earned and always belong to the profit sensor.
+            bonus_and_credit = 0.0
 
             if self.source_type == SOURCE_TYPE_GAS:
                 unit_price = (total_price + markup_consumption + tax) * vat_factor
@@ -357,7 +362,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     )
 
                     if solar_bonus_amount > 0:
-                        adjusted_value += solar_bonus_amount
+                        bonus_and_credit += solar_bonus_amount
                         _LOGGER.debug(
                             "Solar bonus: %.2f kWh eligible, %.4f EUR bonus added",
                             eligible_kwh,
@@ -373,7 +378,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     ) = await self._netting_tracker.async_record_production(
                         delta, tax * vat_factor
                     )
-                    adjusted_value += credited_value
+                    bonus_and_credit += credited_value
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
@@ -419,6 +424,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
                     if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
+                    # Bonus and netting credit are earned regardless of the
+                    # sign of the energy value itself. A negative energy value
+                    # is already booked on the cost sensor; folding the credit
+                    # into it here would double count that negative value.
+                    self._attr_native_value += bonus_and_credit
             elif self.mode == "kwh_during_cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
                     if adjusted_value >= 0:
