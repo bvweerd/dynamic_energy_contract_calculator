@@ -279,6 +279,51 @@ async def test_solar_bonus_is_daylight_edge_cases(hass: HomeAssistant):
     assert result is True
 
 
+async def test_solar_bonus_is_daylight_fallback_on_exception(hass: HomeAssistant):
+    tracker = await SolarBonusTracker.async_create(hass, "test_entry_fallback")
+
+    class BrokenStates:
+        def get(self, entity_id):
+            raise RuntimeError("boom")
+
+    with patch.object(tracker, "_hass", type("Hass", (), {"states": BrokenStates()})()):
+        with patch(
+            "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
+            return_value=datetime(2025, 7, 25, 12, 0, 0, tzinfo=timezone.utc),
+        ):
+            assert tracker.is_daylight() is True
+
+
+async def test_solar_bonus_leap_year_before_anniversary_non_leap_fallback(
+    hass: HomeAssistant,
+):
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(
+            hass, "test_entry_24b", contract_start_date="2020-02-29"
+        )
+
+        year_start = tracker._get_current_contract_year_start()
+        assert year_start == date(2024, 2, 29) or year_start == date(2024, 2, 28)
+
+
+async def test_solar_bonus_leap_year_before_anniversary_previous_year_fallback(
+    hass: HomeAssistant,
+):
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2027, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(
+            hass, "test_entry_prev_fallback", contract_start_date="2024-02-29"
+        )
+
+        year_start = tracker._get_current_contract_year_start()
+        assert year_start == date(2026, 2, 28)
+
+
 async def test_solar_bonus_parse_date_valid(hass: HomeAssistant):
     """Test date parsing with valid input."""
     tracker = await SolarBonusTracker.async_create(hass, "test_entry_13")
@@ -519,3 +564,42 @@ async def test_solar_bonus_reset_year_with_contract_date(hass: HomeAssistant):
 # Note: Lines 89-90 (leap year fallback for last year) and 125-128 (exception handler fallback)
 # are defensive code paths that are very difficult to trigger in unit tests.
 # Coverage for solar_bonus.py is at 96% which is excellent.
+
+
+async def test_is_daylight_unknown_sun_state_uses_hour_fallback(hass: HomeAssistant):
+    """sun.sun 'unknown' should fall through to hour-based fallback, not return False."""
+    tracker = await SolarBonusTracker.async_create(hass, "test_entry_unknown_sun")
+    hass.states.async_set("sun.sun", "unknown")
+
+    # At noon → fallback returns True
+    with patch(
+        "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
+        return_value=datetime(2025, 7, 1, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        assert tracker.is_daylight() is True
+
+    # At 3 AM → fallback returns False
+    with patch(
+        "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
+        return_value=datetime(2025, 7, 1, 3, 0, 0, tzinfo=timezone.utc),
+    ):
+        assert tracker.is_daylight() is False
+
+
+async def test_is_daylight_hour_fallback_boundary_hours(hass: HomeAssistant):
+    """Hour-based fallback triggers at exactly 6 AM (in) and 20 (out)."""
+    tracker = await SolarBonusTracker.async_create(hass, "test_entry_boundary_hours")
+    # Remove sun.sun so fallback is triggered via exception path
+    with patch.object(
+        tracker,
+        "_hass",
+        type("Hass", (), {"states": type("S", (), {"get": lambda self, _: None})()})(),
+    ):
+        for hour, expected in [(5, False), (6, True), (19, True), (20, False)]:
+            with patch(
+                "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
+                return_value=datetime(2025, 7, 1, hour, 0, 0, tzinfo=timezone.utc),
+            ):
+                assert (
+                    tracker.is_daylight() is expected
+                ), f"hour={hour} expected {expected}"

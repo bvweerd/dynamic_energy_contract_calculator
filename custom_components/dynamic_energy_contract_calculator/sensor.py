@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import pytz  # TODO Phase 3: replace with zoneinfo
+import logging
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
@@ -17,6 +18,7 @@ from homeassistant.helpers.event import (
     async_track_time_change,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.util import dt as dt_util
 
@@ -29,25 +31,40 @@ except ImportError:  # pragma: no cover
     _ASTRAL_AVAILABLE = False
 
 from .const import (
-    DOMAIN,
-    DOMAIN_ABBREVIATION,
-    CONF_CONFIGS,
-    CONF_SOURCE_TYPE,
-    CONF_SOURCES,
     CONF_PRICE_SENSOR,
     CONF_PRICE_SENSOR_GAS,
     CONF_PRICE_SETTINGS,
+    CONF_SOURCE_TYPE,
+    CONF_SOURCES,
+    DOMAIN,
+    DOMAIN_ABBREVIATION,
     SOURCE_TYPE_CONSUMPTION,
-    SOURCE_TYPE_PRODUCTION,
     SOURCE_TYPE_GAS,
+    SOURCE_TYPE_PRODUCTION,
+    SUBENTRY_TYPE_SOURCE,
 )
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
 from .solar_bonus import SolarBonusTracker
 
-import logging
-
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_contract_anniversary(contract_start_date: str, check_date: date) -> bool:
+    """Return True if check_date falls on a contract anniversary (same month/day)."""
+    if not contract_start_date:
+        return False
+    try:
+        start = datetime.fromisoformat(contract_start_date).date()
+    except (ValueError, AttributeError):
+        return False
+    try:
+        anniversary = start.replace(year=check_date.year)
+    except ValueError:
+        # Feb 29 in a non-leap year — use Feb 28
+        anniversary = start.replace(year=check_date.year, day=28)
+    return check_date == anniversary
+
 
 SENSOR_MODES_ELECTRICITY: list[dict[str, Any]] = [
     {
@@ -111,7 +128,7 @@ SENSOR_MODES_GAS: list[dict[str, Any]] = [
     },
 ]
 
-UTILITY_ENTITIES: list[BaseUtilitySensor] = []
+PARALLEL_UPDATES = 0
 
 
 def _build_netting_attributes(
@@ -179,6 +196,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         name: str,
         unique_id: str,
         device: DeviceInfo,
+        source_sensors: list[DynamicEnergySensor],
         netting_tracker: NettingTracker | None = None,
     ):
         super().__init__(
@@ -192,6 +210,7 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
             translation_key="net_total_cost",
         )
         self.hass = hass
+        self._source_sensors = source_sensors
         self._netting_tracker = netting_tracker
         self._update_netting_attributes()
 
@@ -199,37 +218,37 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         cost_total = 0.0
         profit_total = 0.0
 
-        for entity in UTILITY_ENTITIES:
-            if isinstance(entity, DynamicEnergySensor):
-                if entity.mode == "cost_total":
-                    try:
-                        cost_total += float(entity.native_value or 0.0)
-                    except ValueError:
-                        continue
-                elif entity.mode == "profit_total":
-                    try:
-                        profit_total += float(entity.native_value or 0.0)
-                    except ValueError:
-                        continue
+        for entity in self._source_sensors:
+            if entity.mode == "cost_total":
+                try:
+                    cost_total += float(entity.native_value or 0.0)
+                except ValueError:
+                    continue
+            elif entity.mode == "profit_total":
+                try:
+                    profit_total += float(entity.native_value or 0.0)
+                except ValueError:
+                    continue
         _LOGGER.debug("Aggregated cost=%s profit=%s", cost_total, profit_total)
         self._attr_native_value = round(cost_total - profit_total, 8)
         self._update_netting_attributes()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        for entity in UTILITY_ENTITIES:
-            self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass,
-                    entity.entity_id,
-                    self._handle_input_event,
+        for entity in self._source_sensors:
+            if entity.entity_id:
+                self.async_on_remove(
+                    async_track_state_change_event(
+                        self.hass,
+                        entity.entity_id,
+                        self._handle_input_event,
+                    )
                 )
-            )
         if self.platform is not None:
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         _LOGGER.debug(
             "%s changed, updating %s", event.data.get("entity_id"), self.entity_id
         )
@@ -466,7 +485,7 @@ class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
             await self.async_update()
             self.async_write_ha_state()
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         _LOGGER.debug(
             "Recalculating total energy cost due to %s", event.data.get("entity_id")
         )
@@ -682,8 +701,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 check_date = dt.date()
             else:
                 # Convert to local timezone
-                local_tz = pytz.timezone(timezone)
-                local_dt = dt.astimezone(local_tz)
+                local_dt = dt.astimezone(ZoneInfo(timezone))
                 check_date = local_dt.date()
 
             s = _astral_sun(location.observer, date=check_date, tzinfo=timezone)
@@ -693,8 +711,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Compare timestamp with sunrise/sunset
             # Make sure we're comparing timezone-aware datetimes
             if dt.tzinfo is None:
-                local_tz = pytz.timezone(timezone)
-                dt = local_tz.localize(dt)
+                dt = dt.replace(tzinfo=ZoneInfo(timezone))
 
             return bool(sunrise <= dt < sunset)
 
@@ -752,7 +769,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         # Calculate averages and create hourly entries
         averaged = []
         for hour_key, entries in sorted(hourly_groups.items()):
-            if not entries:
+            if not entries:  # pragma: no cover
                 continue
 
             # Calculate average price
@@ -831,7 +848,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
             return s["sunrise"], s["sunset"]
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("Sunrise/sunset calculation failed for %s: %s", date_obj, e)
             return None, None
 
     def _split_entry_at_sunrise_sunset(
@@ -864,7 +882,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 end_dt = datetime.fromisoformat(timestamp_end.replace("Z", "+00:00"))
             else:
                 end_dt = timestamp_end
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("Failed to parse timestamps in price entry: %s", e)
             return [entry]
 
         # Check if sunrise or sunset occur within this period
@@ -945,8 +964,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                         else:
                             dt = timestamp
                         dates_to_check.add(dt.date())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        _LOGGER.debug("Skipping entry with unparsable timestamp: %s", e)
 
             # Get sunrise/sunset for all dates
             sun_times = {}
@@ -974,7 +993,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                             entry, sunrise, sunset
                         )
                         split_prices.extend(segments)
-                    except Exception:
+                    except Exception as e:
+                        _LOGGER.debug("Skipping entry split due to parse error: %s", e)
                         split_prices.append(entry)
                 else:
                     split_prices.append(entry)
@@ -1295,7 +1315,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             self._price_change_unsub = None
         await super().async_will_remove_from_hass()
 
-    async def _handle_price_change(self, event: Event) -> None:
+    async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change - rebuild net_prices and reschedule."""
         new_state = event.data.get("new_state")
         if new_state is None or new_state.state in ("unknown", "unavailable"):
@@ -1312,7 +1332,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    configs = entry.data.get(CONF_CONFIGS, [])
+    from .__init__ import DynamicEnergyConfigEntry
+
+    typed_entry: DynamicEnergyConfigEntry = entry  # type: ignore[assignment]
     price_settings = entry.options.get(
         CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
     )
@@ -1331,7 +1353,7 @@ async def async_setup_entry(
     netting_enabled = bool(price_settings.get("netting_enabled"))
     netting_tracker: NettingTracker | None = None
     if netting_enabled:
-        netting_map = hass.data[DOMAIN].setdefault("netting", {})
+        netting_map = hass.data.setdefault(DOMAIN, {}).setdefault("netting", {})
         tracker = netting_map.get(entry.entry_id)
         if tracker is None:
             tracker = await NettingTracker.async_create(
@@ -1339,14 +1361,13 @@ async def async_setup_entry(
             )
             netting_map[entry.entry_id] = tracker
         else:
-            # Update price settings in case they changed
             tracker.update_price_settings(price_settings)
         netting_tracker = tracker
 
     solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
     solar_bonus_tracker: SolarBonusTracker | None = None
     if solar_bonus_enabled:
-        solar_bonus_map = hass.data[DOMAIN].setdefault("solar_bonus", {})
+        solar_bonus_map = hass.data.setdefault(DOMAIN, {}).setdefault("solar_bonus", {})
         sb_tracker = solar_bonus_map.get(entry.entry_id)
         contract_start_date = price_settings.get("contract_start_date", "")
         if sb_tracker is None:
@@ -1356,9 +1377,18 @@ async def async_setup_entry(
             solar_bonus_map[entry.entry_id] = sb_tracker
         solar_bonus_tracker = sb_tracker
 
-    for block in configs:
+    # Per-entry list of DynamicEnergySensors (for TotalCostSensor aggregation)
+    source_sensors: list[DynamicEnergySensor] = []
+
+    # Register source entities grouped per sub-entry so HA associates them correctly
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_SOURCE:
+            continue
+
+        block = dict(subentry.data)
         source_type = block[CONF_SOURCE_TYPE]
         sources = block[CONF_SOURCES]
+        subentry_entities: list[BaseUtilitySensor] = []
 
         mode_defs: list[dict[str, Any]]
         if source_type == SOURCE_TYPE_GAS:
@@ -1396,26 +1426,52 @@ async def async_setup_entry(
                     if solar_bonus_tracker and source_type == SOURCE_TYPE_PRODUCTION
                     else None
                 )
-                entities.append(
-                    DynamicEnergySensor(
-                        hass=hass,
-                        name=mode_def.get("translation_key", mode),
-                        unique_id=uid,
-                        energy_sensor=sensor,
-                        price_sensor=selected_price_sensor,
-                        price_settings=price_settings,
-                        mode=mode,
-                        source_type=source_type,
-                        unit=mode_def["unit"],
-                        icon=mode_def["icon"],
-                        visible=mode_def["visible"],
-                        device=device_info,
-                        netting_tracker=tracker_arg,
-                        solar_bonus_tracker=solar_tracker_arg,
-                    )
+                sensor_entity = DynamicEnergySensor(
+                    hass=hass,
+                    name=mode_def.get("translation_key", mode),
+                    unique_id=uid,
+                    energy_sensor=sensor,
+                    price_sensor=selected_price_sensor,
+                    price_settings=price_settings,
+                    mode=mode,
+                    source_type=source_type,
+                    unit=mode_def["unit"],
+                    icon=mode_def["icon"],
+                    visible=mode_def["visible"],
+                    device=device_info,
+                    netting_tracker=tracker_arg,
+                    solar_bonus_tracker=solar_tracker_arg,
                 )
+                subentry_entities.append(sensor_entity)
+                source_sensors.append(sensor_entity)
 
-    UTILITY_ENTITIES.extend(entities)
+        # Remove any stale None-subentry device associations left over from pre-subentry
+        # installs. This must happen before async_add_entities so the device already has
+        # the real subentry association when HA processes the entities.
+        dev_reg = dr.async_get(hass)
+        for sensor in sources:
+            base_id = sensor.replace(".", "_")
+            existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
+            if existing is not None:
+                entry_subentries = existing.config_entries_subentries.get(
+                    entry.entry_id, set()
+                )
+                if None in entry_subentries:
+                    dev_reg.async_update_device(
+                        existing.id,
+                        add_config_entry_id=entry.entry_id,
+                        add_config_subentry_id=subentry.subentry_id,
+                    )
+                    dev_reg.async_update_device(
+                        existing.id,
+                        remove_config_entry_id=entry.entry_id,
+                        remove_config_subentry_id=None,
+                    )
+
+        async_add_entities(
+            subentry_entities, True, config_subentry_id=subentry.subentry_id
+        )
+        entities.extend(subentry_entities)
 
     base_id = "daily_electricity_cost"
     unique_id = f"{DOMAIN}_{base_id}"
@@ -1435,7 +1491,6 @@ async def async_setup_entry(
         device=device_info,
         netting_tracker=netting_tracker,
     )
-    entities.append(daily_electricity)
 
     daily_gas = DailyGasCostSensor(
         hass=hass,
@@ -1444,16 +1499,15 @@ async def async_setup_entry(
         price_settings=price_settings,
         device=device_info,
     )
-    entities.append(daily_gas)
 
     net_cost = TotalCostSensor(
         hass=hass,
         name="Net Energy Cost (Total)",
         unique_id=f"{DOMAIN}_net_total_cost",
         device=device_info,
+        source_sensors=source_sensors,
         netting_tracker=netting_tracker,
     )
-    entities.append(net_cost)
 
     energy_cost = TotalEnergyCostSensor(
         hass=hass,
@@ -1467,21 +1521,28 @@ async def async_setup_entry(
         device=device_info,
         netting_tracker=netting_tracker,
     )
-    entities.append(energy_cost)
+
+    summary_entities: list[BaseUtilitySensor] = [
+        daily_electricity,
+        daily_gas,
+        net_cost,
+        energy_cost,
+    ]
 
     # Add solar bonus sensor if enabled
     if solar_bonus_tracker is not None:
-        solar_bonus_sensor = SolarBonusStatusSensor(
-            hass=hass,
-            name="Solar Bonus (Total)",
-            unique_id=f"{DOMAIN}_solar_bonus_total",
-            device=device_info,
-            solar_bonus_tracker=solar_bonus_tracker,
+        summary_entities.append(
+            SolarBonusStatusSensor(
+                hass=hass,
+                name="Solar Bonus (Total)",
+                unique_id=f"{DOMAIN}_solar_bonus_total",
+                device=device_info,
+                solar_bonus_tracker=solar_bonus_tracker,
+            )
         )
-        entities.append(solar_bonus_sensor)
 
     if price_sensor:
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Consumption Price",
@@ -1493,7 +1554,7 @@ async def async_setup_entry(
                 device=device_info,
             )
         )
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Production Price",
@@ -1507,7 +1568,7 @@ async def async_setup_entry(
         )
 
     if price_sensor_gas:
-        entities.append(
+        summary_entities.append(
             CurrentElectricityPriceSensor(
                 hass=hass,
                 name="Current Gas Consumption Price",
@@ -1520,23 +1581,32 @@ async def async_setup_entry(
             )
         )
 
-    async_add_entities(entities, True)
+    # Summary sensors belong to the main config entry (no sub-entry)
+    async_add_entities(summary_entities, True)
+    entities.extend(summary_entities)
 
-    hass.data[DOMAIN]["entities"] = {ent.entity_id: ent for ent in entities}
+    # Store entities and trackers in per-entry runtime_data
+    typed_entry.runtime_data.entities = {ent.entity_id: ent for ent in entities}
+    typed_entry.runtime_data.netting_tracker = netting_tracker
+    typed_entry.runtime_data.solar_bonus_tracker = solar_bonus_tracker
 
     # Schedule contract anniversary reset if enabled
     reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
-    if reset_on_anniversary and solar_bonus_tracker:
+    contract_start_date = price_settings.get("contract_start_date", "")
+    if reset_on_anniversary and contract_start_date:
 
         async def check_contract_anniversary(now: datetime) -> None:
             """Check if today is the contract anniversary and reset if needed."""
-            next_anniversary = solar_bonus_tracker.get_next_anniversary_date()
-            if next_anniversary and now.date() == next_anniversary:
+            if _is_contract_anniversary(contract_start_date, now.date()):
                 _LOGGER.info("Contract anniversary reached, resetting all meters")
-                # Reset solar bonus tracker
-                await solar_bonus_tracker.async_reset_year()
-                # Reset all utility entities
-                for entity in UTILITY_ENTITIES:
+                # Reset solar bonus tracker if present
+                if solar_bonus_tracker:
+                    await solar_bonus_tracker.async_reset_year()
+                # Reset netting tracker if present
+                if netting_tracker:
+                    await netting_tracker.async_reset_all()
+                # Reset all utility entities for this entry
+                for entity in entities:
                     await entity.async_reset()
 
         # Run at midnight every day; unsubscribe when entry is unloaded

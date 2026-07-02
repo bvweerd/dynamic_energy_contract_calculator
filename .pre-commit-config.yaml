@@ -49,5 +49,6 @@ repos:
           - --pretty
           - --show-error-codes
           - --show-error-context
-          - custom_components/dynamic_energy_contract_calculator
+          - --module
+          - custom_components.dynamic_energy_contract_calculator
         files: ^custom_components/dynamic_energy_contract_calculator/.*\\.py$

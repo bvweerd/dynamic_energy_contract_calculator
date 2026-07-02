@@ -19,27 +19,27 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 
 1. In Home Assistant navigate to **Settings → Devices & Services** and use **Add Integration**.
 2. Search for **Dynamic Energy Contract Calculator** and follow the setup flow.
-3. Select the energy sensors you want to track and provide optional price sensors for live pricing.
-   Values from multiple price sensors are added together, allowing you to keep separate sensors
-   for things like dynamic tariff surcharges.
-4. Optionally configure price settings such as markup and tax values.
+3. Optionally load a supplier preset or configure price settings (markup, taxes, VAT, etc.).
+4. Click **Finish** to create the integration.
+5. After creation, add one or more **sources** by clicking the integration entry and using **Add entry**.
+   Each source represents one type of energy measurement (consumption, production or gas).
+6. For each source, select the **source type** and one or more **energy sensors**.
 
-Price settings can be changed later from the integration's options flow. See
-the *Price Settings* section below for all available keys.
+Price settings can be changed later from the integration's options flow. Sources can be added, edited or removed individually via **Settings → Devices & Services → [your entry] → Add/Edit/Delete entry**. See the *Price Settings* section below for all available keys.
 
 ### Installation parameters
 
 During setup you will be asked for the following information:
 
-1. **Source type** – choose whether the selected sensors measure electricity
-   consumption, electricity production or gas consumption.
-2. **Energy sensors** – one or more sensors with the `energy` or `gas` device
-   class that provide cumulative readings.
-3. **Price sensors** – optional sensors or input_number entities that provide components of the current energy price
-   in €/kWh, EUR/kWh, €/m³, or EUR/m³. You can select more than one; their values are summed.
-   This makes it possible to add sensors that expose dynamic tariff surcharges or use manual input helpers for fixed tariffs.
-4. **Price settings** – values from the table below used to calculate the final
-   price.
+1. **Supplier preset** *(optional)* – load a predefined configuration for a known supplier such as Zonneplan 2026 or Greenchoice Gas 2026.
+2. **Price settings** *(optional)* – values from the table below used to calculate the final price.
+
+After the integration is created, add sources via **Add entry**:
+
+1. **Source type** – choose whether the source measures electricity consumption, electricity production or gas consumption.
+2. **Energy sensors** – one or more sensors with the `energy` or `gas` device class that provide cumulative readings.
+
+Price sensors (electricity and gas) are configured in the **Price settings** step as part of the main integration, not per source. Values from multiple price sensors are summed, allowing you to combine a dynamic tariff sensor with manual input helpers for surcharges.
 
 See the [Home Assistant configuration documentation](https://www.home-assistant.io/docs/configuration/integrations/) for general details on adding custom integrations.
 
@@ -191,9 +191,7 @@ If your price sensors already provide prices **including** VAT, set
 
 ### Configuration parameters
 
-All of the parameters above can be changed later from the integration's options
-flow. You can also modify the list of energy sensors or change the selected
-price sensor at any time via **Settings → Devices & Services**.
+All of the parameters above can be changed later from the integration's options flow. You can also add, edit or remove individual sources (energy sensors) at any time via **Settings → Devices & Services → [your entry] → Add/Edit/Delete entry**.
 
 ## How Calculations Work
 
@@ -307,15 +305,7 @@ steps of the setup flow.
 The **Add integration** dialog lists *Dynamic Energy Contract Calculator*. After
 selecting it you will be guided through a short setup wizard.
 
-### 2. Choose which sensors to track
-
-![Select sources](assets/readme/select_sources.png)
-
-Here you select the energy sensors that should be monitored. You can choose
-consumption, production or gas sensors. Optionally select a price sensor that
-provides the current tariff.
-
-### 3. Configure price settings
+### 2. Configure price settings
 
 ![Price settings](assets/readme/price_settings.png)
 
@@ -323,6 +313,12 @@ This screen lets you configure markups, surcharges and VAT. The values are added
 on top of the base price reported by your price sensor.
 
 The example above is based on a ANWB Dynamic Contract, with Enexis as grid operator and tax settings according to 2026 with gas consumption <500m3 per year and electricity <10.000kWh per year.
+
+### 3. Add sources
+
+After finishing the wizard, click **Add entry** on the integration card to add your energy sources. For each source you select the **source type** (consumption, production or gas) and pick one or more cumulative energy sensors from your installation.
+
+You can add, edit or remove sources at any time via **Settings → Devices & Services → [your entry] → Add/Edit/Delete entry**.
 
 ## Supplier Presets
 

@@ -79,7 +79,7 @@ class NettingTracker:
         self,
         hass: HomeAssistant,
         entry_id: str,
-        store: Store,
+        store: Store[dict[str, Any]],
         initial_state: dict[str, Any] | None,
         price_settings: dict[str, Any] | None = None,
     ) -> None:
@@ -91,11 +91,24 @@ class NettingTracker:
         self._tax_contributions: list[TaxContribution] = []
         self._sensors: dict[str, DynamicEnergySensor] = {}
         self._price_settings = price_settings or {}
+        # Negative netted consumption values handed off by the cost sensor,
+        # keyed by energy source entity_id, awaiting pickup by the matching
+        # profit sensor.
+        self._pending_profit: dict[str, float] = {}
 
         if initial_state:
             self._net_consumption_kwh = float(
                 initial_state.get("net_consumption_kwh", 0.0)
             )
+            pending = initial_state.get("pending_consumption_profit", {})
+            if isinstance(pending, dict):
+                for source_id, amount in pending.items():
+                    try:
+                        value = float(amount)
+                    except (TypeError, ValueError):
+                        continue
+                    if value > 0:
+                        self._pending_profit[str(source_id)] = value
             # Restore tax contributions from storage
             contributions_data = initial_state.get("tax_contributions", [])
             if isinstance(contributions_data, list):
@@ -122,7 +135,7 @@ class NettingTracker:
     ) -> NettingTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{NETTING_STORAGE_KEY_PREFIX}_{entry_id}"
-        store = Store(
+        store: Store[dict[str, Any]] = Store(
             hass,
             NETTING_STORAGE_VERSION,
             storage_key,
@@ -211,7 +224,7 @@ class NettingTracker:
 
         Tax balance is calculated from the contributions queue.
         """
-        pass
+        return None  # pragma: no cover
 
     async def async_record_consumption(
         self,
@@ -233,7 +246,7 @@ class NettingTracker:
             Tuple of (taxable_kwh, taxable_value) - the portion that is taxable
             after applying netting rules.
         """
-        if delta_kwh <= 0 or tax_unit_price <= 0:
+        if delta_kwh <= 0:
             return 0.0, 0.0
 
         async with self._lock:
@@ -277,13 +290,15 @@ class NettingTracker:
 
         Args:
             delta_kwh: The production delta in kWh
-            tax_unit_price: The energy tax rate per kWh (used for return value)
+            tax_unit_price: The energy tax rate per kWh, used as fallback for
+                credited kWh not covered by recorded contributions (e.g., state
+                restored from storage without a contributions queue)
 
         Returns:
             Tuple of (credited_kwh, credited_value, sensor_adjustments).
             sensor_adjustments is always empty in this model.
         """
-        if delta_kwh <= 0 or tax_unit_price <= 0:
+        if delta_kwh <= 0:
             return 0.0, 0.0, []
 
         async with self._lock:
@@ -295,7 +310,11 @@ class NettingTracker:
 
             self._net_consumption_kwh = net_after
 
-            # Remove tax contributions in FIFO order for the credited kWh
+            # Remove tax contributions in FIFO order for the credited kWh.
+            # The credited value is derived from the removed contributions so
+            # the credit matches the tax that was actually charged, even if
+            # the tax rate or VAT changed since the consumption occurred.
+            credited_value = 0.0
             if credited_kwh > 0:
                 remaining_credit = credited_kwh
                 while remaining_credit > 0 and self._tax_contributions:
@@ -303,6 +322,7 @@ class NettingTracker:
                     if contrib.kwh <= remaining_credit:
                         # Remove entire contribution
                         remaining_credit -= contrib.kwh
+                        credited_value += contrib.tax_amount
                         self._tax_contributions.pop(0)
                         _LOGGER.debug(
                             "Removed tax contribution: %.4f kWh @ %.4f rate",
@@ -311,6 +331,9 @@ class NettingTracker:
                         )
                     else:
                         # Partial removal
+                        credited_value += (
+                            remaining_credit * contrib.tax_rate * contrib.vat_factor
+                        )
                         contrib.kwh = round(contrib.kwh - remaining_credit, 8)
                         _LOGGER.debug(
                             "Reduced tax contribution by %.4f kWh, %.4f kWh remaining",
@@ -318,18 +341,44 @@ class NettingTracker:
                             contrib.kwh,
                         )
                         remaining_credit = 0
-
-            # Calculate credited value using current rate (for return value only)
-            credited_value = round(credited_kwh * tax_unit_price, 8)
+                # Credited kWh not covered by the queue (legacy restored state):
+                # fall back to the current rate.
+                if remaining_credit > 0:
+                    credited_value += remaining_credit * tax_unit_price
+            credited_value = round(credited_value, 8)
 
             await self._async_save_state()
             return credited_kwh, credited_value, []
+
+    async def async_add_pending_profit(self, source_id: str, amount: float) -> None:
+        """Hand off a negative netted consumption value to the profit sensor.
+
+        When netting makes the consumption value negative (a payout), the
+        cost sensor cannot book it. The amount is parked here, keyed by the
+        energy source, until the matching profit sensor claims it.
+        """
+        if amount <= 0:
+            return
+        async with self._lock:
+            self._pending_profit[source_id] = round(
+                self._pending_profit.get(source_id, 0.0) + amount, 8
+            )
+            await self._async_save_state()
+
+    async def async_claim_pending_profit(self, source_id: str) -> float:
+        """Return and clear the pending profit for the given energy source."""
+        async with self._lock:
+            amount = self._pending_profit.pop(source_id, 0.0)
+            if amount:
+                await self._async_save_state()
+            return amount
 
     async def async_reset_all(self) -> None:
         """Reset the entire tracker state."""
         async with self._lock:
             self._net_consumption_kwh = 0.0
             self._tax_contributions.clear()
+            self._pending_profit.clear()
             await self._async_save_state()
             _LOGGER.info(
                 "Netting tracker reset: net_consumption_kwh=0.0, contributions cleared"
@@ -369,5 +418,9 @@ class NettingTracker:
         data = {
             "net_consumption_kwh": round(self._net_consumption_kwh, 8),
             "tax_contributions": [c.to_dict() for c in self._tax_contributions],
+            "pending_consumption_profit": {
+                source_id: round(amount, 8)
+                for source_id, amount in self._pending_profit.items()
+            },
         }
         await self._store.async_save(data)

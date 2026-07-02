@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
@@ -35,7 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE_GRACE_SECONDS = 60
 
 
-class BaseUtilitySensor(SensorEntity, RestoreEntity):  # type: ignore[misc]
+class BaseUtilitySensor(SensorEntity, RestoreEntity):
     _attr_native_value: float  # narrow the base class StateType to float
 
     def __init__(
@@ -121,8 +121,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
             device=device,
             translation_key=mode,
         )
-        if mode in ("kwh_total", "m3_total"):
-            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        # TOTAL_INCREASING is used for all sensor modes, including cost/profit sensors.
+        # Rationale: on an unclean shutdown (power interrupt), the .storage/core.restore_state
+        # file can be corrupted, causing async_get_last_state() to return None and the
+        # sensor to start at 0. With TOTAL_INCREASING, HA's long-term statistics (LTS)
+        # recorder detects the drop as a "meter reset" and adds the previous accumulated
+        # value to its running sum, so the energy dashboard shows a continuous total.
+        # With TOTAL, a reset to 0 would be taken at face value and history would be lost.
+        # Trade-off: set_meter_value or tax adjustments that lower the value will also be
+        # interpreted as a reset by LTS, causing double-counting in statistics.
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self.hass = hass
         self.energy_sensor = energy_sensor
         if isinstance(price_sensor, list):
@@ -149,6 +157,14 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._netting_tracker is not None
             and self.source_type == SOURCE_TYPE_CONSUMPTION
             and self.mode == "cost_total"
+        )
+
+    @property
+    def _uses_netting_profit(self) -> bool:
+        return (
+            self._netting_tracker is not None
+            and self.source_type == SOURCE_TYPE_CONSUMPTION
+            and self.mode == "profit_total"
         )
 
     async def async_update(self) -> None:
@@ -221,7 +237,12 @@ class DynamicEnergySensor(BaseUtilitySensor):
         if self._last_energy is not None:
             delta = current_energy - self._last_energy
             if delta < 0:
+                # Meter reset: re-baseline so future deltas are measured from
+                # the new meter value.
                 delta = 0.0
+                self._last_energy = current_energy
+        else:
+            self._last_energy = current_energy
 
         _LOGGER.debug(
             "Current energy=%s, Last energy=%s, Delta=%s",
@@ -229,8 +250,6 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._last_energy,
             delta,
         )
-
-        self._last_energy = current_energy
 
         if self.mode not in ("kwh_total", "m3_total") and not self.price_sensors:
             _LOGGER.debug(
@@ -241,6 +260,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
         if self.mode in ("kwh_total", "m3_total"):
             self._attr_native_value += delta
+            self._last_energy = current_energy
         elif self.price_sensors:
             total_price = 0.0
             valid = False
@@ -280,8 +300,18 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 async_clear_issue(self.hass, f"price_invalid_{self.price_sensor}")
                 self._price_unavailable_since = None
 
+            # The delta is consumed below; only advance the baseline now so
+            # that the early return above (no valid price) keeps the delta
+            # pending until the price sensors recover instead of dropping it.
+            self._last_energy = current_energy
+
             adjusted_value = None
             taxable_value = 0.0
+            # Solar bonus and netting tax credit for production. Kept separate
+            # from adjusted_value: the sign of adjusted_value decides whether
+            # the energy itself is cost or profit, while these credits are
+            # always earned and always belong to the profit sensor.
+            bonus_and_credit = 0.0
 
             if self.source_type == SOURCE_TYPE_GAS:
                 unit_price = (total_price + markup_consumption + tax) * vat_factor
@@ -294,14 +324,33 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 value = delta * gross_unit_price
 
                 if self._uses_netting:
+                    netting_tracker = self._netting_tracker
+                    assert netting_tracker is not None  # guaranteed by _uses_netting
                     base_value = delta * base_unit_price
                     (
                         _,
                         taxable_value,
-                    ) = await self._netting_tracker.async_record_consumption(  # type: ignore[union-attr]
+                    ) = await netting_tracker.async_record_consumption(
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
+                    if adjusted_value < 0:
+                        # A negative netted value is a payout; the cost sensor
+                        # cannot book it, so hand it to the profit sensor of
+                        # the same energy source via the tracker.
+                        await netting_tracker.async_add_pending_profit(
+                            self.energy_sensor, -adjusted_value
+                        )
+                elif self._uses_netting_profit:
+                    netting_tracker = self._netting_tracker
+                    assert netting_tracker is not None
+                    # With netting, the consumption profit comes from the
+                    # netted value handed off by the cost sensor. The gross
+                    # price would wrongly include energy tax that netting
+                    # does not charge while the balance is negative.
+                    adjusted_value = -await netting_tracker.async_claim_pending_profit(
+                        self.energy_sensor
+                    )
                 else:
                     adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
@@ -338,7 +387,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     )
 
                     if solar_bonus_amount > 0:
-                        adjusted_value += solar_bonus_amount
+                        bonus_and_credit += solar_bonus_amount
                         _LOGGER.debug(
                             "Solar bonus: %.2f kWh eligible, %.4f EUR bonus added",
                             eligible_kwh,
@@ -354,7 +403,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     ) = await self._netting_tracker.async_record_production(
                         delta, tax * vat_factor
                     )
-                    adjusted_value += credited_value
+                    bonus_and_credit += credited_value
             else:
                 _LOGGER.error("Unknown source_type: %s", self.source_type)
                 return
@@ -400,6 +449,11 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 elif self.source_type == SOURCE_TYPE_PRODUCTION:
                     if adjusted_value >= 0:
                         self._attr_native_value += adjusted_value
+                    # Bonus and netting credit are earned regardless of the
+                    # sign of the energy value itself. A negative energy value
+                    # is already booked on the cost sensor; folding the credit
+                    # into it here would double count that negative value.
+                    self._attr_native_value += bonus_and_credit
             elif self.mode == "kwh_during_cost_total":
                 if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
                     if adjusted_value >= 0:
@@ -419,7 +473,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
         await super().async_added_to_hass()
 
         if self._uses_netting:
-            await self._netting_tracker.async_register_sensor(self)  # type: ignore[union-attr]
+            netting_tracker = self._netting_tracker
+            assert netting_tracker is not None  # guaranteed by _uses_netting
+            await netting_tracker.async_register_sensor(self)
 
         for entity_id in self.input_sensors:
             self.async_on_remove(
@@ -430,7 +486,7 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 )
             )
 
-    async def _handle_input_event(self, event: Event) -> None:
+    async def _handle_input_event(self, event: Event[EventStateChangedData]) -> None:
         new_state = event.data.get("new_state")
         if new_state is not None and new_state.state not in ("unknown", "unavailable"):
             _LOGGER.debug(
@@ -443,7 +499,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
 
     async def async_will_remove_from_hass(self) -> None:
         if self._uses_netting:
-            await self._netting_tracker.async_unregister_sensor(self)  # type: ignore[union-attr]
+            netting_tracker = self._netting_tracker
+            assert netting_tracker is not None  # guaranteed by _uses_netting
+            await netting_tracker.async_unregister_sensor(self)
         await super().async_will_remove_from_hass()
 
     async def async_reset(self) -> None:
@@ -457,20 +515,6 @@ class DynamicEnergySensor(BaseUtilitySensor):
         # Note: Do NOT reset netting here - set_meter_value should only
         # change the sensor value, not affect the netting state
         await super().async_set_value(value)
-
-    async def async_apply_tax_adjustment(self, deduction: float) -> None:
-        """Reduce previously booked tax from this sensor.
-
-        Note: This method is deprecated and no longer used. Tax balance is now
-        calculated dynamically based on net_consumption_kwh and the fixed
-        energy tax rate, as per Dutch netting regulations.
-        """
-        if deduction <= 0:
-            return
-        self._attr_native_value = round(self._attr_native_value - deduction, 8)
-        if self._attr_native_value < 0:
-            self._attr_native_value = 0.0
-        self.async_write_ha_state()
 
 
 __all__ = ["BaseUtilitySensor", "DynamicEnergySensor"]
