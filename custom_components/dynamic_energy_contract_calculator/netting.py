@@ -233,7 +233,7 @@ class NettingTracker:
             Tuple of (taxable_kwh, taxable_value) - the portion that is taxable
             after applying netting rules.
         """
-        if delta_kwh <= 0 or tax_unit_price <= 0:
+        if delta_kwh <= 0:
             return 0.0, 0.0
 
         async with self._lock:
@@ -277,13 +277,15 @@ class NettingTracker:
 
         Args:
             delta_kwh: The production delta in kWh
-            tax_unit_price: The energy tax rate per kWh (used for return value)
+            tax_unit_price: The energy tax rate per kWh, used as fallback for
+                credited kWh not covered by recorded contributions (e.g., state
+                restored from storage without a contributions queue)
 
         Returns:
             Tuple of (credited_kwh, credited_value, sensor_adjustments).
             sensor_adjustments is always empty in this model.
         """
-        if delta_kwh <= 0 or tax_unit_price <= 0:
+        if delta_kwh <= 0:
             return 0.0, 0.0, []
 
         async with self._lock:
@@ -295,7 +297,11 @@ class NettingTracker:
 
             self._net_consumption_kwh = net_after
 
-            # Remove tax contributions in FIFO order for the credited kWh
+            # Remove tax contributions in FIFO order for the credited kWh.
+            # The credited value is derived from the removed contributions so
+            # the credit matches the tax that was actually charged, even if
+            # the tax rate or VAT changed since the consumption occurred.
+            credited_value = 0.0
             if credited_kwh > 0:
                 remaining_credit = credited_kwh
                 while remaining_credit > 0 and self._tax_contributions:
@@ -303,6 +309,7 @@ class NettingTracker:
                     if contrib.kwh <= remaining_credit:
                         # Remove entire contribution
                         remaining_credit -= contrib.kwh
+                        credited_value += contrib.tax_amount
                         self._tax_contributions.pop(0)
                         _LOGGER.debug(
                             "Removed tax contribution: %.4f kWh @ %.4f rate",
@@ -311,6 +318,9 @@ class NettingTracker:
                         )
                     else:
                         # Partial removal
+                        credited_value += (
+                            remaining_credit * contrib.tax_rate * contrib.vat_factor
+                        )
                         contrib.kwh = round(contrib.kwh - remaining_credit, 8)
                         _LOGGER.debug(
                             "Reduced tax contribution by %.4f kWh, %.4f kWh remaining",
@@ -318,9 +328,11 @@ class NettingTracker:
                             contrib.kwh,
                         )
                         remaining_credit = 0
-
-            # Calculate credited value using current rate (for return value only)
-            credited_value = round(credited_kwh * tax_unit_price, 8)
+                # Credited kWh not covered by the queue (legacy restored state):
+                # fall back to the current rate.
+                if remaining_credit > 0:
+                    credited_value += remaining_credit * tax_unit_price
+            credited_value = round(credited_value, 8)
 
             await self._async_save_state()
             return credited_kwh, credited_value, []

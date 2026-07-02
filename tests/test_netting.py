@@ -144,8 +144,23 @@ async def test_netting_tracker_consumption_short_circuits_invalid_input(
     tracker = NettingTracker(hass, "entry-4", store, None, None)
 
     assert await tracker.async_record_consumption(None, 0.0, 0.1) == (0.0, 0.0)
-    assert await tracker.async_record_consumption(None, 1.0, 0.0) == (0.0, 0.0)
     store.async_save.assert_not_awaited()
+
+
+async def test_netting_tracker_consumption_tracks_net_with_zero_tax(
+    hass: HomeAssistant,
+) -> None:
+    """Net consumption is tracked even when the current tax rate is zero."""
+    store = AsyncMock()
+    tracker = NettingTracker(hass, "entry-4b", store, None, None)
+
+    taxable_kwh, taxable_value = await tracker.async_record_consumption(None, 1.0, 0.0)
+
+    assert taxable_kwh == pytest.approx(1.0)
+    assert taxable_value == 0.0
+    assert tracker.net_consumption_kwh == pytest.approx(1.0)
+    assert tracker.tax_balance == 0.0
+    store.async_save.assert_awaited_once()
 
 
 async def test_netting_tracker_records_production_fifo_credit(
@@ -170,12 +185,68 @@ async def test_netting_tracker_records_production_fifo_credit(
     )
 
     assert credited_kwh == pytest.approx(4.0)
-    assert credited_value == pytest.approx(0.5324)
+    # Credit is based on the historical rates of the removed contributions:
+    # 2.0 kWh @ 0.09 and 2.0 kWh @ 0.11, both with 21% VAT
+    assert credited_value == pytest.approx(2.0 * 0.09 * 1.21 + 2.0 * 0.11 * 1.21)
     assert adjustments == []
     assert tracker.net_consumption_kwh == pytest.approx(1.0)
     assert len(tracker._tax_contributions) == 1
     assert tracker._tax_contributions[0].kwh == pytest.approx(1.0)
     store.async_save.assert_awaited_once()
+
+
+async def test_netting_tracker_production_credit_uses_historical_rates(
+    hass: HomeAssistant,
+) -> None:
+    """Credit follows the FIFO contributions, not the current tax rate."""
+    store = AsyncMock()
+    tracker = NettingTracker(
+        hass,
+        "entry-5b",
+        store,
+        None,
+        # Current rate dropped to 0.05 after the consumption was taxed at 0.10
+        {"per_unit_government_electricity_tax": 0.05, "vat_percentage": 21.0},
+    )
+    tracker._net_consumption_kwh = 2.0
+    tracker._tax_contributions = [
+        TaxContribution(kwh=2.0, tax_rate=0.10, vat_factor=1.21),
+    ]
+
+    credited_kwh, credited_value, _ = await tracker.async_record_production(
+        1.0, 0.05 * 1.21
+    )
+
+    assert credited_kwh == pytest.approx(1.0)
+    # 1.0 kWh credited at the historical 0.10 rate, not the current 0.05
+    assert credited_value == pytest.approx(1.0 * 0.10 * 1.21)
+    assert tracker._tax_contributions[0].kwh == pytest.approx(1.0)
+
+
+async def test_netting_tracker_production_fallback_rate_for_uncovered_kwh(
+    hass: HomeAssistant,
+) -> None:
+    """Credited kWh beyond the contributions queue falls back to the current rate."""
+    store = AsyncMock()
+    tracker = NettingTracker(
+        hass,
+        "entry-5c",
+        store,
+        None,
+        {"per_unit_government_electricity_tax": 0.10, "vat_percentage": 21.0},
+    )
+    # Legacy state: positive net consumption without a contributions queue
+    tracker._net_consumption_kwh = 3.0
+    tracker._tax_contributions = [
+        TaxContribution(kwh=1.0, tax_rate=0.08, vat_factor=1.21),
+    ]
+
+    credited_kwh, credited_value, _ = await tracker.async_record_production(3.0, 0.121)
+
+    assert credited_kwh == pytest.approx(3.0)
+    # 1.0 kWh from the queue @ 0.08, remaining 2.0 kWh at the fallback rate
+    assert credited_value == pytest.approx(1.0 * 0.08 * 1.21 + 2.0 * 0.121)
+    assert tracker._tax_contributions == []
 
 
 async def test_netting_tracker_production_short_circuits_invalid_input(
@@ -185,8 +256,19 @@ async def test_netting_tracker_production_short_circuits_invalid_input(
     tracker = NettingTracker(hass, "entry-6", store, None, None)
 
     assert await tracker.async_record_production(0.0, 0.2) == (0.0, 0.0, [])
-    assert await tracker.async_record_production(1.0, 0.0) == (0.0, 0.0, [])
     store.async_save.assert_not_awaited()
+
+
+async def test_netting_tracker_production_tracks_net_with_zero_tax(
+    hass: HomeAssistant,
+) -> None:
+    """Net consumption is tracked even when the current tax rate is zero."""
+    store = AsyncMock()
+    tracker = NettingTracker(hass, "entry-6b", store, None, None)
+
+    assert await tracker.async_record_production(1.0, 0.0) == (0.0, 0.0, [])
+    assert tracker.net_consumption_kwh == pytest.approx(-1.0)
+    store.async_save.assert_awaited_once()
 
 
 async def test_netting_tracker_set_net_consumption_and_reset_all(
