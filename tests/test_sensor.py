@@ -561,6 +561,69 @@ async def test_netting_credit_with_negative_production_price(hass: HomeAssistant
     assert tracker.net_consumption_kwh == pytest.approx(0.0, abs=1e-6)
 
 
+async def test_netting_consumption_profit_uses_netted_value(hass: HomeAssistant):
+    """Consumption during a negative netting balance is paid out on the base price.
+
+    With a negative balance the energy tax is not charged, so a negative base
+    price must be paid out in full. Previously the profit sensor used the
+    gross price (including tax), which swallowed the payout partly or wholly.
+    """
+    price_settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.1,
+        "vat_percentage": 21.0,
+    }
+    tracker = await NettingTracker.async_create(
+        hass, "entry_netting_consumption_profit", price_settings
+    )
+    await tracker.async_reset_all()
+    # Summer surplus: negative netting balance, so consumption is untaxed
+    await tracker.async_set_net_consumption(-5.0)
+
+    cost_sensor = DynamicEnergySensor(
+        hass,
+        "Consumption Cost",
+        "consumption_cost_pending",
+        "sensor.consumption_energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="cost_total",
+        netting_tracker=tracker,
+    )
+    profit_sensor = DynamicEnergySensor(
+        hass,
+        "Consumption Profit",
+        "consumption_profit_pending",
+        "sensor.consumption_energy",
+        SOURCE_TYPE_CONSUMPTION,
+        price_settings,
+        price_sensor="sensor.price",
+        mode="profit_total",
+        netting_tracker=tracker,
+    )
+    cost_sensor.async_write_ha_state = lambda *args, **kwargs: None
+    profit_sensor.async_write_ha_state = lambda *args, **kwargs: None
+
+    # Negative price, but gross (incl. tax) would be positive:
+    # base = -0.05 * 1.21 = -0.0605, gross = (-0.05 + 0.1) * 1.21 = +0.0605
+    cost_sensor._last_energy = 0.0
+    profit_sensor._last_energy = 0.0
+    hass.states.async_set("sensor.consumption_energy", 1.0)
+    hass.states.async_set("sensor.price", -0.05)
+    await cost_sensor.async_update()
+    await profit_sensor.async_update()
+
+    # Untaxed consumption at a negative price is a payout on the base price
+    assert cost_sensor.native_value == pytest.approx(0.0, abs=1e-9)
+    assert profit_sensor.native_value == pytest.approx(0.0605, rel=1e-6)
+    assert tracker.net_consumption_kwh == pytest.approx(-4.0, rel=1e-6)
+
+    # A second claim without new consumption books nothing extra
+    await profit_sensor.async_update()
+    assert profit_sensor.native_value == pytest.approx(0.0605, rel=1e-6)
+
+
 async def test_summary_sensor_netting_attributes(hass: HomeAssistant):
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,

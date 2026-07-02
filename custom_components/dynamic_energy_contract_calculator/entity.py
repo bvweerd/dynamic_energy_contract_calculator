@@ -159,6 +159,14 @@ class DynamicEnergySensor(BaseUtilitySensor):
             and self.mode == "cost_total"
         )
 
+    @property
+    def _uses_netting_profit(self) -> bool:
+        return (
+            self._netting_tracker is not None
+            and self.source_type == SOURCE_TYPE_CONSUMPTION
+            and self.mode == "profit_total"
+        )
+
     async def async_update(self) -> None:
         _LOGGER.debug(
             "Updating %s (mode=%s) using %s",
@@ -326,6 +334,23 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
+                    if adjusted_value < 0:
+                        # A negative netted value is a payout; the cost sensor
+                        # cannot book it, so hand it to the profit sensor of
+                        # the same energy source via the tracker.
+                        await netting_tracker.async_add_pending_profit(
+                            self.energy_sensor, -adjusted_value
+                        )
+                elif self._uses_netting_profit:
+                    netting_tracker = self._netting_tracker
+                    assert netting_tracker is not None
+                    # With netting, the consumption profit comes from the
+                    # netted value handed off by the cost sensor. The gross
+                    # price would wrongly include energy tax that netting
+                    # does not charge while the balance is negative.
+                    adjusted_value = -await netting_tracker.async_claim_pending_profit(
+                        self.energy_sensor
+                    )
                 else:
                     adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
