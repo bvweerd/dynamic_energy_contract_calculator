@@ -133,6 +133,7 @@ async def test_netting_tracker_records_consumption_and_saves(
         {
             "net_consumption_kwh": 2.0,
             "tax_contributions": [{"kwh": 2.0, "tax_rate": 0.11, "vat_factor": 1.21}],
+            "pending_consumption_profit": {},
         }
     )
 
@@ -295,6 +296,63 @@ async def test_netting_tracker_set_net_consumption_and_reset_all(
     assert tracker.net_consumption_kwh == 0.0
     assert tracker._tax_contributions == []
     assert store.async_save.await_count == 3
+
+
+async def test_netting_tracker_pending_profit_add_claim_and_reset(
+    hass: HomeAssistant,
+) -> None:
+    store = AsyncMock()
+    tracker = NettingTracker(hass, "entry-pending", store, None, None)
+
+    # Non-positive amounts are ignored
+    await tracker.async_add_pending_profit("sensor.energy", 0.0)
+    await tracker.async_add_pending_profit("sensor.energy", -1.0)
+    store.async_save.assert_not_awaited()
+
+    # Claiming with nothing pending returns 0 and does not persist
+    assert await tracker.async_claim_pending_profit("sensor.energy") == 0.0
+    store.async_save.assert_not_awaited()
+
+    # Amounts accumulate per energy source until claimed
+    await tracker.async_add_pending_profit("sensor.energy", 0.05)
+    await tracker.async_add_pending_profit("sensor.energy", 0.02)
+    await tracker.async_add_pending_profit("sensor.other", 0.10)
+    assert await tracker.async_claim_pending_profit("sensor.energy") == pytest.approx(
+        0.07
+    )
+    assert await tracker.async_claim_pending_profit("sensor.energy") == 0.0
+    assert await tracker.async_claim_pending_profit("sensor.other") == pytest.approx(
+        0.10
+    )
+
+    # Reset clears any pending amounts
+    await tracker.async_add_pending_profit("sensor.energy", 0.03)
+    await tracker.async_reset_all()
+    assert await tracker.async_claim_pending_profit("sensor.energy") == 0.0
+
+
+async def test_netting_tracker_restores_pending_profit(hass: HomeAssistant) -> None:
+    store = AsyncMock()
+    tracker = NettingTracker(
+        hass,
+        "entry-pending-restore",
+        store,
+        {
+            "net_consumption_kwh": -2.0,
+            "pending_consumption_profit": {
+                "sensor.energy": 0.05,
+                "sensor.bad": "invalid",
+                "sensor.zero": 0.0,
+            },
+        },
+        None,
+    )
+
+    assert await tracker.async_claim_pending_profit("sensor.energy") == pytest.approx(
+        0.05
+    )
+    assert await tracker.async_claim_pending_profit("sensor.bad") == 0.0
+    assert await tracker.async_claim_pending_profit("sensor.zero") == 0.0
 
 
 async def test_netting_tracker_production_drains_entire_queue(
