@@ -91,11 +91,24 @@ class NettingTracker:
         self._tax_contributions: list[TaxContribution] = []
         self._sensors: dict[str, DynamicEnergySensor] = {}
         self._price_settings = price_settings or {}
+        # Negative netted consumption values handed off by the cost sensor,
+        # keyed by energy source entity_id, awaiting pickup by the matching
+        # profit sensor.
+        self._pending_profit: dict[str, float] = {}
 
         if initial_state:
             self._net_consumption_kwh = float(
                 initial_state.get("net_consumption_kwh", 0.0)
             )
+            pending = initial_state.get("pending_consumption_profit", {})
+            if isinstance(pending, dict):
+                for source_id, amount in pending.items():
+                    try:
+                        value = float(amount)
+                    except (TypeError, ValueError):
+                        continue
+                    if value > 0:
+                        self._pending_profit[str(source_id)] = value
             # Restore tax contributions from storage
             contributions_data = initial_state.get("tax_contributions", [])
             if isinstance(contributions_data, list):
@@ -337,11 +350,35 @@ class NettingTracker:
             await self._async_save_state()
             return credited_kwh, credited_value, []
 
+    async def async_add_pending_profit(self, source_id: str, amount: float) -> None:
+        """Hand off a negative netted consumption value to the profit sensor.
+
+        When netting makes the consumption value negative (a payout), the
+        cost sensor cannot book it. The amount is parked here, keyed by the
+        energy source, until the matching profit sensor claims it.
+        """
+        if amount <= 0:
+            return
+        async with self._lock:
+            self._pending_profit[source_id] = round(
+                self._pending_profit.get(source_id, 0.0) + amount, 8
+            )
+            await self._async_save_state()
+
+    async def async_claim_pending_profit(self, source_id: str) -> float:
+        """Return and clear the pending profit for the given energy source."""
+        async with self._lock:
+            amount = self._pending_profit.pop(source_id, 0.0)
+            if amount:
+                await self._async_save_state()
+            return amount
+
     async def async_reset_all(self) -> None:
         """Reset the entire tracker state."""
         async with self._lock:
             self._net_consumption_kwh = 0.0
             self._tax_contributions.clear()
+            self._pending_profit.clear()
             await self._async_save_state()
             _LOGGER.info(
                 "Netting tracker reset: net_consumption_kwh=0.0, contributions cleared"
@@ -381,5 +418,9 @@ class NettingTracker:
         data = {
             "net_consumption_kwh": round(self._net_consumption_kwh, 8),
             "tax_contributions": [c.to_dict() for c in self._tax_contributions],
+            "pending_consumption_profit": {
+                source_id: round(amount, 8)
+                for source_id, amount in self._pending_profit.items()
+            },
         }
         await self._store.async_save(data)
