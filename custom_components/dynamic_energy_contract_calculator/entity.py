@@ -5,15 +5,14 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorStateClass,
+    RestoreSensor,
     SensorDeviceClass,
+    SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -35,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 UNAVAILABLE_GRACE_SECONDS = 60
 
 
-class BaseUtilitySensor(SensorEntity, RestoreEntity):
+class BaseUtilitySensor(RestoreSensor):
     _attr_native_value: float  # narrow the base class StateType to float
 
     def __init__(
@@ -71,6 +70,16 @@ class BaseUtilitySensor(SensorEntity, RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # Use RestoreSensor data first: this preserves the numeric value even when
+        # the sensor was "unavailable" at shutdown (e.g. price sensor was down).
+        last_sensor_data = await self.async_get_last_sensor_data()
+        if last_sensor_data is not None and last_sensor_data.native_value is not None:
+            try:
+                self._attr_native_value = float(str(last_sensor_data.native_value))
+                return
+            except (ValueError, TypeError):
+                pass
+        # Fallback: use state machine value (works when sensor was available at shutdown)
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state not in (
             "unknown",
