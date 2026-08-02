@@ -1,38 +1,50 @@
 repos:
+  # v3.15.2 crashes on Python 3.14: it calls tokenize.cookie_re, which CPython
+  # 3.14 turned into a bytes pattern, giving "cannot use a bytes pattern on a
+  # string-like object". v3.21.2 carries its own string-based _cookie_re.
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         args: [--py37-plus]
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        args:
-          - --safe
-          - --quiet
-        files: ^((homeassistant|script|tests)/.+)?[^/]+\.py$
+
+  # black was dropped here: its pin (24.4.2) predates Python 3.13, let alone
+  # 3.14, and ruff-format below already formats the same files in the same
+  # style — and unlike black's file filter, it covers custom_components/ too.
+
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.6
+    rev: v2.4.1
     hooks:
       - id: codespell
         args:
           - --ignore-words-list=hass,alot,datas,dof,dur,farenheit,hist,iff,ines,ist,lightsensor,mut,nd,pres,referer,ser,serie,te,technik,ue,uint,visability,wan,wanna,withing,bilt
-          - --skip="./.*,*.csv,*.json"
+          - --skip="./.*,*.csv,*.json,*.ambr"
           - --quiet-level=2
         exclude_types: [csv, json]
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.4.8
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
+
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
+    rev: v1.15.0
     hooks:
       - id: mypy
         always_run: true
         pass_filenames: false
+        # Pin the interpreter: without this, pre-commit builds the hook env
+        # with whatever Python it happens to run under, and pip then silently
+        # resolves homeassistant-stubs down to the newest release that old
+        # interpreter allows — type-checking against stubs that predate the
+        # APIs this integration uses, and reporting green either way.
+        language_version: python3.14
+        additional_dependencies:
+          # Floor, so an environment that cannot satisfy it fails loudly
+          # instead of quietly type-checking against two-year-old stubs.
+          - homeassistant-stubs>=2025.1.0
         args:
           - --strict
           - --ignore-missing-imports
@@ -51,4 +63,3 @@ repos:
           - --show-error-context
           - --module
           - custom_components.dynamic_energy_contract_calculator
-        files: ^custom_components/dynamic_energy_contract_calculator/.*\\.py$
