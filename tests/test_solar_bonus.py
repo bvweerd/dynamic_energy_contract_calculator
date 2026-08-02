@@ -600,6 +600,6 @@ async def test_is_daylight_hour_fallback_boundary_hours(hass: HomeAssistant):
                 "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
                 return_value=datetime(2025, 7, 1, hour, 0, 0, tzinfo=timezone.utc),
             ):
-                assert (
-                    tracker.is_daylight() is expected
-                ), f"hour={hour} expected {expected}"
+                assert tracker.is_daylight() is expected, (
+                    f"hour={hour} expected {expected}"
+                )
