@@ -52,8 +52,13 @@ jobs:
       # The pre-commit hook type-checks in its own isolated environment against
       # homeassistant-stubs; this step runs against the Home Assistant that
       # requirements.txt actually resolves, which is what the tests import.
+      # Addressed as a module, with the same package flags the hook uses:
+      # passing the directory makes mypy see __init__.py under two module
+      # names and stop before checking anything.
       - name: Run mypy
-        run: mypy --strict custom_components/dynamic_energy_contract_calculator
+        run: |
+          mypy --strict --namespace-packages --explicit-package-bases \
+            --module custom_components.dynamic_energy_contract_calculator
 
   test:
     # Home Assistant's supported Python floor decides which Home Assistant
