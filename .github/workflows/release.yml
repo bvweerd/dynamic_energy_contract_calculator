@@ -1,8 +1,13 @@
 name: Create Release
 
+# Triggered by publishing the release, not by the tag push, so the workflow
+# can read the release you created and honour the "Previous tag" you picked
+# there. GitHub does not expose that choice as a field — the only durable
+# trace is the compare link in the notes it generates — so it is recovered
+# from the release body below.
 on:
-  push:
-    tags: ["v*.*.*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -13,12 +18,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Get version from tag
         id: version
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          TAG="${{ github.event.release.tag_name }}"
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Resolve previous tag from the release notes
+        id: prev
+        env:
+          # Quoted via env rather than inlined, so a body containing quotes or
+          # backticks cannot break out of the script.
+          BODY: ${{ github.event.release.body }}
+        run: |
+          # "Generate release notes" appends a line of the form:
+          #   **Full Changelog**: https://github.com/OWNER/REPO/compare/v1.9.0...v2.0.0
+          # The tag before "..." is exactly the previous release that was
+          # selected in the UI. Take the last occurrence, in case the body
+          # quotes other compare links above it.
+          FROM_TAG=$(printf '%s\n' "$BODY" \
+            | sed -nE 's#.*/compare/([^/[:space:]]+)\.\.\.[^[:space:])]+.*#\1#p' \
+            | tail -1)
+          if [ -n "$FROM_TAG" ]; then
+            echo "Using previous tag from the release notes: $FROM_TAG"
+          else
+            echo "No compare link in the release body; letting the changelog"
+            echo "builder fall back to the most recent tag."
+          fi
+          echo "from_tag=$FROM_TAG" >> $GITHUB_OUTPUT
+
+      # bump-my-version already updates manifest.json (see .bumpversion.toml)
+      # in the very commit this tag points at, so there is nothing to rewrite
+      # here. What this does catch is a tag created by hand, which would ship a
+      # ZIP whose manifest disagrees with the version HACS offers.
+      - name: Verify the tag matches the manifest version
+        run: |
+          MANIFEST_VERSION=$(python3 -c \
+            "import json; print(json.load(open('custom_components/dynamic_energy_contract_calculator/manifest.json'))['version'])")
+          if [ "$MANIFEST_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Tag ${{ github.event.release.tag_name }} does not match" \
+                 "manifest.json version $MANIFEST_VERSION. The tag was probably" \
+                 "created by hand instead of through the Bump Version workflow."
+            exit 1
+          fi
+          echo "manifest.json version $MANIFEST_VERSION matches the tag."
 
       - name: Create release ZIP
         run: |
@@ -29,6 +75,9 @@ jobs:
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v6
         with:
+          # Empty fromTag = keep the action's own "most recent tag" detection.
+          fromTag: ${{ steps.prev.outputs.from_tag }}
+          toTag: ${{ github.event.release.tag_name }}
           commitMode: true
           configuration: |
             {
@@ -56,6 +105,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          # The release already exists (this runs on publish); naming the tag
+          # makes it update that one instead of guessing from the ref.
+          tag_name: ${{ github.event.release.tag_name }}
           files: dynamic_energy_contract_calculator.zip
           body: |
             ${{ steps.changelog.outputs.changelog }}
