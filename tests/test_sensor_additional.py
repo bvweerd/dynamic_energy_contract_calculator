@@ -594,9 +594,10 @@ async def test_current_price_schedule_sunrise_sunset_update(hass: HomeAssistant)
     tomorrow_sunrise = now + timedelta(days=1, hours=1)
     tomorrow_sunset = now + timedelta(days=1, hours=5)
     calls = {}
-    sensor.async_write_ha_state = lambda *args, **kwargs: calls.setdefault(
-        "write", 0
-    ) or calls.__setitem__("write", calls.get("write", 0) + 1)
+    sensor.async_write_ha_state = lambda *args, **kwargs: (
+        calls.setdefault("write", 0)
+        or calls.__setitem__("write", calls.get("write", 0) + 1)
+    )
 
     def fake_track_point_in_time(hass_arg, callback, when):
         calls["when"] = when
@@ -661,9 +662,10 @@ async def test_total_cost_sensor_added_with_platform_updates(hass: HomeAssistant
     )
     sensor.platform = object()
     calls = {}
-    sensor.async_write_ha_state = lambda *a, **k: calls.setdefault(
-        "write", 0
-    ) or calls.__setitem__("write", calls.get("write", 0) + 1)
+    sensor.async_write_ha_state = lambda *a, **k: (
+        calls.setdefault("write", 0)
+        or calls.__setitem__("write", calls.get("write", 0) + 1)
+    )
 
     async def fake_update():
         calls["updated"] = True
@@ -723,9 +725,10 @@ async def test_total_energy_cost_added_with_platform_updates(hass: HomeAssistant
     )
     sensor.platform = object()
     calls = {}
-    sensor.async_write_ha_state = lambda *a, **k: calls.setdefault(
-        "writes", 0
-    ) or calls.__setitem__("writes", calls.get("writes", 0) + 1)
+    sensor.async_write_ha_state = lambda *a, **k: (
+        calls.setdefault("writes", 0)
+        or calls.__setitem__("writes", calls.get("writes", 0) + 1)
+    )
 
     async def fake_update():
         calls["updated"] = True
