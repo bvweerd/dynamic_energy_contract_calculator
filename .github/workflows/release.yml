@@ -50,21 +50,16 @@ jobs:
           fi
           echo "from_tag=$FROM_TAG" >> $GITHUB_OUTPUT
 
-      # bump-my-version already updates manifest.json (see .bumpversion.toml)
-      # in the very commit this tag points at, so there is nothing to rewrite
-      # here. What this does catch is a tag created by hand, which would ship a
-      # ZIP whose manifest disagrees with the version HACS offers.
-      - name: Verify the tag matches the manifest version
+      # The tag is the single source of truth for the released version: it is
+      # created by hand when drafting the release, so the manifest committed in
+      # the repository is not expected to agree with it. Patched here rather
+      # than committed, which is what makes tagging in the GitHub UI enough on
+      # its own — hacs.json sets zip_release, so this ZIP is what HACS installs
+      # and this value is the version users see.
+      - name: Update version in manifest.json
         run: |
-          MANIFEST_VERSION=$(python3 -c \
-            "import json; print(json.load(open('custom_components/dynamic_energy_contract_calculator/manifest.json'))['version'])")
-          if [ "$MANIFEST_VERSION" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::Tag ${{ github.event.release.tag_name }} does not match" \
-                 "manifest.json version $MANIFEST_VERSION. The tag was probably" \
-                 "created by hand instead of through the Bump Version workflow."
-            exit 1
-          fi
-          echo "manifest.json version $MANIFEST_VERSION matches the tag."
+          sed -i 's/"version": "[^"]*"/"version": "${{ steps.version.outputs.version }}"/' \
+            custom_components/dynamic_energy_contract_calculator/manifest.json
 
       - name: Create release ZIP
         run: |
