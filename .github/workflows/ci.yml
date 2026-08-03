@@ -2,10 +2,9 @@ name: CI
 
 on:
   push:
-    # main is included because bump-version.yml pushes the version commit and
-    # its tag straight to main, and release.yml builds the shipped ZIP from
-    # that tag. Without main here, the one commit that reaches users is the
-    # one commit no job ever tests.
+    # main is included because releases are tagged from it and release.yml
+    # builds the shipped ZIP from that tag. Without main here, the one commit
+    # that reaches users is the one commit no job ever tests.
     branches: ["main", "dev", "feature/**", "fix/**", "hotfix/**"]
     tags-ignore: ["**"]
   pull_request:

@@ -32,7 +32,9 @@ Home Assistant custom integration (HACS) that calculates electricity and gas cos
 - `_LOGGER = logging.getLogger(__name__)` in each module
 - Type hints required on all public functions (mypy strict)
 - Config entries via `config_flow.py` using `config_entries.ConfigFlow`
-- Keep `version` in sync: `manifest.json` and `setup.cfg [bumpversion]`
+- `version` in `manifest.json` is not the released version: releases are tagged
+  by hand in the GitHub UI, and `release.yml` patches the tag's version into the
+  manifest before zipping
 
 ## Test conventions
 - Framework: `pytest-homeassistant-custom-component`
