@@ -170,8 +170,38 @@ PRESET_GREENCHOICE_GAS_2026 = {
     "reset_on_contract_anniversary": False,
 }
 
+# NextEnergy 2026: Zonnebonus contract terms.
+#
+# Deliberately carries no supply tariffs. NextEnergy does not publish its
+# inkoopvergoeding, vaste leveringskosten or netbeheerkosten: they depend on
+# when a customer signed up and are only visible in the app. Comparison sites
+# quote conflicting figures, so those fields are left out entirely — keys
+# absent from a preset are not written, which keeps whatever the user
+# configured from their own tarievenblad.
+#
+# Everything below is published by NextEnergy itself.
+PRESET_NEXTENERGY_2026 = {
+    # NextSolar is sold on charging no per-kWh feed-in cost.
+    "per_unit_supplier_electricity_production_markup": 0.0,
+    # NextEnergy settles on quarter-hour prices.
+    "average_prices_to_hourly": False,
+    # Zonnebonus: 50% over the bare exchange price, for electricity fed back
+    # between 06:00 and 22:00, up to 6000 kWh per contract year, and never
+    # negative when exchange prices are.
+    "solar_bonus_enabled": True,
+    "solar_bonus_percentage": 50.0,
+    "solar_bonus_annual_kwh_limit": 6000.0,
+    "solar_bonus_base": SOLAR_BONUS_BASE_MARKET_ONLY,
+    "solar_bonus_window_mode": SOLAR_BONUS_WINDOW_FIXED_HOURS,
+    "solar_bonus_start_hour": 6.0,
+    "solar_bonus_end_hour": 22.0,
+    "solar_bonus_limit_period": SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
+    "reset_on_contract_anniversary": True,
+}
+
 SUPPLIER_PRESETS = {
     "zonneplan_2026": PRESET_ZONNEPLAN_2026,
+    "nextenergy_2026": PRESET_NEXTENERGY_2026,
     "greenchoice_gas_2026": PRESET_GREENCHOICE_GAS_2026,
 }
 
