@@ -241,7 +241,15 @@ class SolarBonusTracker:
             if base_compensation <= 0:
                 return 0.0, 0.0
 
-            # Calculate how much production is still eligible for bonus
+            # Only kWh that actually earn the bonus count towards the annual
+            # limit, so feed-in at night or at negative prices does not use it
+            # up. Neither supplier settles this outright: Zonneplan writes "de
+            # bonus geldt tot 7.500 kWh teruglevering per kalenderjaar" and
+            # NextEnergy "je kunt tot 6.000 kWh profiteren van de Zonnebonus
+            # per contract jaar". Both phrase the limit as a cap on bonus, not
+            # on feed-in, and that is also the reading that favours the user.
+            # Counting gross feed-in instead would only mean reaching the cap
+            # sooner, and would apply to both suppliers alike.
             remaining_eligible_kwh = annual_limit_kwh - self._year_production_kwh
             if remaining_eligible_kwh <= 0:
                 return 0.0, 0.0
