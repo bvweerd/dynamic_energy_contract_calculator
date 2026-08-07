@@ -22,6 +22,9 @@ from .const import (
     CONF_SOURCES,
     DEFAULT_PRICE_SETTINGS,
     DOMAIN,
+    SOLAR_BONUS_BASE_OPTIONS,
+    SOLAR_BONUS_LIMIT_PERIOD_OPTIONS,
+    SOLAR_BONUS_WINDOW_OPTIONS,
     SOURCE_TYPE_GAS,
     SOURCE_TYPES,
     SUBENTRY_TYPE_SOURCE,
@@ -57,8 +60,20 @@ ELECTRICITY_FIELDS = ELECTRICITY_CORE_FIELDS | {
     "solar_bonus_enabled",
     "solar_bonus_percentage",
     "solar_bonus_annual_kwh_limit",
+    "solar_bonus_base",
+    "solar_bonus_window_mode",
+    "solar_bonus_start_hour",
+    "solar_bonus_end_hour",
+    "solar_bonus_limit_period",
     "contract_start_date",
     "reset_on_contract_anniversary",
+}
+
+# Price settings rendered as a dropdown instead of a free-text field.
+SELECT_FIELD_OPTIONS = {
+    "solar_bonus_base": SOLAR_BONUS_BASE_OPTIONS,
+    "solar_bonus_window_mode": SOLAR_BONUS_WINDOW_OPTIONS,
+    "solar_bonus_limit_period": SOLAR_BONUS_LIMIT_PERIOD_OPTIONS,
 }
 
 GENERAL_FIELDS = {
@@ -162,7 +177,17 @@ def _build_price_settings_schema(
         if isinstance(default, bool):
             schema_fields[vol.Required(key, default=current)] = bool
         elif isinstance(default, str):
-            if key == "contract_start_date":
+            if key in SELECT_FIELD_OPTIONS:
+                schema_fields[vol.Required(key, default=current)] = selector(
+                    {
+                        "select": {
+                            "options": SELECT_FIELD_OPTIONS[key],
+                            "mode": "dropdown",
+                            "translation_key": key,
+                        }
+                    }
+                )
+            elif key == "contract_start_date":
                 if current and current != "":
                     schema_fields[vol.Optional(key, default=current)] = selector(
                         {"date": {}}

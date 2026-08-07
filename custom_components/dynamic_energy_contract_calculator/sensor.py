@@ -38,6 +38,11 @@ from .const import (
     CONF_SOURCES,
     DOMAIN,
     DOMAIN_ABBREVIATION,
+    SOLAR_BONUS_BASE_MARKET_ONLY,
+    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+    SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
+    SOLAR_BONUS_WINDOW_FIXED_HOURS,
+    SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
@@ -653,6 +658,39 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 existing.append(entry_copy)
         return existing
 
+    def _is_in_bonus_window_at(self, timestamp: Any) -> bool:
+        """Check whether a forecast timestamp falls inside the bonus window.
+
+        Mirrors SolarBonusTracker.is_in_bonus_window for forecast entries,
+        which are evaluated at their own timestamp rather than at "now".
+        """
+        window_mode = self.price_settings.get(
+            "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
+        )
+        if window_mode != SOLAR_BONUS_WINDOW_FIXED_HOURS:
+            return self._is_daylight_at(timestamp)
+
+        try:
+            if isinstance(timestamp, str):
+                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            else:
+                dt = timestamp
+        except Exception as e:
+            _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
+            return False
+
+        # A fixed window is defined in local clock hours, so compare in the
+        # configured timezone rather than whatever the price feed supplied.
+        if dt.tzinfo is not None:
+            try:
+                dt = dt.astimezone(ZoneInfo(str(self.hass.config.time_zone)))
+            except Exception as e:  # pragma: no cover - invalid tz config
+                _LOGGER.debug("Could not convert %s to local time: %s", timestamp, e)
+
+        start_hour = int(self.price_settings.get("solar_bonus_start_hour", 6.0))
+        end_hour = int(self.price_settings.get("solar_bonus_end_hour", 22.0))
+        return bool(start_hour <= dt.hour < end_hour)
+
     def _is_daylight_at(self, timestamp: Any) -> bool:
         """Check if a given timestamp is during daylight hours.
 
@@ -947,10 +985,22 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             and self.price_settings.get("solar_bonus_enabled", False)
         )
         solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
+        solar_bonus_base = self.price_settings.get(
+            "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+        )
+        solar_bonus_window_mode = self.price_settings.get(
+            "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
+        )
 
         # If solar bonus is enabled AND averaging to hourly is enabled,
-        # we need to split entries at sunrise/sunset
-        if solar_bonus_enabled and average_to_hourly and raw_prices:
+        # we need to split entries at sunrise/sunset. A fixed-hour window
+        # always falls on whole hours, so those entries need no splitting.
+        if (
+            solar_bonus_enabled
+            and average_to_hourly
+            and raw_prices
+            and solar_bonus_window_mode != SOLAR_BONUS_WINDOW_FIXED_HOURS
+        ):
             # Get all unique dates from entries
             dates_to_check = set()
             for entry in raw_prices:
@@ -1022,14 +1072,21 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             # Apply solar bonus if conditions are met
             solar_bonus_applied = False
-            if solar_bonus_enabled and calculated is not None and calculated > 0:
-                # Check if this hour is during daylight
+            if solar_bonus_enabled and calculated is not None:
+                # The bonus is paid over the bare market price for some
+                # suppliers and over the full compensation for others, so the
+                # positive-price condition follows the same amount.
+                if solar_bonus_base == SOLAR_BONUS_BASE_MARKET_ONLY:
+                    bonus_base_amount = base
+                else:
+                    bonus_base_amount = calculated
+
                 timestamp = entry_conv.get("start") or entry_conv.get("time")
-                is_daylight = self._is_daylight_at(timestamp) if timestamp else False
-                if is_daylight:
-                    # Add solar bonus (10% extra)
-                    bonus = calculated * (solar_bonus_percentage / 100.0)
-                    calculated += bonus
+                in_window = (
+                    self._is_in_bonus_window_at(timestamp) if timestamp else False
+                )
+                if bonus_base_amount > 0 and in_window:
+                    calculated += bonus_base_amount * (solar_bonus_percentage / 100.0)
                     solar_bonus_applied = True
 
             entry_conv["value"] = calculated
@@ -1372,7 +1429,12 @@ async def async_setup_entry(
         contract_start_date = price_settings.get("contract_start_date", "")
         if sb_tracker is None:
             sb_tracker = await SolarBonusTracker.async_create(
-                hass, entry.entry_id, contract_start_date
+                hass,
+                entry.entry_id,
+                contract_start_date,
+                price_settings.get(
+                    "solar_bonus_limit_period", SOLAR_BONUS_LIMIT_CALENDAR_YEAR
+                ),
             )
             solar_bonus_map[entry.entry_id] = sb_tracker
         solar_bonus_tracker = sb_tracker

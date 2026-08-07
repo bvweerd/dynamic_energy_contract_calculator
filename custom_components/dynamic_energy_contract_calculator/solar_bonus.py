@@ -11,7 +11,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import SOLAR_BONUS_STORAGE_KEY_PREFIX, SOLAR_BONUS_STORAGE_VERSION
+from .const import (
+    SOLAR_BONUS_BASE_MARKET_ONLY,
+    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+    SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
+    SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
+    SOLAR_BONUS_STORAGE_KEY_PREFIX,
+    SOLAR_BONUS_STORAGE_VERSION,
+    SOLAR_BONUS_WINDOW_FIXED_HOURS,
+    SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     pass
@@ -29,27 +38,27 @@ class SolarBonusTracker:
         store: Store[dict[str, Any]],
         initial_state: dict[str, Any] | None,
         contract_start_date: str | None = None,
+        limit_period: str = SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
     ) -> None:
         self._lock = asyncio.Lock()
         self._store = store
         self._entry_id = entry_id
         self._hass = hass
         self._contract_start_date = self._parse_date(contract_start_date)
+        self._limit_period = limit_period
 
-        # Track production eligible for bonus this contract year
+        # Track production eligible for bonus this limit period
         self._current_contract_year_start: date | None = None
         self._year_production_kwh: float = 0.0
         self._total_bonus_euro: float = 0.0
 
-        # Calculate current contract year start
-        if self._contract_start_date:
-            self._current_contract_year_start = self._get_current_contract_year_start()
+        self._current_contract_year_start = self._get_current_period_start()
 
         if initial_state:
             stored_year_start = self._parse_date(
                 initial_state.get("contract_year_start")
             )
-            # Reset if new contract year
+            # Reset if we rolled over into a new limit period
             if stored_year_start == self._current_contract_year_start:
                 self._year_production_kwh = float(
                     initial_state.get("year_production_kwh", 0.0)
@@ -66,6 +75,21 @@ class SolarBonusTracker:
             return datetime.fromisoformat(date_str).date()
         except (ValueError, AttributeError):
             return None
+
+    def _get_current_period_start(self) -> date | None:
+        """Return the start date of the current annual-limit period.
+
+        Contract-year periods run from the contract anniversary; every other
+        configuration counts per calendar year. Falling back to the calendar
+        year matters: without it a tracker with no contract start date would
+        never reset and would exhaust its annual limit permanently.
+        """
+        if (
+            self._limit_period == SOLAR_BONUS_LIMIT_CONTRACT_YEAR
+            and self._contract_start_date
+        ):
+            return self._get_current_contract_year_start()
+        return dt_util.now().date().replace(month=1, day=1)
 
     def _get_current_contract_year_start(self) -> date | None:
         """Get the start date of the current contract year."""
@@ -95,7 +119,11 @@ class SolarBonusTracker:
 
     @classmethod
     async def async_create(
-        cls, hass: HomeAssistant, entry_id: str, contract_start_date: str | None = None
+        cls,
+        hass: HomeAssistant,
+        entry_id: str,
+        contract_start_date: str | None = None,
+        limit_period: str = SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
     ) -> SolarBonusTracker:
         """Create a tracker and restore persisted state."""
         storage_key = f"{SOLAR_BONUS_STORAGE_KEY_PREFIX}_{entry_id}"
@@ -106,7 +134,7 @@ class SolarBonusTracker:
             private=True,
         )
         initial = await store.async_load() or {}
-        return cls(hass, entry_id, store, initial, contract_start_date)
+        return cls(hass, entry_id, store, initial, contract_start_date, limit_period)
 
     @property
     def year_production_kwh(self) -> float:
@@ -140,6 +168,22 @@ class SolarBonusTracker:
         now = dt_util.now()
         return bool(6 <= now.hour < 20)
 
+    def is_in_bonus_window(
+        self,
+        window_mode: str = SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+        start_hour: float = 6.0,
+        end_hour: float = 22.0,
+    ) -> bool:
+        """Check whether the current time falls inside the bonus window.
+
+        Suppliers define this window differently: Zonneplan pays the bonus
+        from sunrise to sunset, NextEnergy between fixed clock hours.
+        """
+        if window_mode == SOLAR_BONUS_WINDOW_FIXED_HOURS:
+            hour = dt_util.now().hour
+            return bool(int(start_hour) <= hour < int(end_hour))
+        return self.is_daylight()
+
     async def async_calculate_bonus(
         self,
         delta_kwh: float,
@@ -147,6 +191,10 @@ class SolarBonusTracker:
         production_markup: float,
         bonus_percentage: float,
         annual_limit_kwh: float,
+        bonus_base: str = SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+        window_mode: str = SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+        start_hour: float = 6.0,
+        end_hour: float = 22.0,
     ) -> tuple[float, float]:
         """
         Calculate solar bonus for production delta.
@@ -157,29 +205,39 @@ class SolarBonusTracker:
             production_markup: Fixed production compensation per kWh
             bonus_percentage: Bonus percentage (e.g., 10.0 for 10%)
             annual_limit_kwh: Annual kWh limit for bonus (e.g., 7500)
+            bonus_base: Whether the percentage applies to the market price
+                only, or to the market price plus the production markup
+            window_mode: Sunrise-to-sunset or a fixed clock-hour window
+            start_hour: First hour of a fixed window (inclusive)
+            end_hour: Hour the fixed window ends (exclusive)
 
         Returns:
             Tuple of (bonus amount in euro, eligible kWh for this delta)
         """
         async with self._lock:
-            # Check if new contract year - reset if needed
-            if self._contract_start_date:
-                current_contract_year_start = self._get_current_contract_year_start()
-                if current_contract_year_start != self._current_contract_year_start:
-                    self._current_contract_year_start = current_contract_year_start
-                    self._year_production_kwh = 0.0
-                    self._total_bonus_euro = 0.0
+            # Reset the counter when we roll into a new limit period
+            current_period_start = self._get_current_period_start()
+            if current_period_start != self._current_contract_year_start:
+                self._current_contract_year_start = current_period_start
+                self._year_production_kwh = 0.0
+                self._total_bonus_euro = 0.0
 
             # Check conditions for bonus eligibility
             if delta_kwh <= 0:
                 return 0.0, 0.0
 
-            # Must be during daylight hours
-            if not self.is_daylight():
+            # Must be inside the supplier's bonus window
+            if not self.is_in_bonus_window(window_mode, start_hour, end_hour):
                 return 0.0, 0.0
 
-            # Base compensation must be positive
-            base_compensation = base_price + production_markup
+            # The amount the bonus percentage applies to. Suppliers that pay a
+            # percentage over the bare market price ignore the production
+            # markup entirely — including for the positive-price condition, so
+            # feed-in charges cannot suppress an otherwise valid bonus.
+            if bonus_base == SOLAR_BONUS_BASE_MARKET_ONLY:
+                base_compensation = base_price
+            else:
+                base_compensation = base_price + production_markup
             if base_compensation <= 0:
                 return 0.0, 0.0
 
@@ -207,10 +265,7 @@ class SolarBonusTracker:
         async with self._lock:
             self._year_production_kwh = 0.0
             self._total_bonus_euro = 0.0
-            if self._contract_start_date:
-                self._current_contract_year_start = (
-                    self._get_current_contract_year_start()
-                )
+            self._current_contract_year_start = self._get_current_period_start()
             await self._async_save_state()
 
     async def _async_save_state(self) -> None:

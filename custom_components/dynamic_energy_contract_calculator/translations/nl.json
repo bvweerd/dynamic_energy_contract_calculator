@@ -1,4 +1,24 @@
 {
+  "selector": {
+    "solar_bonus_base": {
+      "options": {
+        "market_plus_markup": "Marktprijs + terugleververgoeding (Zonneplan)",
+        "market_only": "Alleen de beursprijs (NextEnergy)"
+      }
+    },
+    "solar_bonus_window_mode": {
+      "options": {
+        "sunrise_sunset": "Zonsopkomst tot zonsondergang (Zonneplan)",
+        "fixed_hours": "Vaste klokuren (NextEnergy 06:00-22:00)"
+      }
+    },
+    "solar_bonus_limit_period": {
+      "options": {
+        "calendar_year": "Kalenderjaar (Zonneplan)",
+        "contract_year": "Contractjaar (NextEnergy)"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -35,8 +55,13 @@
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
           "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag",
           "solar_bonus_enabled": "Zonnebonus inschakelen",
-          "solar_bonus_percentage": "Zonnebonus percentage",
-          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet",
+          "solar_bonus_percentage": "Zonnebonus percentage (Zonneplan 10%, NextEnergy 50%)",
+          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet (Zonneplan 7500, NextEnergy 6000)",
+          "solar_bonus_base": "Zonnebonus wordt berekend over",
+          "solar_bonus_window_mode": "Zonnebonus tijdvenster",
+          "solar_bonus_start_hour": "Zonnebonus beginuur (alleen bij vast venster, NextEnergy 6)",
+          "solar_bonus_end_hour": "Zonnebonus einduur (alleen bij vast venster, NextEnergy 22)",
+          "solar_bonus_limit_period": "Zonnebonus limietperiode",
           "contract_start_date": "Contract startdatum",
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }
@@ -79,8 +104,13 @@
           "per_day_grid_operator_gas_connection_fee": "Aansluitkosten gas per dag",
           "per_day_supplier_gas_standing_charge": "Vaste kosten gas per dag",
           "solar_bonus_enabled": "Zonnebonus inschakelen",
-          "solar_bonus_percentage": "Zonnebonus percentage",
-          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet",
+          "solar_bonus_percentage": "Zonnebonus percentage (Zonneplan 10%, NextEnergy 50%)",
+          "solar_bonus_annual_kwh_limit": "Zonnebonus jaarlijkse kWh limiet (Zonneplan 7500, NextEnergy 6000)",
+          "solar_bonus_base": "Zonnebonus wordt berekend over",
+          "solar_bonus_window_mode": "Zonnebonus tijdvenster",
+          "solar_bonus_start_hour": "Zonnebonus beginuur (alleen bij vast venster, NextEnergy 6)",
+          "solar_bonus_end_hour": "Zonnebonus einduur (alleen bij vast venster, NextEnergy 22)",
+          "solar_bonus_limit_period": "Zonnebonus limietperiode",
           "contract_start_date": "Contract startdatum",
           "reset_on_contract_anniversary": "Alle meters resetten op contract verjaardag"
         }

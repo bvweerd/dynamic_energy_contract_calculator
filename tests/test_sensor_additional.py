@@ -23,6 +23,8 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
     DOMAIN,
+    SOLAR_BONUS_BASE_MARKET_ONLY,
+    SOLAR_BONUS_WINDOW_FIXED_HOURS,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
@@ -517,6 +519,71 @@ async def test_current_price_average_and_convert_helpers(hass: HomeAssistant):
     assert converted[1]["value"] == pytest.approx(2.0)
     assert converted[1]["solar_bonus_applied"] is False
     assert sensor._convert_raw_prices("invalid") is None
+
+
+async def test_convert_raw_prices_fixed_window_market_only(hass: HomeAssistant):
+    """Forecast prices follow the fixed window and the market-only bonus base.
+
+    A fixed window is defined in local clock hours, so UTC forecast
+    timestamps are converted first (hass runs on Europe/Amsterdam here).
+    """
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Helper",
+        "helper-nextenergy",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": True,
+            "per_unit_supplier_electricity_production_markup": -0.022,
+            "solar_bonus_enabled": True,
+            "solar_bonus_percentage": 50.0,
+            "solar_bonus_base": SOLAR_BONUS_BASE_MARKET_ONLY,
+            "solar_bonus_window_mode": SOLAR_BONUS_WINDOW_FIXED_HOURS,
+            "solar_bonus_start_hour": 6.0,
+            "solar_bonus_end_hour": 22.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "helper-nextenergy")}),
+    )
+
+    converted = sensor._convert_raw_prices(
+        [
+            {"start": "2026-06-15T03:00:00+00:00", "value": 0.10},  # 05:00 local
+            {"start": "2026-06-15T10:00:00+00:00", "value": 0.10},  # 12:00 local
+            {"start": "2026-06-15T20:00:00+00:00", "value": 0.10},  # 22:00 local
+            # 13:00 local, below the feed-in charge: the bonus is still due on
+            # the market price, even though the net compensation is negative.
+            {"start": "2026-06-15T11:00:00+00:00", "value": 0.015},
+        ]
+    )
+    by_start = {entry["start"]: entry for entry in converted}
+
+    # Outside the 06:00-22:00 local window: compensation only, no bonus
+    before = by_start["2026-06-15T03:00:00+00:00"]
+    assert before["solar_bonus_applied"] is False
+    assert before["value"] == pytest.approx(0.10 - 0.022)
+
+    # 22:00 local is the exclusive end of the window
+    after = by_start["2026-06-15T20:00:00+00:00"]
+    assert after["solar_bonus_applied"] is False
+    assert after["value"] == pytest.approx(0.10 - 0.022)
+
+    # Inside the window: 50% of the market price on top of the compensation
+    midday = by_start["2026-06-15T10:00:00+00:00"]
+    assert midday["solar_bonus_applied"] is True
+    assert midday["value"] == pytest.approx(0.10 - 0.022 + 0.05)
+
+    low = by_start["2026-06-15T11:00:00+00:00"]
+    assert low["solar_bonus_applied"] is True
+    assert low["value"] == pytest.approx(0.015 - 0.022 + 0.0075)
+
+    # An unusable timestamp cannot be placed in the window, so no bonus
+    assert sensor._is_in_bonus_window_at("not-a-timestamp") is False
+    # A naive timestamp is read as local time
+    assert sensor._is_in_bonus_window_at(datetime(2026, 6, 15, 12, 0, 0)) is True
 
 
 async def test_current_price_scheduling_and_cleanup(hass: HomeAssistant):
