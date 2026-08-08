@@ -30,7 +30,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration. A preset only overwrites the settings it defines, so values it leaves out keep whatever you configured. 'NextEnergy 2026' carries the Zonnebonus terms only, because NextEnergy does not publish its supply tariffs. Choose 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -79,7 +79,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration. A preset only overwrites the settings it defines, so values it leaves out keep whatever you configured. 'NextEnergy 2026' carries the Zonnebonus terms only, because NextEnergy does not publish its supply tariffs. Choose 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }

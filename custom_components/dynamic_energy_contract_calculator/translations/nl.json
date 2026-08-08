@@ -30,7 +30,7 @@
       },
       "load_preset": {
         "title": "Leverancier Preset Laden",
-        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie. Een preset overschrijft alleen de instellingen die hij zelf bevat; wat hij weglaat behoudt jouw eigen waarde. 'NextEnergy 2026' bevat uitsluitend de Zonnebonus-voorwaarden, omdat NextEnergy zijn leveringstarieven niet publiceert. Kies 'None' om de huidige instellingen te behouden.",
         "data": {
           "supplier_preset": "Leverancier preset"
         }
@@ -79,7 +79,7 @@
       },
       "load_preset": {
         "title": "Leverancier Preset Laden",
-        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie om alle prijsparameters automatisch in te stellen. Kies 'Zonneplan 2025' voor Zonneplan contractvoorwaarden, of 'None' om huidige instellingen te behouden.",
+        "description": "Selecteer een vooraf gedefinieerde leveranciersconfiguratie. Een preset overschrijft alleen de instellingen die hij zelf bevat; wat hij weglaat behoudt jouw eigen waarde. 'NextEnergy 2026' bevat uitsluitend de Zonnebonus-voorwaarden, omdat NextEnergy zijn leveringstarieven niet publiceert. Kies 'None' om de huidige instellingen te behouden.",
         "data": {
           "supplier_preset": "Leverancier preset"
         }
