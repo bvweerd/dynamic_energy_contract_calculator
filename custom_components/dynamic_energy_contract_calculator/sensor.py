@@ -578,6 +578,27 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 return None
         return round(price, 8)
 
+    def _price_with_solar_bonus(self, base_price: float) -> float | None:
+        """Return the price for right now, including any solar bonus due.
+
+        _calculate_price carries no bonus term. The paths that set the state
+        straight from it would otherwise report a price that the forecast in
+        net_prices_today contradicts, because _convert_raw_prices does add the
+        bonus. Both must apply the same rule.
+        """
+        price = self._calculate_price(base_price)
+        if price is None:
+            return None
+        if self.source_type != SOURCE_TYPE_PRODUCTION or not self.price_settings.get(
+            "solar_bonus_enabled", False
+        ):
+            return price
+
+        if price > 0 and self._is_daylight_at(dt_util.now()):
+            percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
+            price = round(price + price * (percentage / 100.0), 8)
+        return price
+
     def _normalize_price_entries(self, entries: Any) -> list[dict[str, Any]] | None:
         """Return list of entries with numeric value field."""
         if not isinstance(entries, list):
@@ -1117,7 +1138,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             self._schedule_next_price_change()
         else:
             # Without averaging: calculate price directly from current base price
-            price = self._calculate_price(total_price)
+            price = self._price_with_solar_bonus(total_price)
             if price is not None:
                 self._attr_native_value = price
 
@@ -1181,7 +1202,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                         total_price += float(state.state)
                     except ValueError:
                         pass
-            price = self._calculate_price(total_price)
+            price = self._price_with_solar_bonus(total_price)
             if price is not None:
                 self._attr_native_value = price
 
@@ -1285,7 +1306,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                         except ValueError:
                             pass
 
-                price = self._calculate_price(total_price)
+                price = self._price_with_solar_bonus(total_price)
                 if price is not None:
                     self._attr_native_value = price
 
