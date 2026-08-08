@@ -17,6 +17,10 @@ from .const import (
     CONF_PRICE_SETTINGS,
     DOMAIN,
     DOMAIN_ABBREVIATION,
+    SOLAR_BONUS_BASE_MARKET_ONLY,
+    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+    SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
+    SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
@@ -71,7 +75,12 @@ async def async_setup_entry(
         if solar_bonus_tracker is None:
             contract_start_date = price_settings.get("contract_start_date", "")
             solar_bonus_tracker = await SolarBonusTracker.async_create(
-                hass, entry.entry_id, contract_start_date
+                hass,
+                entry.entry_id,
+                contract_start_date,
+                price_settings.get(
+                    "solar_bonus_limit_period", SOLAR_BONUS_LIMIT_CALENDAR_YEAR
+                ),
             )
             solar_bonus_map[entry.entry_id] = solar_bonus_tracker
 
@@ -161,8 +170,14 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         # Check if solar bonus conditions are met
         is_active = False
 
-        # Check if daylight
-        if self._solar_bonus_tracker.is_daylight():
+        # Check if we are inside the supplier's bonus window
+        if self._solar_bonus_tracker.is_in_bonus_window(
+            self._price_settings.get(
+                "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
+            ),
+            self._price_settings.get("solar_bonus_start_hour", 6.0),
+            self._price_settings.get("solar_bonus_end_hour", 22.0),
+        ):
             # Check if under annual limit
             annual_limit = self._price_settings.get(
                 "solar_bonus_annual_kwh_limit", 7500.0
@@ -180,7 +195,18 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
                             production_markup = self._price_settings.get(
                                 "per_unit_supplier_electricity_production_markup", 0.0
                             )
-                            total_price = base_price + production_markup
+                            # Mirror the tracker: a market-only bonus ignores
+                            # the production markup for this condition too.
+                            if (
+                                self._price_settings.get(
+                                    "solar_bonus_base",
+                                    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+                                )
+                                == SOLAR_BONUS_BASE_MARKET_ONLY
+                            ):
+                                total_price = base_price
+                            else:
+                                total_price = base_price + production_markup
                             if total_price > 0:
                                 is_active = True
                         except (ValueError, TypeError):

@@ -1,4 +1,24 @@
 {
+  "selector": {
+    "solar_bonus_base": {
+      "options": {
+        "market_plus_markup": "Market price + production compensation (Zonneplan)",
+        "market_only": "Market price only (NextEnergy)"
+      }
+    },
+    "solar_bonus_window_mode": {
+      "options": {
+        "sunrise_sunset": "Sunrise to sunset (Zonneplan)",
+        "fixed_hours": "Fixed clock hours (NextEnergy 06:00-22:00)"
+      }
+    },
+    "solar_bonus_limit_period": {
+      "options": {
+        "calendar_year": "Calendar year (Zonneplan)",
+        "contract_year": "Contract year (NextEnergy)"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -10,7 +30,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration. A preset only overwrites the settings it defines, so values it leaves out keep whatever you configured. 'NextEnergy 2026' carries the Zonnebonus terms only, because NextEnergy does not publish its supply tariffs. Choose 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -35,8 +55,13 @@
           "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
           "per_day_supplier_gas_standing_charge": "Gas standing charge per day",
           "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
-          "solar_bonus_percentage": "Solar bonus percentage",
-          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
+          "solar_bonus_percentage": "Solar bonus percentage (Zonneplan 10%, NextEnergy 50%)",
+          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit (Zonneplan 7500, NextEnergy 6000)",
+          "solar_bonus_base": "Solar bonus applies to",
+          "solar_bonus_window_mode": "Solar bonus time window",
+          "solar_bonus_start_hour": "Solar bonus start hour (fixed window only, NextEnergy 6)",
+          "solar_bonus_end_hour": "Solar bonus end hour (fixed window only, NextEnergy 22)",
+          "solar_bonus_limit_period": "Solar bonus limit period",
           "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
@@ -54,7 +79,7 @@
       },
       "load_preset": {
         "title": "Load Supplier Preset",
-        "description": "Select a predefined supplier configuration to automatically set all price parameters. Choose 'Zonneplan 2026' to load Zonneplan contract terms, or 'None' to keep current settings.",
+        "description": "Select a predefined supplier configuration. A preset only overwrites the settings it defines, so values it leaves out keep whatever you configured. 'NextEnergy 2026' carries the Zonnebonus terms only, because NextEnergy does not publish its supply tariffs. Choose 'None' to keep current settings.",
         "data": {
           "supplier_preset": "Supplier preset"
         }
@@ -79,8 +104,13 @@
           "per_day_grid_operator_gas_connection_fee": "Gas connection fee per day",
           "per_day_supplier_gas_standing_charge": "Gas standing charge per day",
           "solar_bonus_enabled": "Enable solar bonus (zonnebonus)",
-          "solar_bonus_percentage": "Solar bonus percentage",
-          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit",
+          "solar_bonus_percentage": "Solar bonus percentage (Zonneplan 10%, NextEnergy 50%)",
+          "solar_bonus_annual_kwh_limit": "Solar bonus annual kWh limit (Zonneplan 7500, NextEnergy 6000)",
+          "solar_bonus_base": "Solar bonus applies to",
+          "solar_bonus_window_mode": "Solar bonus time window",
+          "solar_bonus_start_hour": "Solar bonus start hour (fixed window only, NextEnergy 6)",
+          "solar_bonus_end_hour": "Solar bonus end hour (fixed window only, NextEnergy 22)",
+          "solar_bonus_limit_period": "Solar bonus limit period",
           "contract_start_date": "Contract start date",
           "reset_on_contract_anniversary": "Reset all meters on contract anniversary"
         }
