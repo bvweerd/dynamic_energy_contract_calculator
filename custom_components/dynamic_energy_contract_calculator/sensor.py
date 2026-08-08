@@ -1550,7 +1550,11 @@ async def async_setup_entry(
                 price_sensor=price_sensor,
                 source_type=SOURCE_TYPE_CONSUMPTION,
                 price_settings=price_settings,
-                icon="mdi:transmission-tower-import",
+                # MDI names these from the tower's point of view, which reads
+                # backwards here: -export is tagged power-from-grid and
+                # -import power-to-grid / return-to-grid. SENSOR_MODES_ELECTRICITY
+                # above already follows that.
+                icon="mdi:transmission-tower-export",
                 device=device_info,
             )
         )
@@ -1562,7 +1566,7 @@ async def async_setup_entry(
                 price_sensor=price_sensor,
                 source_type=SOURCE_TYPE_PRODUCTION,
                 price_settings=price_settings,
-                icon="mdi:transmission-tower-export",
+                icon="mdi:transmission-tower-import",
                 device=device_info,
             )
         )
