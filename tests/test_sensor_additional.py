@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import AsyncMock
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+from zoneinfo import ZoneInfo
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from custom_components.dynamic_energy_contract_calculator.entity import (
@@ -688,7 +690,7 @@ async def test_current_price_schedule_sunrise_sunset_update(hass: HomeAssistant)
             fake_track_point_in_time,
         )
 
-        sensor._schedule_sunrise_sunset_updates()
+        sensor._schedule_bonus_window_updates()
         assert calls["when"] == sunrise
 
         await calls["callback"](sunrise)
@@ -1217,9 +1219,7 @@ async def test_current_price_async_update_without_averaging_schedules_sunrise(
     )
     hass.states.async_set("sensor.price", 1.0, {"raw_today": [], "raw_tomorrow": []})
     called = {}
-    sensor._schedule_sunrise_sunset_updates = lambda: called.setdefault(
-        "scheduled", True
-    )
+    sensor._schedule_bonus_window_updates = lambda: called.setdefault("scheduled", True)
 
     # Pin daylight rather than depend on the wall clock at test time
     with pytest.MonkeyPatch.context() as mp:
@@ -1336,7 +1336,7 @@ async def test_current_price_handle_sunrise_sunset_callback_invalid_float(
             lambda date_obj: (now + timedelta(hours=1), None),
         )
         mp.setattr(sensor_module, "async_track_point_in_time", fake_track_point_in_time)
-        sensor._schedule_sunrise_sunset_updates()
+        sensor._schedule_bonus_window_updates()
         await calls["callback"](now + timedelta(hours=1))
 
     assert calls["writes"] == 1
@@ -1555,7 +1555,7 @@ async def test_current_price_state_includes_solar_bonus_without_averaging(
         device=DeviceInfo(identifiers={("d", "direct-price")}),
     )
     hass.states.async_set("sensor.price", 0.10)
-    sensor._schedule_sunrise_sunset_updates = lambda: None
+    sensor._schedule_bonus_window_updates = lambda: None
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
@@ -1641,8 +1641,132 @@ async def test_scheduled_sun_event_writes_bonus_price(hass: HomeAssistant):
         )
         mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
         mp.setattr(sensor_module, "async_track_point_in_time", fake_track_point_in_time)
-        sensor._schedule_sunrise_sunset_updates()
+        sensor._schedule_bonus_window_updates()
         await calls["callback"](sunrise)
 
     assert sensor.native_value == pytest.approx(0.132)
     assert calls["write"] is True
+
+
+async def test_schedule_bonus_window_updates_fixed_hours(hass: HomeAssistant):
+    """A fixed window schedules on its clock hours, not on the sun."""
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Fixed Window",
+        "fixed-window-schedule",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": False,
+            "solar_bonus_enabled": True,
+            "solar_bonus_window_mode": SOLAR_BONUS_WINDOW_FIXED_HOURS,
+            "solar_bonus_start_hour": 6.0,
+            "solar_bonus_end_hour": 22.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "fixed-window-schedule")}),
+    )
+    calls: dict[str, Any] = {}
+
+    def fake_track_point_in_time(hass_arg, callback, when):
+        calls["when"] = when
+        return lambda: None
+
+    def run_at(local_hour: int) -> datetime:
+        pinned = datetime(
+            2026, 6, 15, local_hour, 30, tzinfo=ZoneInfo("Europe/Amsterdam")
+        )
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(sensor_module.dt_util, "now", lambda: pinned)
+            mp.setattr(
+                sensor_module,
+                "_astral_sun",
+                lambda *a, **k: pytest.fail("fixed window must not consult the sun"),
+            )
+            mp.setattr(
+                sensor_module,
+                "async_track_point_in_time",
+                fake_track_point_in_time,
+            )
+            sensor._schedule_bonus_window_updates()
+        return calls["when"]
+
+    # Before the window opens: next edge is today's start hour
+    assert run_at(4).hour == 6
+    assert run_at(4).date() == date(2026, 6, 15)
+
+    # Inside the window: next edge is today's end hour
+    assert run_at(12).hour == 22
+    assert run_at(12).date() == date(2026, 6, 15)
+
+    # After it closes: next edge is tomorrow's start hour
+    assert run_at(23).hour == 6
+    assert run_at(23).date() == date(2026, 6, 16)
+
+
+async def test_current_price_state_matches_attributes_nextenergy(
+    hass: HomeAssistant,
+):
+    """The state must not contradict net_prices_today for a NextEnergy setup.
+
+    NextEnergy settles on quarter-hour prices, so average_prices_to_hourly is
+    off and the state is calculated directly instead of read from the
+    converted forecast. Both paths have to agree, including on the
+    market-only bonus base.
+    """
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "NextEnergy Production",
+        "nextenergy-state",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": False,
+            "per_unit_supplier_electricity_production_markup": 0.0,
+            "solar_bonus_enabled": True,
+            "solar_bonus_percentage": 50.0,
+            "solar_bonus_base": SOLAR_BONUS_BASE_MARKET_ONLY,
+            "solar_bonus_window_mode": SOLAR_BONUS_WINDOW_FIXED_HOURS,
+            "solar_bonus_start_hour": 6.0,
+            "solar_bonus_end_hour": 22.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "nextenergy-state")}),
+    )
+    hass.states.async_set(
+        "sensor.price",
+        0.10,
+        {"raw_today": [{"start": "2026-06-15T10:00:00+00:00", "value": 0.10}]},
+    )
+    # The pinned clock is in the past, so a real timer would fire at once on
+    # an entity that was never added to a platform.
+    sensor._schedule_bonus_window_updates = lambda: None
+
+    # 12:00 local, inside the 06:00-22:00 window
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            sensor_module.dt_util,
+            "now",
+            lambda: datetime(2026, 6, 15, 10, 0, tzinfo=timezone.utc),
+        )
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(0.15)
+    forecast = sensor.extra_state_attributes["net_prices_today"]
+    assert forecast[0]["value"] == pytest.approx(0.15)
+    assert sensor.native_value == pytest.approx(forecast[0]["value"])
+
+    # 04:00 local, outside the window
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            sensor_module.dt_util,
+            "now",
+            lambda: datetime(2026, 6, 15, 2, 0, tzinfo=timezone.utc),
+        )
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(0.10)

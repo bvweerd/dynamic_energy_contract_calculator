@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
 
@@ -599,9 +599,19 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         ):
             return price
 
-        if price > 0 and self._is_daylight_at(dt_util.now()):
+        if (
+            self.price_settings.get(
+                "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+            )
+            == SOLAR_BONUS_BASE_MARKET_ONLY
+        ):
+            bonus_base_amount = base_price
+        else:
+            bonus_base_amount = price
+
+        if bonus_base_amount > 0 and self._is_in_bonus_window_at(dt_util.now()):
             percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
-            price = round(price + price * (percentage / 100.0), 8)
+            price = round(price + bonus_base_amount * (percentage / 100.0), 8)
         return price
 
     def _normalize_price_entries(self, entries: Any) -> list[dict[str, Any]] | None:
@@ -1199,9 +1209,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             if price is not None:
                 self._attr_native_value = price
 
-            # But still schedule sunrise/sunset updates if solar bonus is enabled
+            # But still schedule window updates if solar bonus is enabled
             if solar_bonus_enabled:
-                self._schedule_sunrise_sunset_updates()
+                self._schedule_bonus_window_updates()
 
     def _update_current_price(self) -> None:
         """Update the current price based on the current time and net_prices."""
@@ -1308,11 +1318,13 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 self.hass, handle_next_change, next_change
             )
 
-    def _schedule_sunrise_sunset_updates(self) -> None:
-        """Schedule updates at sunrise and sunset for solar bonus (without averaging).
+    def _schedule_bonus_window_updates(self) -> None:
+        """Schedule updates at the edges of the solar bonus window.
 
-        This is used when average_prices_to_hourly is False but solar_bonus is enabled.
-        The sensor will update at sunrise/sunset to apply/remove the solar bonus.
+        Used when average_prices_to_hourly is False but solar_bonus is
+        enabled. Without per-entry prices to drive the schedule, the sensor
+        has to wake itself when the bonus starts or stops applying — at
+        sunrise and sunset, or at the fixed window hours.
         """
         # Cancel existing schedule
         if self._price_change_unsub:
@@ -1320,39 +1332,42 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             self._price_change_unsub = None
 
         now = dt_util.now()
-
-        # Get sunrise/sunset times for today and tomorrow
         today = now.date()
         tomorrow = today + timedelta(days=1)
 
-        sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
-        sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
+        candidates: list[datetime] = []
+        if (
+            self.price_settings.get(
+                "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
+            )
+            == SOLAR_BONUS_WINDOW_FIXED_HOURS
+        ):
+            # Boundaries are local clock hours; combining with the current
+            # tzinfo keeps them right across a DST change.
+            start_hour = int(self.price_settings.get("solar_bonus_start_hour", 6.0))
+            end_hour = int(self.price_settings.get("solar_bonus_end_hour", 22.0))
+            candidates = [
+                datetime.combine(day, time(hour=hour % 24), tzinfo=now.tzinfo)
+                for day in (today, tomorrow)
+                for hour in (start_hour, end_hour)
+            ]
+        else:
+            for day in (today, tomorrow):
+                sunrise, sunset = self._get_sunrise_sunset_times(day)
+                candidates.extend(event for event in (sunrise, sunset) if event)
 
-        # Find the next sunrise or sunset
-        next_event = None
-        candidates = []
-
-        if sunrise_today and sunrise_today > now:
-            candidates.append(sunrise_today)
-        if sunset_today and sunset_today > now:
-            candidates.append(sunset_today)
-        if sunrise_tomorrow and sunrise_tomorrow > now:
-            candidates.append(sunrise_tomorrow)
-        if sunset_tomorrow and sunset_tomorrow > now:
-            candidates.append(sunset_tomorrow)
-
-        if candidates:
-            next_event = min(candidates)
+        upcoming = [event for event in candidates if event > now]
+        next_event = min(upcoming) if upcoming else None
 
         if next_event:
             _LOGGER.debug(
-                "Scheduling sunrise/sunset update for %s at %s",
+                "Scheduling bonus window update for %s at %s",
                 self.entity_id,
                 next_event,
             )
 
-            async def handle_sun_event(now: datetime) -> None:
-                """Handle sunrise/sunset event - recalculate price and reschedule."""
+            async def handle_window_event(now: datetime) -> None:
+                """Handle a window edge - recalculate price and reschedule."""
                 # Recalculate the price
                 total_price = 0.0
                 for sensor in self.price_sensors:
@@ -1368,10 +1383,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                     self._attr_native_value = price
 
                 self.async_write_ha_state()
-                self._schedule_sunrise_sunset_updates()
+                self._schedule_bonus_window_updates()
 
             self._price_change_unsub = async_track_point_in_time(
-                self.hass, handle_sun_event, next_event
+                self.hass, handle_window_event, next_event
             )
 
     async def async_added_to_hass(self) -> None:
