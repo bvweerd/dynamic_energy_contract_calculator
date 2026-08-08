@@ -5,6 +5,12 @@ from datetime import date, datetime, timezone
 from unittest.mock import patch
 from homeassistant.core import HomeAssistant
 
+from custom_components.dynamic_energy_contract_calculator.const import (
+    SOLAR_BONUS_BASE_MARKET_ONLY,
+    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+    SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
+    SOLAR_BONUS_WINDOW_FIXED_HOURS,
+)
 from custom_components.dynamic_energy_contract_calculator.solar_bonus import (
     SolarBonusTracker,
 )
@@ -537,7 +543,10 @@ async def test_solar_bonus_reset_year_with_contract_date(hass: HomeAssistant):
         return_value=datetime(2025, 7, 1, 12, 0, 0, tzinfo=timezone.utc),
     ):
         tracker = await SolarBonusTracker.async_create(
-            hass, "test_entry_25", contract_start_date="2024-01-15"
+            hass,
+            "test_entry_25",
+            contract_start_date="2024-01-15",
+            limit_period=SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
         )
 
         # Add some production
@@ -559,6 +568,207 @@ async def test_solar_bonus_reset_year_with_contract_date(hass: HomeAssistant):
         assert tracker.total_bonus_euro == 0.0
         # Contract year start should be updated
         assert tracker._current_contract_year_start == date(2025, 1, 15)
+
+
+@pytest.mark.parametrize(
+    ("hour", "expect_bonus"),
+    [(5, False), (6, True), (13, True), (21, True), (22, False), (23, False)],
+)
+async def test_fixed_hour_window(hass: HomeAssistant, hour: int, expect_bonus: bool):
+    """A fixed window pays between start_hour and end_hour, exclusive of the end."""
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2026, 6, 15, hour, 30, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(hass, f"fixed_window_{hour}")
+
+        bonus, eligible = await tracker.async_calculate_bonus(
+            delta_kwh=10.0,
+            base_price=0.10,
+            production_markup=0.0,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_ONLY,
+            window_mode=SOLAR_BONUS_WINDOW_FIXED_HOURS,
+            start_hour=6.0,
+            end_hour=22.0,
+        )
+
+    if expect_bonus:
+        assert bonus == pytest.approx(10.0 * 0.10 * 0.5)
+        assert eligible == 10.0
+    else:
+        assert bonus == 0.0
+        assert eligible == 0.0
+
+
+async def test_fixed_window_ignores_sun_state(hass: HomeAssistant):
+    """A fixed window must not consult the sun, unlike sunrise-to-sunset."""
+    hass.states.async_set("sun.sun", "below_horizon")
+
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2026, 12, 21, 7, 0, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(hass, "winter_morning")
+
+        bonus, _ = await tracker.async_calculate_bonus(
+            delta_kwh=5.0,
+            base_price=0.10,
+            production_markup=0.0,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_ONLY,
+            window_mode=SOLAR_BONUS_WINDOW_FIXED_HOURS,
+        )
+
+    assert bonus == pytest.approx(5.0 * 0.10 * 0.5)
+
+
+async def test_market_only_base_excludes_production_markup(hass: HomeAssistant):
+    """A market-only bonus is a percentage of the bare market price."""
+    tracker = await SolarBonusTracker.async_create(hass, "market_only_base")
+
+    with patch.object(tracker, "is_daylight", return_value=True):
+        bonus, _ = await tracker.async_calculate_bonus(
+            delta_kwh=100.0,
+            base_price=0.10,
+            production_markup=-0.022,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_ONLY,
+        )
+
+    # 50% of the market price alone, feed-in charges do not reduce it
+    assert bonus == pytest.approx(100.0 * 0.10 * 0.5)
+
+
+async def test_market_only_base_pays_below_feed_in_charge(hass: HomeAssistant):
+    """Feed-in charges must not suppress a market-only bonus at low prices.
+
+    With a €0.022/kWh feed-in charge, market + markup is negative for any
+    market price under €0.022 — which would wrongly zero the bonus for a
+    supplier that pays over the bare market price.
+    """
+    tracker = await SolarBonusTracker.async_create(hass, "low_price_band")
+
+    with patch.object(tracker, "is_daylight", return_value=True):
+        market_only, _ = await tracker.async_calculate_bonus(
+            delta_kwh=100.0,
+            base_price=0.015,
+            production_markup=-0.022,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_ONLY,
+        )
+
+    assert market_only == pytest.approx(100.0 * 0.015 * 0.5)
+
+    other = await SolarBonusTracker.async_create(hass, "low_price_band_incl")
+    with patch.object(other, "is_daylight", return_value=True):
+        with_markup, _ = await other.async_calculate_bonus(
+            delta_kwh=100.0,
+            base_price=0.015,
+            production_markup=-0.022,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+        )
+
+    # The full compensation is negative here, so no bonus is due
+    assert with_markup == 0.0
+
+
+async def test_market_only_base_still_skips_negative_prices(hass: HomeAssistant):
+    """No bonus is paid — and none is charged — at negative market prices."""
+    tracker = await SolarBonusTracker.async_create(hass, "negative_market")
+
+    with patch.object(tracker, "is_daylight", return_value=True):
+        bonus, eligible = await tracker.async_calculate_bonus(
+            delta_kwh=100.0,
+            base_price=-0.05,
+            production_markup=0.0,
+            bonus_percentage=50.0,
+            annual_limit_kwh=6000.0,
+            bonus_base=SOLAR_BONUS_BASE_MARKET_ONLY,
+        )
+
+    assert bonus == 0.0
+    assert eligible == 0.0
+
+
+async def test_calendar_year_counter_resets_without_contract_date(
+    hass: HomeAssistant,
+):
+    """Without a contract date the counter must still reset each calendar year."""
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2026, 12, 31, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(hass, "calendar_reset")
+
+        with patch.object(tracker, "is_daylight", return_value=True):
+            await tracker.async_calculate_bonus(
+                delta_kwh=5000.0,
+                base_price=0.10,
+                production_markup=0.02,
+                bonus_percentage=10.0,
+                annual_limit_kwh=7500.0,
+            )
+
+        assert tracker.year_production_kwh == 5000.0
+
+    # Roll over into the next calendar year
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2027, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        with patch.object(tracker, "is_daylight", return_value=True):
+            await tracker.async_calculate_bonus(
+                delta_kwh=10.0,
+                base_price=0.10,
+                production_markup=0.02,
+                bonus_percentage=10.0,
+                annual_limit_kwh=7500.0,
+            )
+
+        assert tracker.year_production_kwh == 10.0
+        assert tracker.total_bonus_euro == pytest.approx(10.0 * 0.12 * 0.10)
+
+
+async def test_nextenergy_annual_limit_is_capped(hass: HomeAssistant):
+    """The bonus stops once the annual limit is reached, feed-in continues."""
+    with patch(
+        "homeassistant.util.dt.now",
+        return_value=datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
+    ):
+        tracker = await SolarBonusTracker.async_create(
+            hass,
+            "nextenergy_cap",
+            contract_start_date="2026-03-01",
+            limit_period=SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
+        )
+
+        kwargs = {
+            "base_price": 0.10,
+            "production_markup": 0.0,
+            "bonus_percentage": 50.0,
+            "annual_limit_kwh": 6000.0,
+            "bonus_base": SOLAR_BONUS_BASE_MARKET_ONLY,
+            "window_mode": SOLAR_BONUS_WINDOW_FIXED_HOURS,
+        }
+
+        _, eligible = await tracker.async_calculate_bonus(delta_kwh=5900.0, **kwargs)
+        assert eligible == 5900.0
+
+        # Only the remaining 100 kWh of this delta qualifies
+        bonus, eligible = await tracker.async_calculate_bonus(delta_kwh=500.0, **kwargs)
+        assert eligible == 100.0
+        assert bonus == pytest.approx(100.0 * 0.10 * 0.5)
+
+        bonus, eligible = await tracker.async_calculate_bonus(delta_kwh=500.0, **kwargs)
+        assert eligible == 0.0
+        assert bonus == 0.0
 
 
 # Note: Lines 89-90 (leap year fallback for last year) and 125-128 (exception handler fallback)
