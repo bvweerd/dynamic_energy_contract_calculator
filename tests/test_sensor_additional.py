@@ -626,7 +626,9 @@ async def test_current_price_schedule_sunrise_sunset_update(hass: HomeAssistant)
 
         await calls["callback"](sunrise)
 
-    assert sensor.native_value == pytest.approx(1.5)
+    # Sunrise is what this update exists for, so the state it writes has to
+    # carry the bonus — 1.5 + 10% — like the forecast attributes do.
+    assert sensor.native_value == pytest.approx(1.65)
 
 
 async def test_solar_bonus_status_sensor_update(hass: HomeAssistant):
@@ -1152,10 +1154,19 @@ async def test_current_price_async_update_without_averaging_schedules_sunrise(
         "scheduled", True
     )
 
-    await sensor.async_update()
+    # Pin daylight rather than depend on the wall clock at test time
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(1.1)
+    assert called["scheduled"] is True
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: False)
+        await sensor.async_update()
 
     assert sensor.native_value == pytest.approx(1.0)
-    assert called["scheduled"] is True
 
 
 async def test_sensor_async_setup_entry_creates_new_trackers(hass: HomeAssistant):
@@ -1449,3 +1460,122 @@ async def test_is_contract_anniversary_helper():
     assert _is_contract_anniversary("2020-02-29", date(2025, 3, 1)) is False
     # Feb 29 on actual leap year matches exactly
     assert _is_contract_anniversary("2020-02-29", date(2024, 2, 29)) is True
+
+
+async def test_current_price_state_includes_solar_bonus_without_averaging(
+    hass: HomeAssistant,
+):
+    """Without averaging the state is calculated directly, and must carry the bonus.
+
+    net_prices_today already includes it, so a state without it contradicts
+    the sensor's own attributes.
+    """
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Direct Price",
+        "direct-price",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": False,
+            "per_unit_supplier_electricity_production_markup": 0.02,
+            "solar_bonus_enabled": True,
+            "solar_bonus_percentage": 10.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "direct-price")}),
+    )
+    hass.states.async_set("sensor.price", 0.10)
+    sensor._schedule_sunrise_sunset_updates = lambda: None
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(0.132)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: False)
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(0.12)
+
+
+async def test_current_price_fallback_includes_solar_bonus(hass: HomeAssistant):
+    """The averaged path falls back to a direct calculation, which needs the bonus too.
+
+    A price sensor that publishes no raw_today leaves _update_current_price
+    with nothing to match, so averaging being enabled is no guarantee the
+    state comes from the converted forecast.
+    """
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Fallback Price",
+        "fallback-price",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": True,
+            "per_unit_supplier_electricity_production_markup": 0.02,
+            "solar_bonus_enabled": True,
+            "solar_bonus_percentage": 10.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "fallback-price")}),
+    )
+    hass.states.async_set("sensor.price", 0.10)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
+        await sensor.async_update()
+
+    assert sensor.native_value == pytest.approx(0.132)
+
+
+async def test_scheduled_sun_event_writes_bonus_price(hass: HomeAssistant):
+    """The sunrise/sunset update exists to change the price, so it must apply the bonus."""
+    sensor = CurrentElectricityPriceSensor(
+        hass,
+        "Sun Event",
+        "sun-event-bonus",
+        price_sensor="sensor.price",
+        source_type=SOURCE_TYPE_PRODUCTION,
+        price_settings={
+            "production_price_include_vat": False,
+            "average_prices_to_hourly": False,
+            "per_unit_supplier_electricity_production_markup": 0.02,
+            "solar_bonus_enabled": True,
+            "solar_bonus_percentage": 10.0,
+            "vat_percentage": 0.0,
+        },
+        icon="mdi:flash",
+        device=DeviceInfo(identifiers={("d", "sun-event-bonus")}),
+    )
+    hass.states.async_set("sensor.price", 0.10)
+    now = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+    sunrise = now + timedelta(hours=1)
+    calls = {}
+    sensor.async_write_ha_state = lambda *a, **k: calls.setdefault("write", True)
+
+    def fake_track_point_in_time(hass_arg, callback, when):
+        calls["callback"] = callback
+        return lambda: None
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor_module.dt_util, "now", lambda: now)
+        mp.setattr(
+            sensor,
+            "_get_sunrise_sunset_times",
+            lambda date_obj: (sunrise, now + timedelta(hours=5)),
+        )
+        mp.setattr(sensor, "_is_daylight_at", lambda timestamp: True)
+        mp.setattr(sensor_module, "async_track_point_in_time", fake_track_point_in_time)
+        sensor._schedule_sunrise_sunset_updates()
+        await calls["callback"](sunrise)
+
+    assert sensor.native_value == pytest.approx(0.132)
+    assert calls["write"] is True
