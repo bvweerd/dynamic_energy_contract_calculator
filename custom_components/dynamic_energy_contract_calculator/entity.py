@@ -16,6 +16,8 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
+    SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
@@ -393,6 +395,17 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         production_markup=markup_production,
                         bonus_percentage=bonus_percentage,
                         annual_limit_kwh=annual_limit,
+                        bonus_base=self.price_settings.get(
+                            "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+                        ),
+                        window_mode=self.price_settings.get(
+                            "solar_bonus_window_mode",
+                            SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+                        ),
+                        start_hour=self.price_settings.get(
+                            "solar_bonus_start_hour", 6.0
+                        ),
+                        end_hour=self.price_settings.get("solar_bonus_end_hour", 22.0),
                     )
 
                     if solar_bonus_amount > 0:
