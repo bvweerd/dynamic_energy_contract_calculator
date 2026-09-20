@@ -54,6 +54,38 @@ from .solar_bonus import SolarBonusTracker
 
 _LOGGER = logging.getLogger(__name__)
 
+# Cap attribute lists to keep serialised state below the HA 16 KB DB limit.
+# At 15-min resolution a single day has 96 entries; two days would be ~23 KB.
+_MAX_NET_PRICE_STEPS = 96  # 24 h × 4 steps/h at 15-min resolution
+
+
+def _compute_sun_times(
+    latitude: float,
+    longitude: float,
+    timezone: str,
+    date_obj: Any,
+) -> tuple[datetime | None, datetime | None]:
+    """Return (sunrise, sunset) for *date_obj*.
+
+    This function performs blocking disk I/O via pytz/astral and **must** be
+    called inside an executor (``hass.async_add_executor_job``).
+    """
+    if not _ASTRAL_AVAILABLE:
+        return None, None
+    try:
+        location = LocationInfo(
+            name="Home",
+            region="",
+            timezone=timezone,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
+        return s["sunrise"], s["sunset"]
+    except Exception as exc:
+        _LOGGER.debug("Sunrise/sunset calculation failed for %s: %s", date_obj, exc)
+        return None, None
+
 
 def _is_contract_anniversary(contract_start_date: str, check_date: date) -> bool:
     """Return True if check_date falls on a contract anniversary (same month/day)."""
@@ -551,6 +583,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             "net_prices_tomorrow": None,
         }
         self._price_change_unsub: Callable[[], None] | None = None
+        # Cache populated by _async_prefetch_sun_times before sync helpers are
+        # called – avoids blocking disk I/O (pytz) on the event loop.
+        self._sun_times_cache: dict[date, tuple[datetime | None, datetime | None]] = {}
 
     def _calculate_price(self, base_price: float) -> float | None:
         if self.source_type == SOURCE_TYPE_GAS:
@@ -743,52 +778,23 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if not _ASTRAL_AVAILABLE:
             return 7 <= dt.hour < 19
 
-        # Try to use astral for precise calculation
+        # Determine the local date for the timestamp.
         try:
-            # Get location from Home Assistant config
-            latitude = self.hass.config.latitude
-            longitude = self.hass.config.longitude
             timezone = str(self.hass.config.time_zone)
-
-            # Validate we have location data
-            if latitude is None or longitude is None:
-                raise ValueError("No location configured")
-
-            # Create location info
-            location = LocationInfo(
-                name="Home",
-                region="",
-                timezone=timezone,
-                latitude=latitude,
-                longitude=longitude,
-            )
-
-            # Calculate sun times for the date of the timestamp
-            # Use the date in the local timezone
             if dt.tzinfo is None:
-                # Assume local time if no timezone
                 check_date = dt.date()
+                dt = dt.replace(tzinfo=ZoneInfo(timezone))
             else:
-                # Convert to local timezone
                 local_dt = dt.astimezone(ZoneInfo(timezone))
                 check_date = local_dt.date()
 
-            s = _astral_sun(location.observer, date=check_date, tzinfo=timezone)
-            sunrise = s["sunrise"]
-            sunset = s["sunset"]
-
-            # Compare timestamp with sunrise/sunset
-            # Make sure we're comparing timezone-aware datetimes
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=ZoneInfo(timezone))
+            sunrise, sunset = self._get_sunrise_sunset_times(check_date)
+            if sunrise is None or sunset is None:
+                return 7 <= dt.hour < 19
 
             return bool(sunrise <= dt < sunset)
-
         except Exception as e:
-            # astral calculation failed, use hour-based fallback
             _LOGGER.debug("Using hour-based daylight check (astral failed: %s)", e)
-            # Fallback: Conservative hour-based check
-            # 7 AM to 7 PM covers daylight hours year-round in NL
             return 7 <= dt.hour < 19
 
     def _average_to_hourly(self, raw_prices: Any) -> Any:
@@ -895,31 +901,52 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
     def _get_sunrise_sunset_times(
         self, date_obj: Any
     ) -> tuple[datetime | None, datetime | None]:
-        """Get sunrise and sunset times for a specific date.
+        """Return (sunrise, sunset) for *date_obj* from the pre-populated cache.
 
-        Returns tuple of (sunrise, sunset) as datetime objects, or (None, None) if unavailable.
+        Call ``_async_prefetch_sun_times`` before this method to avoid blocking
+        disk I/O on the event loop.  If the date is missing from the cache
+        (e.g. called before prefetch) we fall back to the blocking computation
+        with a debug log so the regression is visible.
         """
         if not _ASTRAL_AVAILABLE:
             return None, None
 
-        try:
-            latitude = self.hass.config.latitude
-            longitude = self.hass.config.longitude
-            timezone = str(self.hass.config.time_zone)
+        if isinstance(date_obj, date) and date_obj in self._sun_times_cache:
+            return self._sun_times_cache[date_obj]
 
-            location = LocationInfo(
-                name="Home",
-                region="",
-                timezone=timezone,
-                latitude=latitude,
-                longitude=longitude,
-            )
+        # Fallback – should not happen during normal operation because
+        # async_update calls _async_prefetch_sun_times first.
+        _LOGGER.debug(
+            "Sun-times cache miss for %s – computing synchronously (may block loop)",
+            date_obj,
+        )
+        return _compute_sun_times(
+            self.hass.config.latitude,
+            self.hass.config.longitude,
+            str(self.hass.config.time_zone),
+            date_obj,
+        )
 
-            s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
-            return s["sunrise"], s["sunset"]
-        except Exception as e:
-            _LOGGER.debug("Sunrise/sunset calculation failed for %s: %s", date_obj, e)
-            return None, None
+    async def _async_prefetch_sun_times(self, dates: set[date]) -> None:
+        """Populate the sun-times cache for *dates* via an executor.
+
+        This ensures that subsequent synchronous calls to
+        ``_get_sunrise_sunset_times`` (from ``_convert_raw_prices``,
+        ``_is_daylight_at``, ``_schedule_sunrise_sunset_updates``, …) do not
+        perform blocking disk I/O on the event loop.
+        """
+        if not _ASTRAL_AVAILABLE:
+            return
+
+        latitude = self.hass.config.latitude
+        longitude = self.hass.config.longitude
+        timezone = str(self.hass.config.time_zone)
+
+        for d in dates:
+            if d not in self._sun_times_cache:
+                self._sun_times_cache[d] = await self.hass.async_add_executor_job(
+                    _compute_sun_times, latitude, longitude, timezone, d
+                )
 
     def _split_entry_at_sunrise_sunset(
         self, entry: dict[str, Any], sunrise: datetime | None, sunset: datetime | None
@@ -1162,22 +1189,43 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             return
         self._attr_available = True
 
+        # Pre-populate the sun-times cache in an executor so that subsequent
+        # synchronous helpers (_convert_raw_prices, _is_daylight_at,
+        # _schedule_sunrise_sunset_updates) never block the event loop via pytz.
+        today = dt_util.now().date()
+        tomorrow = today + timedelta(days=1)
+        dates_needed: set[date] = {today, tomorrow}
+        for price_list in (raw_today, raw_tomorrow):
+            if isinstance(price_list, list):
+                for entry in price_list:
+                    ts = entry.get("start") or entry.get("time")
+                    if isinstance(ts, str):
+                        try:
+                            dates_needed.add(
+                                datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+                            )
+                        except ValueError:
+                            pass
+        await self._async_prefetch_sun_times(dates_needed)
+
         self._net_today = self._convert_raw_prices(raw_today)
         self._net_tomorrow = self._convert_raw_prices(raw_tomorrow)
 
-        # Build attributes dictionary
+        # Build attributes dictionary; cap lists to stay below the 16 KB HA limit.
+        cap = _MAX_NET_PRICE_STEPS
         attributes: dict[str, Any] = {
-            "net_prices_today": self._net_today,
-            "net_prices_tomorrow": self._net_tomorrow,
+            "net_prices_today": self._net_today[:cap]
+            if self._net_today
+            else self._net_today,
+            "net_prices_tomorrow": self._net_tomorrow[:cap]
+            if self._net_tomorrow
+            else self._net_tomorrow,
         }
 
         # Add sunrise/sunset info for production sensors with solar bonus
         if self.source_type == SOURCE_TYPE_PRODUCTION and self.price_settings.get(
             "solar_bonus_enabled", False
         ):
-            today = dt_util.now().date()
-            tomorrow = today + timedelta(days=1)
-
             sunrise_today, sunset_today = self._get_sunrise_sunset_times(today)
             sunrise_tomorrow, sunset_tomorrow = self._get_sunrise_sunset_times(tomorrow)
 
