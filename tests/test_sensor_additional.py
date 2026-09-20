@@ -693,6 +693,9 @@ async def test_current_price_schedule_sunrise_sunset_update(hass: HomeAssistant)
         sensor._schedule_bonus_window_updates()
         assert calls["when"] == sunrise
 
+        # Advance the clock to sunrise so _price_with_solar_bonus sees a time
+        # that is inside the bonus window (sunrise <= now < sunset).
+        mp.setattr(sensor_module.dt_util, "now", lambda: sunrise)
         await calls["callback"](sunrise)
 
     # Sunrise is what this update exists for, so the state it writes has to
