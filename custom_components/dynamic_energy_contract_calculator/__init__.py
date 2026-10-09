@@ -27,6 +27,7 @@ from .const import (
 )
 from homeassistant.helpers.storage import Store
 
+from .device_compat import move_device_to_subentry
 from .services import async_register_services, async_unregister_services
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -137,16 +138,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
             for domain, identifier in device.identifiers:
                 if domain == DOMAIN and identifier in base_id_to_subentry:
-                    subentry_id = base_id_to_subentry[identifier]
-                    dev_reg.async_update_device(
-                        device.id,
-                        add_config_entry_id=entry.entry_id,
-                        add_config_subentry_id=subentry_id,
-                    )
-                    dev_reg.async_update_device(
-                        device.id,
-                        remove_config_entry_id=entry.entry_id,
-                        remove_config_subentry_id=None,
+                    move_device_to_subentry(
+                        dev_reg,
+                        device,
+                        entry.entry_id,
+                        base_id_to_subentry[identifier],
                     )
                     break
 

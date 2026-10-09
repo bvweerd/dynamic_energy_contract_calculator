@@ -28,6 +28,19 @@ from custom_components.dynamic_energy_contract_calculator.entity import (
 )
 
 
+def _subentries_for(device: dr.DeviceEntry, entry_id: str) -> set[str | None]:
+    """Return the device's subentries under entry_id, on any HA release.
+
+    Home Assistant 2026.10 gives a device a single config entry and subentry and
+    deprecates config_entries_subentries; older releases only have the latter.
+    """
+    if hasattr(device, "config_entry_id"):
+        if device.config_entry_id != entry_id:
+            return set()
+        return {device.config_subentry_id}
+    return device.config_entries_subentries.get(entry_id, set())
+
+
 async def test_async_setup(hass: HomeAssistant):
     result = await async_setup(hass, {})
     assert result
@@ -171,9 +184,7 @@ async def test_migrate_entry_v1_to_v2_migrates_registries(hass: HomeAssistant) -
         entry_type=DeviceEntryType.SERVICE,
     )
     # Verify device starts under main entry (no subentry)
-    assert entry.entry_id in device.config_entries
-    initial_subentries = device.config_entries_subentries.get(entry.entry_id, set())
-    assert None in initial_subentries
+    assert None in _subentries_for(device, entry.entry_id)
 
     # Pre-populate entity registry with old entity (no subentry)
     ent_reg = er.async_get(hass)
@@ -201,9 +212,7 @@ async def test_migrate_entry_v1_to_v2_migrates_registries(hass: HomeAssistant) -
     # Device registry must have sub-entry association and no main-entry (None) association
     updated_device = dev_reg.async_get(device.id)
     assert updated_device is not None
-    subentries_for_entry = updated_device.config_entries_subentries.get(
-        entry.entry_id, set()
-    )
+    subentries_for_entry = _subentries_for(updated_device, entry.entry_id)
     assert expected_subentry_id in subentries_for_entry
     assert None not in subentries_for_entry
 

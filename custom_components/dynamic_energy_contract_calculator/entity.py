@@ -395,12 +395,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         production_markup=markup_production,
                         bonus_percentage=bonus_percentage,
                         annual_limit_kwh=annual_limit,
-                        bonus_base=self.price_settings.get(
-                            "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+                        bonus_base=str(
+                            self.price_settings.get(
+                                "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+                            )
                         ),
-                        window_mode=self.price_settings.get(
-                            "solar_bonus_window_mode",
-                            SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+                        window_mode=str(
+                            self.price_settings.get(
+                                "solar_bonus_window_mode",
+                                SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+                            )
                         ),
                         start_hour=self.price_settings.get(
                             "solar_bonus_start_hour", 6.0

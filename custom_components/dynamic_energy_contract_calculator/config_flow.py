@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import (
     ConfigFlowContext,
@@ -30,6 +29,14 @@ from .const import (
     SUBENTRY_TYPE_SOURCE,
     SUPPLIER_PRESETS,
 )
+
+if TYPE_CHECKING:  # pragma: no cover
+    # Home Assistant 2026.10+ validates with probatio and aliases voluptuous to it
+    # at runtime, so Core's signatures expect probatio types. Older releases still
+    # ship voluptuous, which is why the runtime import stays as it is.
+    import probatio as vol
+else:
+    import voluptuous as vol
 
 STEP_SELECT_SOURCES = "select_sources"
 STEP_PRICE_SETTINGS = "price_settings"
