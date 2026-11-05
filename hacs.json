@@ -1,6 +1,6 @@
 {
   "name": "Dynamic Energy Contract Calculator",
-  "render_readme": true,
   "zip_release": true,
-  "filename": "dynamic_energy_contract_calculator.zip"
+  "filename": "dynamic_energy_contract_calculator.zip",
+  "homeassistant": "2026.2.0"
 }
