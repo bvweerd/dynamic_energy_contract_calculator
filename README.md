@@ -4,6 +4,7 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 
 ![Example summary sensors](assets/readme/example_summary_sensors.png)
 
+<!-- ha-marketplace:exclude-start -->
 ## Installation
 
 1. **Via the Marketplace (Home Assistant 2026.11+):**
@@ -17,6 +18,8 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 2. **Manual installation:**
    - Copy the `dynamic_energy_contract_calculator` folder from `custom_components` into your Home Assistant `custom_components` directory.
    - Restart Home Assistant.
+
+<!-- ha-marketplace:exclude-end -->
 
 ## Configuration
 
