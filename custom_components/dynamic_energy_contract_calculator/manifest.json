@@ -7,9 +7,9 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/bvweerd/dynamic_energy_calculator",
+  "documentation": "https://github.com/bvweerd/dynamic_energy_contract_calculator",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_calculator/issues",
+  "issue_tracker": "https://github.com/bvweerd/dynamic_energy_contract_calculator/issues",
   "quality_scale": "bronze",
   "requirements": [],
   "version": "2.0.0"
