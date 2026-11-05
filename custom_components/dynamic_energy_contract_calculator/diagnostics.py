@@ -78,10 +78,10 @@ async def async_get_config_entry_diagnostics(
     for subentry in entry.subentries.values():
         if subentry.subentry_type == SUBENTRY_TYPE_SOURCE:
             for source in subentry.data.get(CONF_SOURCES, []):
-                state = hass.states.get(source)
+                source_state = hass.states.get(source)
                 state_dict = None
-                if state:
-                    state_dict = async_redact_data(state.as_dict(), REDACT_STATE)
+                if source_state:
+                    state_dict = async_redact_data(source_state.as_dict(), REDACT_STATE)
                 sources.append(
                     {
                         "entity_id": source,

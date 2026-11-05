@@ -51,19 +51,13 @@ jobs:
       # The pre-commit hook type-checks in its own isolated environment against
       # homeassistant-stubs; this step runs against the Home Assistant that
       # requirements.txt actually resolves, which is what the tests import.
-      # Addressed as a module, with the same package flags the hook uses:
-      # passing the directory makes mypy see __init__.py under two module
-      # names and stop before checking anything.
-      # --python-version overrides the 3.13 target in setup.cfg, which the
-      # pre-commit hook keeps: that hook reads .pyi stubs, but this step
-      # parses Home Assistant's own source, and 2026.8 uses the unparenthesised
-      # "except A, B:" form that only exists from 3.14 on. Asking mypy to read
-      # it as 3.13 is a syntax error before any checking starts.
+      # Addressed as a package so every submodule is checked: --module only
+      # checks __init__.py, and with follow_imports = silent the errors in
+      # config_flow.py, services.py etc. never surfaced.
       - name: Run mypy
         run: |
           mypy --strict --namespace-packages --explicit-package-bases \
-            --python-version 3.14 \
-            --module custom_components.dynamic_energy_contract_calculator
+            --package custom_components.dynamic_energy_contract_calculator
 
   test:
     # Home Assistant's supported Python floor decides which Home Assistant

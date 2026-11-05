@@ -4,16 +4,22 @@ This Home Assistant custom integration adds utility sensors that calculate elect
 
 ![Example summary sensors](assets/readme/example_summary_sensors.png)
 
+<!-- ha-marketplace:exclude-start -->
 ## Installation
 
-1. **Via [HACS](https://hacs.xyz/):**
-   - Add this repository as a custom integration in HACS.
-   - Install **Dynamic Energy Contract Calculator** from the HACS list of integrations.
+1. **Via the Marketplace (Home Assistant 2026.11+):**
+   - Go to **Settings → Marketplace**, search for **Dynamic Energy Contract Calculator** and select **Install**.
+   - Installed through HACS before 2026.11? Nothing to do: it is migrated to the Marketplace automatically.
+
+   **Via [HACS](https://hacs.xyz/) (2026.10 and older):**
+   - Search for **Dynamic Energy Contract Calculator** in HACS → Integrations and download it.
    - Restart Home Assistant to load the integration.
 
 2. **Manual installation:**
    - Copy the `dynamic_energy_contract_calculator` folder from `custom_components` into your Home Assistant `custom_components` directory.
    - Restart Home Assistant.
+
+<!-- ha-marketplace:exclude-end -->
 
 ## Configuration
 

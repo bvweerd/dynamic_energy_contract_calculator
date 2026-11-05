@@ -11,7 +11,7 @@ from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_point_in_time,
     async_track_state_change_event,
@@ -48,6 +48,7 @@ from .const import (
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
+from .device_compat import device_in_main_entry, move_device_to_subentry
 from .entity import BaseUtilitySensor, DynamicEnergySensor
 from .netting import NettingTracker
 from .solar_bonus import SolarBonusTracker
@@ -1471,11 +1472,13 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    from .__init__ import DynamicEnergyConfigEntry
+    from . import DynamicEnergyConfigEntry
 
-    typed_entry: DynamicEnergyConfigEntry = entry  # type: ignore[assignment]
+    typed_entry: DynamicEnergyConfigEntry = entry
     price_settings = entry.options.get(
         CONF_PRICE_SETTINGS, entry.data.get(CONF_PRICE_SETTINGS, {})
     )
@@ -1598,21 +1601,10 @@ async def async_setup_entry(
         for sensor in sources:
             base_id = sensor.replace(".", "_")
             existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
-            if existing is not None:
-                entry_subentries = existing.config_entries_subentries.get(
-                    entry.entry_id, set()
+            if existing is not None and device_in_main_entry(existing, entry.entry_id):
+                move_device_to_subentry(
+                    dev_reg, existing, entry.entry_id, subentry.subentry_id
                 )
-                if None in entry_subentries:
-                    dev_reg.async_update_device(
-                        existing.id,
-                        add_config_entry_id=entry.entry_id,
-                        add_config_subentry_id=subentry.subentry_id,
-                    )
-                    dev_reg.async_update_device(
-                        existing.id,
-                        remove_config_entry_id=entry.entry_id,
-                        remove_config_subentry_id=None,
-                    )
 
         async_add_entities(
             subentry_entities, True, config_subentry_id=subentry.subentry_id
