@@ -1,6 +1,7 @@
 {
   "domain": "dynamic_energy_contract_calculator",
   "name": "Dynamic Energy Contract Calculator",
+  "categories": ["energy.energy_prices", "energy.meters_monitoring"],
   "codeowners": [
     "@bvweerd"
   ],
