@@ -1598,9 +1598,15 @@ async def async_setup_entry(
         # installs. This must happen before async_add_entities so the device already has
         # the real subentry association when HA processes the entities.
         dev_reg = dr.async_get(hass)
+        # async_get_device is deprecated (identifiers are no longer unique
+        # across config entries); the per-entry lookup exists from HA 2026.10.
+        get_by_identifier = getattr(dev_reg, "async_get_device_by_identifier", None)
         for sensor in sources:
             base_id = sensor.replace(".", "_")
-            existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
+            if get_by_identifier is not None:
+                existing = get_by_identifier((DOMAIN, base_id), entry.entry_id)
+            else:
+                existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
             if existing is not None and device_in_main_entry(existing, entry.entry_id):
                 move_device_to_subentry(
                     dev_reg, existing, entry.entry_id, subentry.subentry_id
