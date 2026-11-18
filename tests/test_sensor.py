@@ -1,30 +1,31 @@
-import pytest
 from datetime import datetime
-from homeassistant.core import HomeAssistant
+
+import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 
-from custom_components.dynamic_energy_contract_calculator.entity import (
-    BaseUtilitySensor,
-    DynamicEnergySensor,
-)
-from custom_components.dynamic_energy_contract_calculator.sensor import (
-    TotalCostSensor,
-    TotalEnergyCostSensor,
-    DailyGasCostSensor,
-    DailyElectricityCostSensor,
-    CurrentElectricityPriceSensor,
-)
-from homeassistant.helpers import entity_registry as er
 from custom_components.dynamic_energy_contract_calculator.const import (
     DOMAIN,
     SOURCE_TYPE_CONSUMPTION,
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
 )
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    BaseUtilitySensor,
+    DynamicEnergySensor,
+)
 from custom_components.dynamic_energy_contract_calculator.netting import (
     NettingTracker,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import (
+    CurrentElectricityPriceSensor,
+    DailyElectricityCostSensor,
+    DailyGasCostSensor,
+    TotalCostSensor,
+    TotalEnergyCostSensor,
 )
 
 
@@ -94,7 +95,7 @@ async def test_dynamic_energy_sensor_multiple_prices(hass: HomeAssistant):
 
 
 async def test_dynamic_energy_sensor_one_price_sensor_unavailable(hass: HomeAssistant):
-    """When one of multiple price sensors is unavailable, only valid ones are summed."""
+    """A partial sum is a wrong price: wait until every price sensor is back."""
     price_settings = {
         "per_unit_supplier_electricity_markup": 0.0,
         "per_unit_government_electricity_tax": 0.0,
@@ -115,9 +116,15 @@ async def test_dynamic_energy_sensor_one_price_sensor_unavailable(hass: HomeAssi
     hass.states.async_set("sensor.price1", "unavailable")
     hass.states.async_set("sensor.price2", 0.4)
     await sensor.async_update()
-    # Only price2 contributes; sensor stays available
+    # Nothing is booked at the partial price of 0.4 €/kWh
+    assert sensor._attr_available is False
+    assert sensor.native_value == pytest.approx(0.0)
+
+    # The delta stays pending and is booked at the full price once back
+    hass.states.async_set("sensor.price1", 0.1)
+    await sensor.async_update()
     assert sensor._attr_available is True
-    assert sensor.native_value == pytest.approx(0.4)
+    assert sensor.native_value == pytest.approx(0.5)
 
 
 async def test_dynamic_energy_sensor_all_price_sensors_unavailable(hass: HomeAssistant):
@@ -857,7 +864,8 @@ async def test_current_price_handle_price_change_unavailable(hass: HomeAssistant
     sensor.async_write_ha_state = lambda *a, **k: called.update({"write": True})
     event = type("Event", (), {"data": {"new_state": None}})()
     await sensor._handle_price_change(event)
-    assert not called
+    # The outage is written, not left as a stale available state
+    assert called.get("write")
     assert not sensor.available
 
 

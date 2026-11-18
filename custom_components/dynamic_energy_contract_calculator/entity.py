@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
+    SensorExtraStoredData,
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
@@ -22,7 +24,8 @@ from .const import (
     SOURCE_TYPE_GAS,
     SOURCE_TYPE_PRODUCTION,
 )
-from .repair import async_report_issue, async_clear_issue
+from .netting import KWH_SPLIT_MODES
+from .repair import async_clear_issue, async_report_issue
 
 if TYPE_CHECKING:  # pragma: no cover - runtime import would create a cycle
     from .netting import NettingTracker
@@ -35,9 +38,56 @@ _LOGGER = logging.getLogger(__name__)
 # Seconds to wait before creating an unavailable issue
 UNAVAILABLE_GRACE_SECONDS = 60
 
+PRICE_PROBLEM_UNAVAILABLE = "unavailable"
+PRICE_PROBLEM_INVALID = "invalid"
+
+
+def read_price_sum(
+    hass: HomeAssistant, sensor_ids: Sequence[str]
+) -> tuple[float | None, dict[str, str]]:
+    """Return the summed state of all price sensors and any problems found.
+
+    The configured price is the sum of every price sensor, for example a
+    market price plus a surcharge sensor. A partial sum is a wrong price, so
+    the sum is None as soon as one sensor is missing, unavailable or not
+    numeric. The second value maps each such sensor to
+    PRICE_PROBLEM_UNAVAILABLE or PRICE_PROBLEM_INVALID.
+    """
+    total = 0.0
+    problems: dict[str, str] = {}
+    for sensor_id in sensor_ids:
+        state = hass.states.get(sensor_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            problems[sensor_id] = PRICE_PROBLEM_UNAVAILABLE
+            continue
+        try:
+            total += float(state.state)
+        except (ValueError, TypeError):
+            problems[sensor_id] = PRICE_PROBLEM_INVALID
+    if problems or not sensor_ids:
+        return None, problems
+    return total, problems
+
+
+@dataclass
+class DynamicEnergyExtraStoredData(SensorExtraStoredData):
+    """Restore data that also keeps the last energy meter reading."""
+
+    last_energy: float | None
+
+    def as_dict(self) -> dict[str, Any]:
+        data = super().as_dict()
+        data["last_energy"] = self.last_energy
+        return data
+
 
 class BaseUtilitySensor(RestoreSensor):
     _attr_native_value: float  # narrow the base class StateType to float
+    # Whether this is a meter that starts again from zero each contract year
+    _resets_with_contract_year = True
+    # Set by the platform when a contract-year reset was missed while Home
+    # Assistant was not running: the anniversary of that reset.
+    _reset_on_restore: date | None = None
 
     def __init__(
         self,
@@ -72,6 +122,12 @@ class BaseUtilitySensor(RestoreSensor):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        await self._async_restore_value()
+        if self._reset_on_restore is not None:
+            _LOGGER.debug("Restoring %s as zero for a missed reset", self.entity_id)
+            self._attr_native_value = 0.0
+
+    async def _async_restore_value(self) -> None:
         # Use RestoreSensor data first: this preserves the numeric value even when
         # the sensor was "unavailable" at shutdown (e.g. price sensor was down).
         last_sensor_data = await self.async_get_last_sensor_data()
@@ -168,6 +224,21 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._netting_tracker is not None
             and self.source_type == SOURCE_TYPE_CONSUMPTION
             and self.mode == "cost_total"
+        )
+
+    @property
+    def _uses_netting_kwh_split(self) -> bool:
+        return (
+            self._netting_tracker is not None
+            and self.source_type == SOURCE_TYPE_CONSUMPTION
+            and self.mode in KWH_SPLIT_MODES
+        )
+
+    @property
+    def extra_restore_state_data(self) -> DynamicEnergyExtraStoredData:
+        """Keep the meter baseline so a restart does not drop the next delta."""
+        return DynamicEnergyExtraStoredData(
+            self.native_value, self.native_unit_of_measurement, self._last_energy
         )
 
     @property
@@ -273,42 +344,36 @@ class DynamicEnergySensor(BaseUtilitySensor):
             self._attr_native_value += delta
             self._last_energy = current_energy
         elif self.price_sensors:
-            total_price = 0.0
-            valid = False
-            for sensor_id in self.price_sensors:
-                price_state = self.hass.states.get(sensor_id)
-                if price_state is None or price_state.state in (
-                    "unknown",
-                    "unavailable",
-                ):
-                    _LOGGER.warning("Price sensor %s is unavailable", sensor_id)
-                    continue
-                try:
-                    total_price += float(price_state.state)
-                    valid = True
-                except ValueError:
-                    _LOGGER.warning("Price sensor %s has invalid state", sensor_id)
-                    continue
-            if not valid:
+            total_price_or_none, problems = read_price_sum(
+                self.hass, self.price_sensors
+            )
+            if total_price_or_none is None:
+                for sensor_id, problem in problems.items():
+                    _LOGGER.warning("Price sensor %s is %s", sensor_id, problem)
                 self._attr_available = False
                 if self._price_unavailable_since is None:
                     self._price_unavailable_since = dt_util.now()
-                if (
-                    dt_util.now() - self._price_unavailable_since
-                    >= timedelta(seconds=UNAVAILABLE_GRACE_SECONDS)
-                    and self.price_sensor
+                if dt_util.now() - self._price_unavailable_since >= timedelta(
+                    seconds=UNAVAILABLE_GRACE_SECONDS
                 ):
-                    async_report_issue(
-                        self.hass,
-                        f"price_unavailable_{self.price_sensor}",
-                        "price_sensor_unavailable",
-                        {"sensor": self.price_sensor},
-                    )
+                    for sensor_id, problem in problems.items():
+                        async_report_issue(
+                            self.hass,
+                            f"price_{problem}_{sensor_id}",
+                            "price_sensor_unavailable",
+                            {"sensor": sensor_id},
+                        )
                 return
+            total_price = total_price_or_none
             self._attr_available = True
-            if self._price_unavailable_since is not None and self.price_sensor:
-                async_clear_issue(self.hass, f"price_unavailable_{self.price_sensor}")
-                async_clear_issue(self.hass, f"price_invalid_{self.price_sensor}")
+            if self._price_unavailable_since is not None:
+                for sensor_id in self.price_sensors:
+                    async_clear_issue(
+                        self.hass, f"price_{PRICE_PROBLEM_UNAVAILABLE}_{sensor_id}"
+                    )
+                    async_clear_issue(
+                        self.hass, f"price_{PRICE_PROBLEM_INVALID}_{sensor_id}"
+                    )
                 self._price_unavailable_since = None
 
             # The delta is consumed below; only advance the baseline now so
@@ -323,6 +388,9 @@ class DynamicEnergySensor(BaseUtilitySensor):
             # the energy itself is cost or profit, while these credits are
             # always earned and always belong to the profit sensor.
             bonus_and_credit = 0.0
+            # kWh already classified by the netting cost sensor (see
+            # NettingTracker.async_add_pending_kwh).
+            netted_kwh: float | None = None
 
             if self.source_type == SOURCE_TYPE_GAS:
                 unit_price = (total_price + markup_consumption + tax) * vat_factor
@@ -345,6 +413,16 @@ class DynamicEnergySensor(BaseUtilitySensor):
                         self, delta, tax_unit_price
                     )
                     adjusted_value = base_value + taxable_value
+                    # Only this sensor knows the netted value, so it decides
+                    # for the kWh-split sensors whether this delta was a cost
+                    # or a payout.
+                    await netting_tracker.async_add_pending_kwh(
+                        self.energy_sensor,
+                        "kwh_during_cost_total"
+                        if adjusted_value >= 0
+                        else "kwh_during_profit_total",
+                        delta,
+                    )
                     if adjusted_value < 0:
                         # A negative netted value is a payout; the cost sensor
                         # cannot book it, so hand it to the profit sensor of
@@ -362,6 +440,13 @@ class DynamicEnergySensor(BaseUtilitySensor):
                     adjusted_value = -await netting_tracker.async_claim_pending_profit(
                         self.energy_sensor
                     )
+                elif self._uses_netting_kwh_split:
+                    netting_tracker = self._netting_tracker
+                    assert netting_tracker is not None
+                    netted_kwh = await netting_tracker.async_claim_pending_kwh(
+                        self.energy_sensor, self.mode
+                    )
+                    adjusted_value = value
                 else:
                     adjusted_value = value
             elif self.source_type == SOURCE_TYPE_PRODUCTION:
@@ -461,42 +546,45 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 adjusted_value,
             )
 
-            if self.mode == "cost_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value >= 0:
-                        self._attr_native_value += adjusted_value
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value < 0:
-                        self._attr_native_value += abs(adjusted_value)
+            # Consumed energy is a cost at a non-negative value; produced
+            # energy is a cost only at a negative value (paying to feed in).
+            if self.source_type == SOURCE_TYPE_PRODUCTION:
+                energy_is_cost = adjusted_value < 0
+            else:
+                energy_is_cost = adjusted_value >= 0
+
+            if netted_kwh is not None:
+                self._attr_native_value += netted_kwh
+            elif self.mode == "cost_total":
+                if energy_is_cost:
+                    self._attr_native_value += abs(adjusted_value)
             elif self.mode == "profit_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value < 0:
-                        self._attr_native_value += abs(adjusted_value)
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value >= 0:
-                        self._attr_native_value += adjusted_value
+                if not energy_is_cost:
+                    self._attr_native_value += abs(adjusted_value)
+                if self.source_type == SOURCE_TYPE_PRODUCTION:
                     # Bonus and netting credit are earned regardless of the
                     # sign of the energy value itself. A negative energy value
                     # is already booked on the cost sensor; folding the credit
                     # into it here would double count that negative value.
                     self._attr_native_value += bonus_and_credit
             elif self.mode == "kwh_during_cost_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value >= 0:
-                        self._attr_native_value += delta
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value < 0:
-                        self._attr_native_value += delta
-            elif self.mode == "kwh_during_profit_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value < 0:
-                        self._attr_native_value += delta
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value >= 0:
-                        self._attr_native_value += delta
+                if energy_is_cost:
+                    self._attr_native_value += delta
+            elif self.mode == "kwh_during_profit_total" and not energy_is_cost:
+                self._attr_native_value += delta
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+
+        last_extra_data = await self.async_get_last_extra_data()
+        if last_extra_data is not None:
+            last_energy = last_extra_data.as_dict().get("last_energy")
+            try:
+                self._last_energy = (
+                    float(last_energy) if last_energy is not None else None
+                )
+            except (TypeError, ValueError):
+                self._last_energy = None
 
         if self._uses_netting:
             netting_tracker = self._netting_tracker
@@ -543,4 +631,4 @@ class DynamicEnergySensor(BaseUtilitySensor):
         await super().async_set_value(value)
 
 
-__all__ = ["BaseUtilitySensor", "DynamicEnergySensor"]
+__all__ = ["BaseUtilitySensor", "DynamicEnergySensor", "read_price_sum"]

@@ -1,6 +1,9 @@
+from unittest.mock import AsyncMock
+
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -312,3 +315,29 @@ async def test_async_remove_entry_deletes_store_data(hass: HomeAssistant) -> Non
     assert any("netting" in k for k in removed_keys)
     assert any("solar_bonus" in k for k in removed_keys)
     assert all("remove-me" in k for k in removed_keys)
+
+
+async def test_async_unload_entry_flushes_trackers(hass: HomeAssistant):
+    """Trackers batch writes; a reload loads from disk, so unload must flush."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, entry_id="flush-entry")
+    entry.add_to_hass(hass)
+    netting = type("Netting", (), {"async_flush": AsyncMock()})()
+    solar = type("Solar", (), {"async_flush": AsyncMock()})()
+    hass.data[DOMAIN] = {
+        "netting": {entry.entry_id: netting},
+        "solar_bonus": {entry.entry_id: solar},
+        "services_registered": False,
+    }
+
+    with pytest.MonkeyPatch.context() as mp:
+
+        async def unload(entry_to_unload, platforms):
+            return True
+
+        mp.setattr(hass.config_entries, "async_unload_platforms", unload)
+        assert await async_unload_entry(hass, entry)
+
+    netting.async_flush.assert_awaited_once()
+    solar.async_flush.assert_awaited_once()
+    assert "netting" not in hass.data[DOMAIN]
+    assert "solar_bonus" not in hass.data[DOMAIN]

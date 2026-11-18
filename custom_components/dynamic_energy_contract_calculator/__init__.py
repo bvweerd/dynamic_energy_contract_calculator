@@ -3,19 +3,22 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, TypeAlias
-
 from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_CONFIGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
+    CONTRACT_STORAGE_KEY_PREFIX,
+    CONTRACT_STORAGE_VERSION,
     DOMAIN,
     NETTING_STORAGE_KEY_PREFIX,
     NETTING_STORAGE_VERSION,
@@ -25,8 +28,6 @@ from .const import (
     SOURCE_TYPE_CONSUMPTION,
     SUBENTRY_TYPE_SOURCE,
 )
-from homeassistant.helpers.storage import Store
-
 from .device_compat import move_device_to_subentry
 from .services import async_register_services, async_unregister_services
 
@@ -57,6 +58,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     for prefix, version in (
         (NETTING_STORAGE_KEY_PREFIX, NETTING_STORAGE_VERSION),
         (SOLAR_BONUS_STORAGE_KEY_PREFIX, SOLAR_BONUS_STORAGE_VERSION),
+        (CONTRACT_STORAGE_KEY_PREFIX, CONTRACT_STORAGE_VERSION),
     ):
         store: Store[dict[str, Any]] = Store(
             hass, version, f"{prefix}_{entry.entry_id}", private=True
@@ -187,16 +189,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Unloading entry %s", entry.entry_id)
     unload_ok = bool(await hass.config_entries.async_unload_platforms(entry, PLATFORMS))
     if unload_ok:
-        netting_map = hass.data[DOMAIN].get("netting")
-        if isinstance(netting_map, dict):
-            netting_map.pop(entry.entry_id, None)
-            if not netting_map:
-                hass.data[DOMAIN].pop("netting")
-        solar_map = hass.data[DOMAIN].get("solar_bonus")
-        if isinstance(solar_map, dict):
-            solar_map.pop(entry.entry_id, None)
-            if not solar_map:
-                hass.data[DOMAIN].pop("solar_bonus")
+        for key in ("netting", "solar_bonus"):
+            tracker_map = hass.data[DOMAIN].get(key)
+            if not isinstance(tracker_map, dict):
+                continue
+            tracker = tracker_map.pop(entry.entry_id, None)
+            # Trackers batch their writes; a reload creates a new tracker
+            # that loads from disk, so pending changes must be written first.
+            flush = getattr(tracker, "async_flush", None)
+            if flush is not None:
+                await flush()
+            if not tracker_map:
+                hass.data[DOMAIN].pop(key)
         _LOGGER.debug("Successfully unloaded entry %s", entry.entry_id)
 
         # Unregister services if no other entries remain

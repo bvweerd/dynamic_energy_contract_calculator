@@ -2,17 +2,17 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dynamic_energy_contract_calculator import RuntimeData
-from custom_components.dynamic_energy_contract_calculator.sensor import (
-    async_setup_entry,
-)
 from custom_components.dynamic_energy_contract_calculator.const import (
-    DOMAIN,
     CONF_PRICE_SENSOR,
     CONF_PRICE_SETTINGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
+    DOMAIN,
     SOURCE_TYPE_CONSUMPTION,
     SUBENTRY_TYPE_SOURCE,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import (
+    async_setup_entry,
 )
 
 
@@ -48,6 +48,9 @@ async def test_async_setup_entry(hass: HomeAssistant):
     await async_setup_entry(hass, entry, add_entities)
     await hass.async_block_till_done()
     assert isinstance(added, list)
+
+    # Run the unload callbacks, as unloading the entry would
+    await entry._async_process_on_unload(hass)
 
 
 async def test_setup_entry_without_price_sensor(hass: HomeAssistant):
@@ -88,3 +91,6 @@ async def test_setup_entry_without_price_sensor(hass: HomeAssistant):
     assert f"{DOMAIN}_sensor_energy_profit_total" not in energy_ids
     assert f"{DOMAIN}_sensor_energy_kwh_during_cost_total" not in energy_ids
     assert f"{DOMAIN}_sensor_energy_kwh_during_profit_total" not in energy_ids
+
+    # Run the unload callbacks, as unloading the entry would
+    await entry._async_process_on_unload(hass)

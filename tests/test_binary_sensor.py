@@ -1,19 +1,18 @@
 """Tests for binary sensor platform."""
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dynamic_energy_contract_calculator.binary_sensor import (
-    async_setup_entry,
     DeliveryPricePositiveBinarySensor,
-    SolarBonusActiveBinarySensor,
     ProductionPricePositiveBinarySensor,
-)
-from custom_components.dynamic_energy_contract_calculator.solar_bonus import (
-    SolarBonusTracker,
+    SolarBonusActiveBinarySensor,
+    async_setup_entry,
 )
 from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_PRICE_SENSOR,
@@ -24,7 +23,9 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from custom_components.dynamic_energy_contract_calculator.solar_bonus import (
+    SolarBonusTracker,
+)
 
 
 @pytest.fixture
@@ -531,3 +532,118 @@ async def test_binary_sensor_setup_entry_without_matching_configuration(
     )
 
     assert added_entities == []
+
+
+async def test_binary_sensors_sum_all_price_sensors(hass: HomeAssistant, device_info):
+    """The cost sensors sum every price sensor; the binary sensors must too."""
+    hass.states.async_set("sensor.epex", "-0.01")
+    hass.states.async_set("sensor.surcharge", "0.03")
+    sensors = ["sensor.epex", "sensor.surcharge"]
+
+    production = ProductionPricePositiveBinarySensor(
+        hass=hass,
+        unique_id="sum-production",
+        entry_id="sum",
+        price_sensor=sensors,
+        price_settings={},
+        device_info=device_info,
+    )
+    tracker = await SolarBonusTracker.async_create(hass, "sum")
+    bonus = SolarBonusActiveBinarySensor(
+        hass=hass,
+        unique_id="sum-bonus",
+        entry_id="sum",
+        solar_bonus_tracker=tracker,
+        price_sensor=sensors,
+        price_settings={"solar_bonus_annual_kwh_limit": 7500.0},
+        device_info=device_info,
+    )
+
+    await production._async_update_state()
+    with patch.object(tracker, "is_daylight", return_value=True):
+        await bonus._async_update_state()
+    assert production.is_on is True
+    assert bonus.is_on is True
+
+    # One price sensor down: no price, so not positive
+    hass.states.async_set("sensor.surcharge", "unavailable")
+    await production._async_update_state()
+    assert production.is_on is False
+
+
+async def test_solar_bonus_active_follows_tracker_and_sun(
+    hass: HomeAssistant, device_info
+):
+    hass.states.async_set("sensor.production_price", "0.10")
+    hass.states.async_set("sun.sun", "above_horizon")
+    tracker = await SolarBonusTracker.async_create(hass, "follow")
+    sensor = SolarBonusActiveBinarySensor(
+        hass=hass,
+        unique_id="follow",
+        entry_id="follow",
+        solar_bonus_tracker=tracker,
+        price_sensor="sensor.production_price",
+        price_settings={"solar_bonus_annual_kwh_limit": 1.0},
+        device_info=device_info,
+    )
+    sensor.entity_id = "binary_sensor.follow"
+    writes = []
+    sensor.async_write_ha_state = lambda: writes.append(sensor.is_on)
+    unsubs = []
+    sensor.async_on_remove = unsubs.append
+
+    await sensor.async_added_to_hass()
+    assert sensor.is_on is True
+
+    # Using up the annual limit turns it off without any price change
+    await tracker.async_calculate_bonus(
+        delta_kwh=1.0,
+        base_price=0.10,
+        production_markup=0.0,
+        bonus_percentage=10.0,
+        annual_limit_kwh=1.0,
+    )
+    assert sensor.is_on is False
+    await tracker.async_reset_year()
+    assert sensor.is_on is True
+
+    # Sunset turns it off without any price change
+    hass.states.async_set("sun.sun", "below_horizon")
+    await hass.async_block_till_done()
+    assert sensor.is_on is False
+    assert writes == [True, False, True, False]
+
+    for unsub in unsubs:
+        unsub()
+
+
+async def test_solar_bonus_active_fixed_window_updates_on_the_hour(
+    hass: HomeAssistant, device_info
+):
+    hass.states.async_set("sensor.production_price", "0.10")
+    tracker = await SolarBonusTracker.async_create(hass, "fixed")
+    sensor = SolarBonusActiveBinarySensor(
+        hass=hass,
+        unique_id="fixed",
+        entry_id="fixed",
+        solar_bonus_tracker=tracker,
+        price_sensor="sensor.production_price",
+        price_settings={"solar_bonus_window_mode": "fixed_hours"},
+        device_info=device_info,
+    )
+    sensor.entity_id = "binary_sensor.fixed"
+    writes = []
+    sensor.async_write_ha_state = lambda: writes.append(sensor.is_on)
+    unsubs = []
+    sensor.async_on_remove = unsubs.append
+
+    with patch.object(tracker, "is_in_bonus_window", return_value=True):
+        await sensor.async_added_to_hass()
+        # No change on the hour: no extra write
+        await sensor._handle_time_change(None)
+    with patch.object(tracker, "is_in_bonus_window", return_value=False):
+        await sensor._handle_time_change(None)
+
+    assert writes == [True, False]
+    for unsub in unsubs:
+        unsub()

@@ -212,3 +212,10 @@ NETTING_STORAGE_KEY_PREFIX = f"{DOMAIN}_netting"
 
 SOLAR_BONUS_STORAGE_VERSION = 1
 SOLAR_BONUS_STORAGE_KEY_PREFIX = f"{DOMAIN}_solar_bonus"
+
+CONTRACT_STORAGE_VERSION = 1
+CONTRACT_STORAGE_KEY_PREFIX = f"{DOMAIN}_contract"
+
+# Seconds to batch tracker writes to disk. Energy meters can update every few
+# seconds; writing the whole tracker state on each delta wears out SD cards.
+STORAGE_SAVE_DELAY_SECONDS = 10

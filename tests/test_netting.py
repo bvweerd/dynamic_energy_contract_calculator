@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -8,6 +8,18 @@ from custom_components.dynamic_energy_contract_calculator.netting import (
     NettingTracker,
     TaxContribution,
 )
+
+
+def _mock_store() -> MagicMock:
+    """Store whose batched writes can be inspected."""
+    store = MagicMock()
+    store.async_save = AsyncMock()
+    return store
+
+
+def _saved_data(store: MagicMock) -> dict:
+    """Return the data the last scheduled write would store."""
+    return store.async_delay_save.call_args.args[0]()
 
 
 def _make_sensor(unique_id: str, source_type: str, mode: str) -> SimpleNamespace:
@@ -25,7 +37,7 @@ async def test_tax_contribution_from_dict_defaults() -> None:
 async def test_netting_tracker_restores_valid_contributions_only(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-1",
@@ -98,7 +110,8 @@ async def test_netting_tracker_distribution_without_consumption_sensors(
         _make_sensor("profit", "Electricity production", "profit_total")
     )
 
-    assert tracker.tax_balance_per_sensor == {"profit": 0.0}
+    # Only consumption cost sensors share the tax balance
+    assert tracker.tax_balance_per_sensor == {}
     assert (
         await tracker.async_reset_sensor(
             _make_sensor("profit", "Electricity production", "profit_total")
@@ -110,7 +123,7 @@ async def test_netting_tracker_distribution_without_consumption_sensors(
 async def test_netting_tracker_records_consumption_and_saves(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-3",
@@ -129,30 +142,30 @@ async def test_netting_tracker_records_consumption_and_saves(
     assert taxable_value == pytest.approx(0.2662)
     assert tracker.net_consumption_kwh == pytest.approx(2.0)
     assert tracker.tax_balance == pytest.approx(2.0 * 0.11 * 1.21)
-    store.async_save.assert_awaited_once_with(
-        {
-            "net_consumption_kwh": 2.0,
-            "tax_contributions": [{"kwh": 2.0, "tax_rate": 0.11, "vat_factor": 1.21}],
-            "pending_consumption_profit": {},
-        }
-    )
+    store.async_delay_save.assert_called_once()
+    assert _saved_data(store) == {
+        "net_consumption_kwh": 2.0,
+        "tax_contributions": [{"kwh": 2.0, "tax_rate": 0.11, "vat_factor": 1.21}],
+        "pending_consumption_profit": {},
+        "pending_consumption_kwh": {},
+    }
 
 
 async def test_netting_tracker_consumption_short_circuits_invalid_input(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(hass, "entry-4", store, None, None)
 
     assert await tracker.async_record_consumption(None, 0.0, 0.1) == (0.0, 0.0)
-    store.async_save.assert_not_awaited()
+    store.async_delay_save.assert_not_called()
 
 
 async def test_netting_tracker_consumption_tracks_net_with_zero_tax(
     hass: HomeAssistant,
 ) -> None:
     """Net consumption is tracked even when the current tax rate is zero."""
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(hass, "entry-4b", store, None, None)
 
     taxable_kwh, taxable_value = await tracker.async_record_consumption(None, 1.0, 0.0)
@@ -161,13 +174,13 @@ async def test_netting_tracker_consumption_tracks_net_with_zero_tax(
     assert taxable_value == 0.0
     assert tracker.net_consumption_kwh == pytest.approx(1.0)
     assert tracker.tax_balance == 0.0
-    store.async_save.assert_awaited_once()
+    store.async_delay_save.assert_called_once()
 
 
 async def test_netting_tracker_records_production_fifo_credit(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-5",
@@ -193,14 +206,14 @@ async def test_netting_tracker_records_production_fifo_credit(
     assert tracker.net_consumption_kwh == pytest.approx(1.0)
     assert len(tracker._tax_contributions) == 1
     assert tracker._tax_contributions[0].kwh == pytest.approx(1.0)
-    store.async_save.assert_awaited_once()
+    store.async_delay_save.assert_called_once()
 
 
 async def test_netting_tracker_production_credit_uses_historical_rates(
     hass: HomeAssistant,
 ) -> None:
     """Credit follows the FIFO contributions, not the current tax rate."""
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-5b",
@@ -228,7 +241,7 @@ async def test_netting_tracker_production_fallback_rate_for_uncovered_kwh(
     hass: HomeAssistant,
 ) -> None:
     """Credited kWh beyond the contributions queue falls back to the current rate."""
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-5c",
@@ -253,29 +266,29 @@ async def test_netting_tracker_production_fallback_rate_for_uncovered_kwh(
 async def test_netting_tracker_production_short_circuits_invalid_input(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(hass, "entry-6", store, None, None)
 
     assert await tracker.async_record_production(0.0, 0.2) == (0.0, 0.0, [])
-    store.async_save.assert_not_awaited()
+    store.async_delay_save.assert_not_called()
 
 
 async def test_netting_tracker_production_tracks_net_with_zero_tax(
     hass: HomeAssistant,
 ) -> None:
     """Net consumption is tracked even when the current tax rate is zero."""
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(hass, "entry-6b", store, None, None)
 
     assert await tracker.async_record_production(1.0, 0.0) == (0.0, 0.0, [])
     assert tracker.net_consumption_kwh == pytest.approx(-1.0)
-    store.async_save.assert_awaited_once()
+    store.async_delay_save.assert_called_once()
 
 
 async def test_netting_tracker_set_net_consumption_and_reset_all(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-7",
@@ -295,23 +308,23 @@ async def test_netting_tracker_set_net_consumption_and_reset_all(
     await tracker.async_reset_all()
     assert tracker.net_consumption_kwh == 0.0
     assert tracker._tax_contributions == []
-    assert store.async_save.await_count == 3
+    assert store.async_delay_save.call_count == 3
 
 
 async def test_netting_tracker_pending_profit_add_claim_and_reset(
     hass: HomeAssistant,
 ) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(hass, "entry-pending", store, None, None)
 
     # Non-positive amounts are ignored
     await tracker.async_add_pending_profit("sensor.energy", 0.0)
     await tracker.async_add_pending_profit("sensor.energy", -1.0)
-    store.async_save.assert_not_awaited()
+    store.async_delay_save.assert_not_called()
 
     # Claiming with nothing pending returns 0 and does not persist
     assert await tracker.async_claim_pending_profit("sensor.energy") == 0.0
-    store.async_save.assert_not_awaited()
+    store.async_delay_save.assert_not_called()
 
     # Amounts accumulate per energy source until claimed
     await tracker.async_add_pending_profit("sensor.energy", 0.05)
@@ -332,7 +345,7 @@ async def test_netting_tracker_pending_profit_add_claim_and_reset(
 
 
 async def test_netting_tracker_restores_pending_profit(hass: HomeAssistant) -> None:
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-pending-restore",
@@ -359,7 +372,7 @@ async def test_netting_tracker_production_drains_entire_queue(
     hass: HomeAssistant,
 ) -> None:
     """Production exceeding the full tax-contribution queue drains queue to empty."""
-    store = AsyncMock()
+    store = _mock_store()
     tracker = NettingTracker(
         hass,
         "entry-drain",
@@ -384,3 +397,54 @@ async def test_netting_tracker_production_drains_entire_queue(
     assert adjustments == []
     assert tracker.net_consumption_kwh == pytest.approx(-5.0)
     assert tracker._tax_contributions == []
+
+
+async def test_netting_tracker_pending_kwh_handoff(hass: HomeAssistant) -> None:
+    store = _mock_store()
+    tracker = NettingTracker(
+        hass,
+        "entry-kwh",
+        store,
+        {
+            "pending_consumption_kwh": {
+                "sensor.energy": {"kwh_during_cost_total": 1.5, "bogus": 2.0},
+                "sensor.bad": "not-a-dict",
+            }
+        },
+        None,
+    )
+    # Restored, ignoring unknown modes and malformed data
+    assert await tracker.async_claim_pending_kwh(
+        "sensor.energy", "kwh_during_cost_total"
+    ) == pytest.approx(1.5)
+    assert await tracker.async_claim_pending_kwh("sensor.energy", "bogus") == 0.0
+
+    await tracker.async_add_pending_kwh("sensor.energy", "kwh_during_profit_total", 0.0)
+    await tracker.async_add_pending_kwh("sensor.energy", "unknown_mode", 1.0)
+    await tracker.async_add_pending_kwh("sensor.energy", "kwh_during_profit_total", 0.4)
+    await tracker.async_add_pending_kwh("sensor.energy", "kwh_during_profit_total", 0.1)
+    assert _saved_data(store)["pending_consumption_kwh"] == {
+        "sensor.energy": {"kwh_during_profit_total": 0.5}
+    }
+    assert await tracker.async_claim_pending_kwh(
+        "sensor.energy", "kwh_during_profit_total"
+    ) == pytest.approx(0.5)
+    assert _saved_data(store)["pending_consumption_kwh"] == {}
+
+    await tracker.async_add_pending_kwh("sensor.energy", "kwh_during_cost_total", 1.0)
+    await tracker.async_reset_all()
+    assert (
+        await tracker.async_claim_pending_kwh("sensor.energy", "kwh_during_cost_total")
+        == 0.0
+    )
+
+
+async def test_netting_tracker_flush_writes_immediately(hass: HomeAssistant) -> None:
+    store = _mock_store()
+    tracker = NettingTracker(hass, "entry-flush", store, None, None)
+    await tracker.async_record_consumption(None, 1.0, 0.0)
+
+    await tracker.async_flush()
+
+    store.async_save.assert_awaited_once()
+    assert store.async_save.await_args.args[0]["net_consumption_kwh"] == 1.0
