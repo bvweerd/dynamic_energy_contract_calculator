@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, date
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Mapping
+from datetime import date
+from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    DOMAIN,
     SOLAR_BONUS_BASE_MARKET_ONLY,
     SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
     SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
@@ -20,10 +22,9 @@ from .const import (
     SOLAR_BONUS_STORAGE_VERSION,
     SOLAR_BONUS_WINDOW_FIXED_HOURS,
     SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
+    STORAGE_SAVE_DELAY_SECONDS,
 )
-
-if TYPE_CHECKING:  # pragma: no cover
-    pass
+from .contract import latest_anniversary, next_anniversary, parse_contract_date
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,8 +45,9 @@ class SolarBonusTracker:
         self._store = store
         self._entry_id = entry_id
         self._hass = hass
-        self._contract_start_date = self._parse_date(contract_start_date)
+        self._contract_start_date = parse_contract_date(contract_start_date)
         self._limit_period = limit_period
+        self._listeners: list[Callable[[], None]] = []
 
         # Track production eligible for bonus this limit period
         self._current_contract_year_start: date | None = None
@@ -55,7 +57,7 @@ class SolarBonusTracker:
         self._current_contract_year_start = self._get_current_period_start()
 
         if initial_state:
-            stored_year_start = self._parse_date(
+            stored_year_start = parse_contract_date(
                 initial_state.get("contract_year_start")
             )
             # Reset if we rolled over into a new limit period
@@ -66,15 +68,6 @@ class SolarBonusTracker:
                 self._total_bonus_euro = float(
                     initial_state.get("total_bonus_euro", 0.0)
                 )
-
-    def _parse_date(self, date_str: str | None) -> date | None:
-        """Parse date string to date object."""
-        if not date_str:
-            return None
-        try:
-            return datetime.fromisoformat(date_str).date()
-        except (ValueError, AttributeError):
-            return None
 
     def _get_current_period_start(self) -> date | None:
         """Return the start date of the current annual-limit period.
@@ -95,27 +88,7 @@ class SolarBonusTracker:
         """Get the start date of the current contract year."""
         if not self._contract_start_date:
             return None
-
-        today = dt_util.now().date()
-        current_year = today.year
-
-        # Try this year's anniversary
-        try:
-            this_year_anniversary = self._contract_start_date.replace(year=current_year)
-        except ValueError:
-            # Handle February 29 edge case
-            this_year_anniversary = self._contract_start_date.replace(
-                year=current_year, day=28
-            )
-
-        if today >= this_year_anniversary:
-            return this_year_anniversary
-        else:
-            # We're before this year's anniversary, so use last year's
-            try:
-                return self._contract_start_date.replace(year=current_year - 1)
-            except ValueError:
-                return self._contract_start_date.replace(year=current_year - 1, day=28)
+        return latest_anniversary(self._contract_start_date, dt_util.now().date())
 
     @classmethod
     async def async_create(
@@ -135,6 +108,35 @@ class SolarBonusTracker:
         )
         initial = await store.async_load() or {}
         return cls(hass, entry_id, store, initial, contract_start_date, limit_period)
+
+    @property
+    def limit_period(self) -> str:
+        """Return the period over which the annual kWh limit is counted."""
+        return self._limit_period
+
+    @callback
+    def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call *listener* whenever the tracked totals change.
+
+        Returns a callable that removes the listener again.
+        """
+        self._listeners.append(listener)
+
+        @callback
+        def _remove() -> None:
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return _remove
+
+    @callback
+    def _notify_listeners(self) -> None:
+        for listener in list(self._listeners):
+            listener()
+
+    def limit_reached(self, annual_limit_kwh: float) -> bool:
+        """Return whether no bonus can be earned for the rest of this period."""
+        return self._year_production_kwh >= annual_limit_kwh
 
     @property
     def year_production_kwh(self) -> float:
@@ -221,6 +223,8 @@ class SolarBonusTracker:
                 self._current_contract_year_start = current_period_start
                 self._year_production_kwh = 0.0
                 self._total_bonus_euro = 0.0
+                await self._async_save_state()
+                self._notify_listeners()
 
             # Check conditions for bonus eligibility
             if delta_kwh <= 0:
@@ -265,6 +269,7 @@ class SolarBonusTracker:
             self._total_bonus_euro += bonus_amount
 
             await self._async_save_state()
+            self._notify_listeners()
 
             return bonus_amount, eligible_kwh
 
@@ -275,10 +280,10 @@ class SolarBonusTracker:
             self._total_bonus_euro = 0.0
             self._current_contract_year_start = self._get_current_period_start()
             await self._async_save_state()
+        self._notify_listeners()
 
-    async def _async_save_state(self) -> None:
-        """Persist current state to storage."""
-        state = {
+    def _data_to_save(self) -> dict[str, Any]:
+        return {
             "contract_year_start": (
                 self._current_contract_year_start.isoformat()
                 if self._current_contract_year_start
@@ -287,30 +292,58 @@ class SolarBonusTracker:
             "year_production_kwh": self._year_production_kwh,
             "total_bonus_euro": self._total_bonus_euro,
         }
-        await self._store.async_save(state)
+
+    async def _async_save_state(self) -> None:
+        """Schedule a write of the current state to storage."""
+        self._store.async_delay_save(self._data_to_save, STORAGE_SAVE_DELAY_SECONDS)
+
+    async def async_flush(self) -> None:
+        """Write the current state to storage now (e.g. before unload)."""
+        await self._store.async_save(self._data_to_save())
 
     def get_next_anniversary_date(self) -> date | None:
         """Get the next contract anniversary date."""
         if not self._contract_start_date:
             return None
+        return next_anniversary(self._contract_start_date, dt_util.now().date())
 
-        today = dt_util.now().date()
-        current_year = today.year
 
-        # Try this year's anniversary
-        try:
-            this_year_anniversary = self._contract_start_date.replace(year=current_year)
-        except ValueError:
-            # Handle February 29 edge case
-            this_year_anniversary = self._contract_start_date.replace(
-                year=current_year, day=28
-            )
+async def async_get_solar_bonus_tracker(
+    hass: HomeAssistant, entry_id: str, price_settings: Mapping[str, Any]
+) -> SolarBonusTracker:
+    """Return the entry's shared tracker, creating and loading it once.
 
-        if today >= this_year_anniversary:
-            # Return next year's anniversary
-            try:
-                return self._contract_start_date.replace(year=current_year + 1)
-            except ValueError:
-                return self._contract_start_date.replace(year=current_year + 1, day=28)
-        else:
-            return this_year_anniversary
+    The sensor and binary_sensor platforms are set up concurrently and both
+    need the same tracker. Loading the store awaits, so a plain get-or-create
+    would let both platforms build their own tracker; the in-flight creation
+    task is shared instead.
+    """
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    trackers: dict[str, SolarBonusTracker] = domain_data.setdefault("solar_bonus", {})
+    if (tracker := trackers.get(entry_id)) is not None:
+        return tracker
+
+    loading: dict[str, asyncio.Task[SolarBonusTracker]] = domain_data.setdefault(
+        "solar_bonus_loading", {}
+    )
+    task = loading.get(entry_id)
+    if task is None:
+        task = hass.async_create_task(
+            SolarBonusTracker.async_create(
+                hass,
+                entry_id,
+                price_settings.get("contract_start_date", ""),
+                price_settings.get(
+                    "solar_bonus_limit_period", SOLAR_BONUS_LIMIT_CALENDAR_YEAR
+                ),
+            ),
+            eager_start=True,
+        )
+        loading[entry_id] = task
+    try:
+        tracker = await task
+    finally:
+        loading.pop(entry_id, None)
+        if not loading:
+            domain_data.pop("solar_bonus_loading", None)
+    return trackers.setdefault(entry_id, tracker)

@@ -20,7 +20,16 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import NETTING_STORAGE_KEY_PREFIX, NETTING_STORAGE_VERSION
+from .const import (
+    NETTING_STORAGE_KEY_PREFIX,
+    NETTING_STORAGE_VERSION,
+    SOURCE_TYPE_CONSUMPTION,
+    STORAGE_SAVE_DELAY_SECONDS,
+)
+
+# Modes of the consumption sensors that split kWh by whether the netted value
+# was a cost or a payout.
+KWH_SPLIT_MODES = ("kwh_during_cost_total", "kwh_during_profit_total")
 
 if TYPE_CHECKING:  # pragma: no cover
     from .entity import DynamicEnergySensor
@@ -95,6 +104,10 @@ class NettingTracker:
         # keyed by energy source entity_id, awaiting pickup by the matching
         # profit sensor.
         self._pending_profit: dict[str, float] = {}
+        # kWh classified by the cost sensor from the netted value, keyed by
+        # energy source and then by kWh-split mode, awaiting pickup by the
+        # kwh_during_cost_total / kwh_during_profit_total sensors.
+        self._pending_kwh: dict[str, dict[str, float]] = {}
 
         if initial_state:
             self._net_consumption_kwh = float(
@@ -109,6 +122,20 @@ class NettingTracker:
                         continue
                     if value > 0:
                         self._pending_profit[str(source_id)] = value
+            pending_kwh = initial_state.get("pending_consumption_kwh", {})
+            if isinstance(pending_kwh, dict):
+                for source_id, per_mode in pending_kwh.items():
+                    if not isinstance(per_mode, dict):
+                        continue
+                    for mode, amount in per_mode.items():
+                        try:
+                            value = float(amount)
+                        except (TypeError, ValueError):
+                            continue
+                        if mode in KWH_SPLIT_MODES and value > 0:
+                            self._pending_kwh.setdefault(str(source_id), {})[mode] = (
+                                value
+                            )
             # Restore tax contributions from storage
             contributions_data = initial_state.get("tax_contributions", [])
             if isinstance(contributions_data, list):
@@ -180,29 +207,17 @@ class NettingTracker:
     def tax_balance_per_sensor(self) -> dict[str, float]:
         """Return tax balance distributed across registered consumption sensors.
 
-        For simplicity, we assign the full balance to the first consumption sensor.
+        Only consumption cost sensors register with the tracker. For
+        simplicity, the full balance is assigned to the first one.
         """
-        total_tax = self.tax_balance
-        result: dict[str, float] = {}
-
-        # Find consumption cost sensors
         consumption_sensors = [
             uid
             for uid, sensor in self._sensors.items()
-            if hasattr(sensor, "source_type")
-            and sensor.source_type == "Electricity consumption"
-            and hasattr(sensor, "mode")
-            and sensor.mode == "cost_total"
+            if sensor.source_type == SOURCE_TYPE_CONSUMPTION
         ]
-
+        result = dict.fromkeys(consumption_sensors, 0.0)
         if consumption_sensors:
-            result[consumption_sensors[0]] = total_tax
-            for uid in consumption_sensors[1:]:
-                result[uid] = 0.0
-        else:
-            for uid in self._sensors:
-                result[uid] = 0.0
-
+            result[consumption_sensors[0]] = self.tax_balance
         return result
 
     async def async_register_sensor(self, sensor: DynamicEnergySensor) -> None:
@@ -373,12 +388,43 @@ class NettingTracker:
                 await self._async_save_state()
             return amount
 
+    async def async_add_pending_kwh(
+        self, source_id: str, mode: str, delta_kwh: float
+    ) -> None:
+        """Hand off kWh to the kWh-split sensor *mode* of the energy source.
+
+        With netting, only the cost sensor knows whether the netted value of a
+        delta is a cost or a payout. It parks the kWh here so the
+        kwh_during_cost_total and kwh_during_profit_total sensors split kWh
+        the same way the euro sensors split the money.
+        """
+        if delta_kwh <= 0 or mode not in KWH_SPLIT_MODES:
+            return
+        async with self._lock:
+            per_mode = self._pending_kwh.setdefault(source_id, {})
+            per_mode[mode] = round(per_mode.get(mode, 0.0) + delta_kwh, 8)
+            await self._async_save_state()
+
+    async def async_claim_pending_kwh(self, source_id: str, mode: str) -> float:
+        """Return and clear the pending kWh for the energy source and mode."""
+        async with self._lock:
+            per_mode = self._pending_kwh.get(source_id)
+            if not per_mode:
+                return 0.0
+            amount = per_mode.pop(mode, 0.0)
+            if not per_mode:
+                self._pending_kwh.pop(source_id, None)
+            if amount:
+                await self._async_save_state()
+            return amount
+
     async def async_reset_all(self) -> None:
         """Reset the entire tracker state."""
         async with self._lock:
             self._net_consumption_kwh = 0.0
             self._tax_contributions.clear()
             self._pending_profit.clear()
+            self._pending_kwh.clear()
             await self._async_save_state()
             _LOGGER.info(
                 "Netting tracker reset: net_consumption_kwh=0.0, contributions cleared"
@@ -413,14 +459,24 @@ class NettingTracker:
 
             await self._async_save_state()
 
-    async def _async_save_state(self) -> None:
-        """Persist the tracker state to storage."""
-        data = {
+    def _data_to_save(self) -> dict[str, Any]:
+        return {
             "net_consumption_kwh": round(self._net_consumption_kwh, 8),
             "tax_contributions": [c.to_dict() for c in self._tax_contributions],
             "pending_consumption_profit": {
                 source_id: round(amount, 8)
                 for source_id, amount in self._pending_profit.items()
             },
+            "pending_consumption_kwh": {
+                source_id: {mode: round(kwh, 8) for mode, kwh in per_mode.items()}
+                for source_id, per_mode in self._pending_kwh.items()
+            },
         }
-        await self._store.async_save(data)
+
+    async def _async_save_state(self) -> None:
+        """Schedule a write of the tracker state to storage."""
+        self._store.async_delay_save(self._data_to_save, STORAGE_SAVE_DELAY_SECONDS)
+
+    async def async_flush(self) -> None:
+        """Write the tracker state to storage now (e.g. before unload)."""
+        await self._store.async_save(self._data_to_save())

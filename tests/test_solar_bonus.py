@@ -1,8 +1,9 @@
 """Tests for solar bonus tracker functionality."""
 
-import pytest
 from datetime import date, datetime, timezone
 from unittest.mock import patch
+
+import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.dynamic_energy_contract_calculator.const import (
@@ -10,6 +11,9 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
     SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
     SOLAR_BONUS_WINDOW_FIXED_HOURS,
+)
+from custom_components.dynamic_energy_contract_calculator.contract import (
+    parse_contract_date,
 )
 from custom_components.dynamic_energy_contract_calculator.solar_bonus import (
     SolarBonusTracker,
@@ -230,6 +234,8 @@ async def test_solar_bonus_persistence(hass: HomeAssistant):
 
     original_production = tracker1.year_production_kwh
     original_bonus = tracker1.total_bonus_euro
+    # Writes are batched; unloading the entry flushes them
+    await tracker1.async_flush()
 
     # Create new tracker with same entry_id - should restore state
     tracker2 = await SolarBonusTracker.async_create(hass, entry_id)
@@ -259,21 +265,7 @@ async def test_solar_bonus_is_daylight_edge_cases(hass: HomeAssistant):
     # Test exactly 6 AM - should be daylight
     hass.states.async_set("sun.sun", "unknown")  # Set unknown state to trigger fallback
 
-    with patch(
-        "custom_components.dynamic_energy_contract_calculator.solar_bonus.datetime"
-    ) as mock_dt:
-
-        class MockDateTime6AM(datetime):
-            @classmethod
-            def now(cls):
-                return datetime(2025, 7, 25, 6, 0, 0)
-
-        mock_dt.now.return_value = datetime(2025, 7, 25, 6, 0, 0)
-        mock_dt.side_effect = lambda *args, **kw: datetime(*args, **kw)
-        # Note: Can't easily test fallback due to sun.sun check, but we can test edge hours
-        # when sun.sun is set. The fallback code exists for safety but is hard to unit test.
-
-    # Instead, test with sun.sun working properly at edge hours
+    # Test with sun.sun working properly at edge hours. Instead, test with sun.sun working properly at edge hours
     # Just before sunrise (5 AM) - below horizon
     hass.states.async_set("sun.sun", "below_horizon")
     result = tracker.is_daylight()
@@ -332,20 +324,15 @@ async def test_solar_bonus_leap_year_before_anniversary_previous_year_fallback(
 
 async def test_solar_bonus_parse_date_valid(hass: HomeAssistant):
     """Test date parsing with valid input."""
-    tracker = await SolarBonusTracker.async_create(hass, "test_entry_13")
-
-    parsed = tracker._parse_date("2024-01-15")
-    assert parsed == date(2024, 1, 15)
+    assert parse_contract_date("2024-01-15") == date(2024, 1, 15)
 
 
 async def test_solar_bonus_parse_date_invalid(hass: HomeAssistant):
     """Test date parsing with invalid input."""
-    tracker = await SolarBonusTracker.async_create(hass, "test_entry_14")
-
-    assert tracker._parse_date(None) is None
-    assert tracker._parse_date("") is None
-    assert tracker._parse_date("invalid-date") is None
-    assert tracker._parse_date("2024-13-45") is None
+    assert parse_contract_date(None) is None
+    assert parse_contract_date("") is None
+    assert parse_contract_date("invalid-date") is None
+    assert parse_contract_date("2024-13-45") is None
 
 
 async def test_solar_bonus_contract_year_calculation(hass: HomeAssistant):
@@ -813,3 +800,53 @@ async def test_is_daylight_hour_fallback_boundary_hours(hass: HomeAssistant):
                 assert tracker.is_daylight() is expected, (
                     f"hour={hour} expected {expected}"
                 )
+
+
+async def test_concurrent_platforms_share_one_tracker(hass: HomeAssistant):
+    """The sensor and binary_sensor platforms load at the same time.
+
+    Both must end up with the same tracker, or the binary sensor would read a
+    tracker that never counts production.
+    """
+    import asyncio
+
+    from custom_components.dynamic_energy_contract_calculator.const import DOMAIN
+    from custom_components.dynamic_energy_contract_calculator.solar_bonus import (
+        async_get_solar_bonus_tracker,
+    )
+
+    settings = {"contract_start_date": "2025-01-01"}
+    first, second = await asyncio.gather(
+        async_get_solar_bonus_tracker(hass, "shared-entry", settings),
+        async_get_solar_bonus_tracker(hass, "shared-entry", settings),
+    )
+
+    assert first is second
+    assert hass.data[DOMAIN]["solar_bonus"]["shared-entry"] is first
+    assert "solar_bonus_loading" not in hass.data[DOMAIN]
+
+
+async def test_listeners_are_notified_and_removable(hass: HomeAssistant):
+    tracker = await SolarBonusTracker.async_create(hass, "listener-entry")
+    calls = []
+    remove = tracker.async_add_listener(lambda: calls.append(1))
+
+    with patch.object(tracker, "is_daylight", return_value=True):
+        await tracker.async_calculate_bonus(
+            delta_kwh=1.0,
+            base_price=0.10,
+            production_markup=0.0,
+            bonus_percentage=10.0,
+            annual_limit_kwh=1.0,
+        )
+    assert calls == [1]
+    assert tracker.limit_reached(1.0)
+
+    await tracker.async_reset_year()
+    assert calls == [1, 1]
+    assert not tracker.limit_reached(1.0)
+
+    remove()
+    remove()  # removing twice is harmless
+    await tracker.async_reset_year()
+    assert calls == [1, 1]

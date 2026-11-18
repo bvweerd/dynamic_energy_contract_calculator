@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant import config_entries
@@ -29,6 +30,8 @@ from .const import (
     SUBENTRY_TYPE_SOURCE,
     SUPPLIER_PRESETS,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover
     # Home Assistant 2026.10+ validates with probatio and aliases voluptuous to it

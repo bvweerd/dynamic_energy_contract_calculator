@@ -3,23 +3,26 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from itertools import pairwise
 from typing import Any
+from zoneinfo import ZoneInfo
 
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorExtraStoredData, SensorStateClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import (
     async_track_point_in_time,
     async_track_state_change_event,
     async_track_time_change,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 try:
@@ -36,11 +39,13 @@ from .const import (
     CONF_PRICE_SETTINGS,
     CONF_SOURCE_TYPE,
     CONF_SOURCES,
+    CONTRACT_STORAGE_KEY_PREFIX,
+    CONTRACT_STORAGE_VERSION,
     DOMAIN,
     DOMAIN_ABBREVIATION,
     SOLAR_BONUS_BASE_MARKET_ONLY,
     SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
-    SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
+    SOLAR_BONUS_LIMIT_CONTRACT_YEAR,
     SOLAR_BONUS_WINDOW_FIXED_HOURS,
     SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
     SOURCE_TYPE_CONSUMPTION,
@@ -48,16 +53,32 @@ from .const import (
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
-from .device_compat import device_in_main_entry, move_device_to_subentry
-from .entity import BaseUtilitySensor, DynamicEnergySensor
+from .contract import (
+    is_anniversary,
+    latest_anniversary,
+    parse_contract_date,
+)
+from .device_compat import (
+    device_subentry_ids,
+    find_entry_device,
+    move_device_to_subentry,
+    remove_device_from_entry,
+)
+from .entity import BaseUtilitySensor, DynamicEnergySensor, read_price_sum
 from .netting import NettingTracker
-from .solar_bonus import SolarBonusTracker
+from .solar_bonus import SolarBonusTracker, async_get_solar_bonus_tracker
 
 _LOGGER = logging.getLogger(__name__)
 
-# Cap attribute lists to keep serialised state below the HA 16 KB DB limit.
-# At 15-min resolution a single day has 96 entries; two days would be ~23 KB.
-_MAX_NET_PRICE_STEPS = 96  # 24 h × 4 steps/h at 15-min resolution
+# Safety cap on the forecast attribute lists. They are excluded from the
+# recorder (_unrecorded_attributes), so the 16 KB database limit does not
+# apply. The cap must still fit the longest day: 25 hours on the day DST ends,
+# at 15-minute resolution, plus the two extra entries from splitting at
+# sunrise and sunset.
+_MAX_NET_PRICE_STEPS = 25 * 4 + 2
+
+# Device identifier shared by the summary sensors and the binary sensors.
+SUMMARY_DEVICE_ID = "daily_electricity_cost"
 
 
 def _compute_sun_times(
@@ -88,20 +109,61 @@ def _compute_sun_times(
         return None, None
 
 
-def _is_contract_anniversary(contract_start_date: str, check_date: date) -> bool:
-    """Return True if check_date falls on a contract anniversary (same month/day)."""
-    if not contract_start_date:
-        return False
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse a price entry timestamp (ISO string or datetime)."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _sort_timestamp(value: datetime) -> float:
+    """Return a sort key that orders naive and aware datetimes together."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc).timestamp()
+    return value.timestamp()
+
+
+def _price_intervals(
+    entries: list[dict[str, Any]],
+) -> list[tuple[datetime, datetime, float, dict[str, Any]]] | None:
+    """Return (start, end, value, entry) per entry, or None if not parseable.
+
+    An entry without an end runs until the next entry starts; the last one
+    gets the same length as the one before it, or one hour.
+    """
+    parsed: list[tuple[datetime, datetime | None, float, dict[str, Any]]] = []
+    for entry in entries:
+        start = _parse_timestamp(entry.get("start") or entry.get("time"))
+        if start is None:
+            return None
+        try:
+            value = float(entry.get("value", 0))
+        except (TypeError, ValueError):
+            return None
+        parsed.append((start, _parse_timestamp(entry.get("end")), value, entry))
     try:
-        start = datetime.fromisoformat(contract_start_date).date()
-    except (ValueError, AttributeError):
-        return False
-    try:
-        anniversary = start.replace(year=check_date.year)
-    except ValueError:
-        # Feb 29 in a non-leap year — use Feb 28
-        anniversary = start.replace(year=check_date.year, day=28)
-    return check_date == anniversary
+        parsed.sort(key=lambda item: _sort_timestamp(item[0]))
+        intervals: list[tuple[datetime, datetime, float, dict[str, Any]]] = []
+        for idx, (start, end, value, entry) in enumerate(parsed):
+            if end is None:
+                if idx + 1 < len(parsed):
+                    end = parsed[idx + 1][0]
+                elif idx > 0:
+                    end = start + (start - parsed[idx - 1][0])
+                else:
+                    end = start + timedelta(hours=1)
+            if end <= start:
+                return None
+            intervals.append((start, end, value, entry))
+    except TypeError:
+        # Naive and aware timestamps mixed within one list
+        return None
+    return intervals
 
 
 SENSOR_MODES_ELECTRICITY: list[dict[str, Any]] = [
@@ -216,6 +278,25 @@ class SolarBonusStatusSensor(BaseUtilitySensor):
         self.hass = hass
         self._solar_bonus_tracker = solar_bonus_tracker
 
+    # The value mirrors the tracker, which follows its own limit period. A
+    # contract-year reset must not zero it while the tracker keeps counting.
+    _resets_with_contract_year = False
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self._solar_bonus_tracker.async_add_listener(self._handle_tracker_update)
+        )
+
+    @callback
+    def _handle_tracker_update(self) -> None:
+        self.async_schedule_update_ha_state(True)
+
+    async def async_reset(self) -> None:
+        """Show the tracker's value; resetting the tracker is done separately."""
+        await self.async_update()
+        self.async_write_ha_state()
+
     async def async_update(self) -> None:
         """Update sensor with current solar bonus stats."""
         self._attr_native_value = self._solar_bonus_tracker.total_bonus_euro
@@ -294,7 +375,87 @@ class TotalCostSensor(NettingStatusMixin, BaseUtilitySensor):
         self.async_write_ha_state()
 
 
-class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
+@dataclass
+class DailyCostExtraStoredData(SensorExtraStoredData):
+    """Restore data that also keeps the date the daily cost was last added."""
+
+    last_charged_date: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        data = super().as_dict()
+        data["last_charged_date"] = self.last_charged_date
+        return data
+
+
+class _DailyCostSensor(BaseUtilitySensor):
+    """Fixed costs that are added once per day, at midnight.
+
+    The midnight addition is driven by the platform (see
+    _async_setup_midnight_handler) so that a contract-year reset on the same
+    midnight always runs first. Midnights missed while Home Assistant was not
+    running are added when the sensor is restored.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._last_charged_date: date | None = None
+
+    def _calculate_daily_cost(self) -> float:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    @property
+    def extra_restore_state_data(self) -> DailyCostExtraStoredData:
+        return DailyCostExtraStoredData(
+            self.native_value,
+            self.native_unit_of_measurement,
+            self._last_charged_date.isoformat() if self._last_charged_date else None,
+        )
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        today = dt_util.now().date()
+        last_charged: date | None = None
+        last_extra_data = await self.async_get_last_extra_data()
+        if last_extra_data is not None:
+            last_charged = parse_contract_date(
+                last_extra_data.as_dict().get("last_charged_date")
+            )
+        if self._reset_on_restore is not None:
+            # Missed contract-year reset: only the days of the new contract
+            # year are still owed.
+            if last_charged is None or last_charged < self._reset_on_restore:
+                last_charged = self._reset_on_restore - timedelta(days=1)
+        if last_charged is None or last_charged > today:
+            # First run (or a clock that went backwards): start counting from
+            # today without charging for it, as before.
+            self._last_charged_date = today
+            return
+        missed_days = (today - last_charged).days
+        if missed_days > 0:
+            _LOGGER.info(
+                "Adding %d missed day(s) of fixed costs to %s",
+                missed_days,
+                self.entity_id,
+            )
+            self._attr_native_value += missed_days * self._calculate_daily_cost()
+        self._last_charged_date = today
+
+    async def _handle_daily_addition(self, now: datetime) -> None:
+        if self._last_charged_date == now.date():
+            return
+        addition = self._calculate_daily_cost()
+        _LOGGER.debug(
+            "Adding daily cost %s at %s to %s",
+            addition,
+            now,
+            self.entity_id,
+        )
+        self._attr_native_value += addition
+        self._last_charged_date = now.date()
+        self.async_write_ha_state()
+
+
+class DailyElectricityCostSensor(NettingStatusMixin, _DailyCostSensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -349,30 +510,13 @@ class DailyElectricityCostSensor(NettingStatusMixin, BaseUtilitySensor):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._update_netting_attributes()
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass,
-                self._handle_daily_addition,
-                hour=0,
-                minute=0,
-                second=0,
-            )
-        )
 
     async def _handle_daily_addition(self, now: datetime) -> None:
-        addition = self._calculate_daily_cost()
-        _LOGGER.debug(
-            "Adding daily electricity cost %s at %s to %s",
-            addition,
-            now,
-            self.entity_id,
-        )
-        self._attr_native_value += addition
         self._update_netting_attributes()
-        self.async_write_ha_state()
+        await super()._handle_daily_addition(now)
 
 
-class DailyGasCostSensor(BaseUtilitySensor):
+class DailyGasCostSensor(_DailyCostSensor):
     def __init__(
         self,
         hass: HomeAssistant,
@@ -414,29 +558,6 @@ class DailyGasCostSensor(BaseUtilitySensor):
 
     async def async_update(self) -> None:
         pass
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            async_track_time_change(
-                self.hass,
-                self._handle_daily_addition,
-                hour=0,
-                minute=0,
-                second=0,
-            )
-        )
-
-    async def _handle_daily_addition(self, now: datetime) -> None:
-        addition = self._calculate_daily_cost()
-        _LOGGER.debug(
-            "Adding daily gas cost %s at %s to %s",
-            addition,
-            now,
-            self.entity_id,
-        )
-        self._attr_native_value += addition
-        self.async_write_ha_state()
 
 
 class TotalEnergyCostSensor(NettingStatusMixin, BaseUtilitySensor):
@@ -555,6 +676,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         price_settings: dict[str, float],
         icon: str,
         device: DeviceInfo,
+        solar_bonus_tracker: SolarBonusTracker | None = None,
     ):
         unit = "€/m³" if source_type == SOURCE_TYPE_GAS else "€/kWh"
         super().__init__(
@@ -587,6 +709,43 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         # Cache populated by _async_prefetch_sun_times before sync helpers are
         # called – avoids blocking disk I/O (pytz) on the event loop.
         self._sun_times_cache: dict[date, tuple[datetime | None, datetime | None]] = {}
+        self._solar_bonus_tracker = solar_bonus_tracker
+        self._bonus_limit_reached = self._solar_bonus_limit_reached()
+
+    # A price is not a meter: resets (service or contract year) leave it alone.
+    _resets_with_contract_year = False
+
+    async def async_reset(self) -> None:
+        """Prices are not accumulated, so there is nothing to reset."""
+
+    def _solar_bonus_applies(self, price_settings_enabled: bool) -> bool:
+        return price_settings_enabled and not self._bonus_limit_reached
+
+    def _solar_bonus_limit_reached(self) -> bool:
+        """Return whether the tracker has used up this period's bonus kWh."""
+        if self._solar_bonus_tracker is None:
+            return False
+        return self._solar_bonus_tracker.limit_reached(
+            self.price_settings.get("solar_bonus_annual_kwh_limit", 7500.0)
+        )
+
+    def _solar_bonus_base_amount(self, base_price: float) -> float:
+        """Return the amount the bonus percentage applies to.
+
+        Mirrors SolarBonusTracker.async_calculate_bonus, which is what the
+        profit sensor actually books: the market price, optionally plus the
+        production markup, always without VAT.
+        """
+        if (
+            self.price_settings.get(
+                "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
+            )
+            == SOLAR_BONUS_BASE_MARKET_ONLY
+        ):
+            return base_price
+        return base_price + self.price_settings.get(
+            "per_unit_supplier_electricity_production_markup", 0.0
+        )
 
     def _calculate_price(self, base_price: float) -> float | None:
         if self.source_type == SOURCE_TYPE_GAS:
@@ -630,21 +789,12 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         price = self._calculate_price(base_price)
         if price is None:
             return None
-        if self.source_type != SOURCE_TYPE_PRODUCTION or not self.price_settings.get(
-            "solar_bonus_enabled", False
+        if self.source_type != SOURCE_TYPE_PRODUCTION or not self._solar_bonus_applies(
+            bool(self.price_settings.get("solar_bonus_enabled", False))
         ):
             return price
 
-        if (
-            self.price_settings.get(
-                "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
-            )
-            == SOLAR_BONUS_BASE_MARKET_ONLY
-        ):
-            bonus_base_amount = base_price
-        else:
-            bonus_base_amount = price
-
+        bonus_base_amount = self._solar_bonus_base_amount(base_price)
         if bonus_base_amount > 0 and self._is_in_bonus_window_at(dt_util.now()):
             percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
             price = round(price + bonus_base_amount * (percentage / 100.0), 8)
@@ -724,6 +874,76 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                     entry_copy["price"] = add_val
                 existing.append(entry_copy)
         return existing
+
+    def _sum_price_lists(
+        self, lists: list[list[dict[str, Any]]]
+    ) -> list[dict[str, Any]] | None:
+        """Sum price lists from several sensors by time, not by list position.
+
+        Sources may use different resolutions (quarter-hours and hours) or
+        start at different times. The result has one entry per span in which
+        every source has a price, valued at the sum of those prices. When a
+        list cannot be parsed into time spans, fall back to the index merge.
+        """
+        if not lists:
+            return None
+        if len(lists) == 1:
+            return [entry.copy() for entry in lists[0]]
+
+        parsed = [_price_intervals(entries) for entries in lists]
+        if any(intervals is None for intervals in parsed):
+            merged: list[dict[str, Any]] | None = None
+            for entries in lists:
+                merged = self._merge_price_lists(merged, entries)
+            return merged
+
+        all_intervals = [intervals for intervals in parsed if intervals is not None]
+        try:
+            boundaries = sorted(
+                {
+                    point
+                    for intervals in all_intervals
+                    for start, end, _value, _entry in intervals
+                    for point in (start, end)
+                },
+                key=_sort_timestamp,
+            )
+        except TypeError:  # pragma: no cover - mixed naive/aware across sources
+            return None
+
+        result: list[dict[str, Any]] = []
+        for seg_start, seg_end in pairwise(boundaries):
+            total = 0.0
+            template: dict[str, Any] | None = None
+            covered = True
+            for intervals in all_intervals:
+                covering = next(
+                    (
+                        interval
+                        for interval in intervals
+                        if interval[0] <= seg_start and seg_end <= interval[1]
+                    ),
+                    None,
+                )
+                if covering is None:
+                    covered = False
+                    break
+                total += covering[2]
+                if template is None:
+                    template = covering[3]
+            if not covered or template is None:
+                continue
+            entry = template.copy()
+            if "start" in entry or "time" not in entry:
+                entry["start"] = seg_start.isoformat()
+            if "time" in entry:
+                entry["time"] = seg_start.isoformat()
+            entry["end"] = seg_end.isoformat()
+            entry["value"] = total
+            if "price" in entry:
+                entry["price"] = total
+            result.append(entry)
+        return result or None
 
     def _is_in_bonus_window_at(self, timestamp: Any) -> bool:
         """Check whether a forecast timestamp falls inside the bonus window.
@@ -808,7 +1028,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             return raw_prices
 
         # Group entries by hour
-        hourly_groups = defaultdict(list)
+        hourly_groups: defaultdict[
+            tuple[int, int, int, int, timedelta | None],
+            list[tuple[datetime, float, dict[str, Any]]],
+        ] = defaultdict(list)
 
         for entry in raw_prices:
             if not isinstance(entry, dict):
@@ -836,48 +1059,31 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 else:
                     dt = timestamp
 
-                # Create hour key (year, month, day, hour)
-                hour_key = (dt.year, dt.month, dt.day, dt.hour)
-                hourly_groups[hour_key].append((price_value, entry))
+                # The UTC offset is part of the key: on the day DST ends the
+                # clock shows the same hour twice, and those are two hours.
+                hour_key = (dt.year, dt.month, dt.day, dt.hour, dt.utcoffset())
+                hourly_groups[hour_key].append((dt, price_value, entry))
             except (ValueError, TypeError, AttributeError):
                 continue
 
         # Calculate averages and create hourly entries
         averaged = []
-        for hour_key, entries in sorted(hourly_groups.items()):
+        groups = sorted(
+            hourly_groups.values(), key=lambda group: _sort_timestamp(group[0][0])
+        )
+        for entries in groups:
             if not entries:  # pragma: no cover
                 continue
 
             # Calculate average price
-            avg_price = sum(price for price, _ in entries) / len(entries)
+            avg_price = sum(price for _, price, _ in entries) / len(entries)
 
             # Use the first entry as template and update with averaged price
-            template_entry = entries[0][1].copy()
+            first_dt, _, first_entry = entries[0]
+            template_entry = first_entry.copy()
 
-            # Get the original datetime to preserve timezone
-            timestamp = template_entry.get("start") or template_entry.get("time")
-            if isinstance(timestamp, str):
-                original_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            elif isinstance(timestamp, datetime):
-                original_dt = timestamp
-            else:
-                original_dt = datetime.now(timezone.utc)
-
-            # Set the timestamp to the start of the hour, preserving timezone
-            year, month, day, hour = hour_key
-            if original_dt.tzinfo:
-                # Preserve timezone from original
-                hour_start = original_dt.replace(
-                    year=year,
-                    month=month,
-                    day=day,
-                    hour=hour,
-                    minute=0,
-                    second=0,
-                    microsecond=0,
-                )
-            else:
-                hour_start = datetime(year, month, day, hour)
+            # The first entry carries the hour's own date, hour and UTC offset
+            hour_start = first_dt.replace(minute=0, second=0, microsecond=0)
 
             # End time is one hour later
             hour_end = hour_start + timedelta(hours=1)
@@ -1039,14 +1245,13 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             raw_prices = self._average_to_hourly(raw_prices)
 
         # Check if solar bonus is enabled for production
-        solar_bonus_enabled = (
-            self.source_type == SOURCE_TYPE_PRODUCTION
-            and self.price_settings.get("solar_bonus_enabled", False)
+        solar_bonus_enabled = self.source_type == SOURCE_TYPE_PRODUCTION and bool(
+            self.price_settings.get("solar_bonus_enabled", False)
         )
+        # Once the period's bonus kWh are used up the tracker pays nothing,
+        # so the forecast must not promise a bonus either.
+        bonus_applies = self._solar_bonus_applies(solar_bonus_enabled)
         solar_bonus_percentage = self.price_settings.get("solar_bonus_percentage", 10.0)
-        solar_bonus_base = self.price_settings.get(
-            "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
-        )
         solar_bonus_window_mode = self.price_settings.get(
             "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
         )
@@ -1061,6 +1266,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             and solar_bonus_window_mode != SOLAR_BONUS_WINDOW_FIXED_HOURS
         ):
             # Get all unique dates from entries
+            # The averaging step returns its input unchanged when nothing in
+            # it could be averaged, so non-dict entries can still be here.
+            raw_prices = [entry for entry in raw_prices if isinstance(entry, dict)]
             dates_to_check = set()
             for entry in raw_prices:
                 timestamp = entry.get("start") or entry.get("time")
@@ -1131,14 +1339,11 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             # Apply solar bonus if conditions are met
             solar_bonus_applied = False
-            if solar_bonus_enabled and calculated is not None:
+            if bonus_applies and calculated is not None:
                 # The bonus is paid over the bare market price for some
                 # suppliers and over the full compensation for others, so the
                 # positive-price condition follows the same amount.
-                if solar_bonus_base == SOLAR_BONUS_BASE_MARKET_ONLY:
-                    bonus_base_amount = base
-                else:
-                    bonus_base_amount = calculated
+                bonus_base_amount = self._solar_bonus_base_amount(base)
 
                 timestamp = entry_conv.get("start") or entry_conv.get("time")
                 in_window = (
@@ -1158,37 +1363,72 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
         return converted
 
-    async def async_update(self) -> None:
-        total_price = 0.0
-        raw_today: list[dict[str, Any]] | None = None
-        raw_tomorrow: list[dict[str, Any]] | None = None
-        valid = False
+    def _collect_raw_prices(
+        self,
+    ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+        """Return the summed raw price lists for today and tomorrow.
 
+        A sensor without any price list (e.g. a fixed surcharge) adds its
+        current value to every entry. A sensor with lists that lacks the list
+        for a day makes that day unknown, since a partial sum would be wrong.
+        """
+        lists: dict[str, list[list[dict[str, Any]]]] = {"today": [], "tomorrow": []}
+        known = {"today": True, "tomorrow": True}
+        constant = 0.0
         for sensor in self.price_sensors:
             state = self.hass.states.get(sensor)
-            if state is None or state.state in ("unknown", "unavailable"):
-                _LOGGER.warning("Price sensor %s is unavailable", sensor)
+            if state is None:  # pragma: no cover - checked by read_price_sum
                 continue
-            try:
-                total_price += float(state.state)
-                valid = True
-            except ValueError:
-                _LOGGER.warning("Price sensor %s has invalid state", sensor)
+            per_day = {
+                "today": self._extract_price_entries(
+                    state, ("raw_today", "prices_today")
+                ),
+                "tomorrow": self._extract_price_entries(
+                    state, ("raw_tomorrow", "prices_tomorrow")
+                ),
+            }
+            if per_day["today"] is None and per_day["tomorrow"] is None:
+                constant += float(state.state)
                 continue
+            for day, entries in per_day.items():
+                if entries is None:
+                    known[day] = False
+                else:
+                    lists[day].append(entries)
 
-            st_raw_today = self._extract_price_entries(
-                state, ("raw_today", "prices_today")
-            )
-            raw_today = self._merge_price_lists(raw_today, st_raw_today)
+        result: dict[str, list[dict[str, Any]] | None] = {}
+        for day in ("today", "tomorrow"):
+            summed = self._sum_price_lists(lists[day]) if known[day] else None
+            if summed and constant:
+                for entry in summed:
+                    entry["value"] = float(entry["value"]) + constant
+                    if "price" in entry:
+                        entry["price"] = entry["value"]
+            result[day] = summed
+        return result["today"], result["tomorrow"]
 
-            st_raw_tomorrow = self._extract_price_entries(
-                state, ("raw_tomorrow", "prices_tomorrow")
-            )
-            raw_tomorrow = self._merge_price_lists(raw_tomorrow, st_raw_tomorrow)
-        if not valid:
+    def _set_price_from_sensors(self) -> None:
+        """Set the state straight from the summed price sensors."""
+        total_price, _problems = read_price_sum(self.hass, self.price_sensors)
+        if total_price is None:
             self._attr_available = False
             return
         self._attr_available = True
+        price = self._price_with_solar_bonus(total_price)
+        if price is not None:
+            self._attr_native_value = price
+
+    async def async_update(self) -> None:
+        self._bonus_limit_reached = self._solar_bonus_limit_reached()
+        total_price_or_none, problems = read_price_sum(self.hass, self.price_sensors)
+        if total_price_or_none is None:
+            for sensor, problem in problems.items():
+                _LOGGER.warning("Price sensor %s is %s", sensor, problem)
+            self._attr_available = False
+            return
+        self._attr_available = True
+        total_price = total_price_or_none
+        raw_today, raw_tomorrow = self._collect_raw_prices()
 
         # Pre-populate the sun-times cache in an executor so that subsequent
         # synchronous helpers (_convert_raw_prices, _is_daylight_at,
@@ -1310,17 +1550,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             self._attr_native_value = current_price
         else:
             # Fallback: calculate from current base price
-            total_price = 0.0
-            for sensor in self.price_sensors:
-                state = self.hass.states.get(sensor)
-                if state and state.state not in ("unknown", "unavailable"):
-                    try:
-                        total_price += float(state.state)
-                    except ValueError:
-                        pass
-            price = self._price_with_solar_bonus(total_price)
-            if price is not None:
-                self._attr_native_value = price
+            self._set_price_from_sensors()
 
     def _schedule_next_price_change(self) -> None:
         """Schedule the next price change based on net_prices."""
@@ -1417,20 +1647,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
             async def handle_window_event(now: datetime) -> None:
                 """Handle a window edge - recalculate price and reschedule."""
-                # Recalculate the price
-                total_price = 0.0
-                for sensor in self.price_sensors:
-                    state = self.hass.states.get(sensor)
-                    if state and state.state not in ("unknown", "unavailable"):
-                        try:
-                            total_price += float(state.state)
-                        except ValueError:
-                            pass
-
-                price = self._price_with_solar_bonus(total_price)
-                if price is not None:
-                    self._attr_native_value = price
-
+                self._set_price_from_sensors()
                 self.async_write_ha_state()
                 self._schedule_bonus_window_updates()
 
@@ -1449,6 +1666,20 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                     self._handle_price_change,
                 )
             )
+        if self._solar_bonus_tracker is not None and self.source_type == (
+            SOURCE_TYPE_PRODUCTION
+        ):
+            self.async_on_remove(
+                self._solar_bonus_tracker.async_add_listener(
+                    self._handle_solar_bonus_update
+                )
+            )
+
+    @callback
+    def _handle_solar_bonus_update(self) -> None:
+        """Rebuild the prices when the bonus limit is reached or resets."""
+        if self._solar_bonus_limit_reached() != self._bonus_limit_reached:
+            self.async_schedule_update_ha_state(True)
 
     async def async_will_remove_from_hass(self) -> None:
         """Clean up when removing entity."""
@@ -1459,14 +1690,8 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
 
     async def _handle_price_change(self, event: Event[EventStateChangedData]) -> None:
         """Handle price sensor state change - rebuild net_prices and reschedule."""
-        new_state = event.data.get("new_state")
-        if new_state is None or new_state.state in ("unknown", "unavailable"):
-            self._attr_available = False
-            _LOGGER.warning(
-                "Price sensor %s is unavailable", event.data.get("entity_id")
-            )
-            return
-        # Rebuild net_prices and current price
+        # async_update decides availability from all price sensors together,
+        # and the state is written either way so an outage is visible.
         await self.async_update()
         self.async_write_ha_state()
 
@@ -1508,26 +1733,22 @@ async def async_setup_entry(
             tracker.update_price_settings(price_settings)
         netting_tracker = tracker
 
-    solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
     solar_bonus_tracker: SolarBonusTracker | None = None
-    if solar_bonus_enabled:
-        solar_bonus_map = hass.data.setdefault(DOMAIN, {}).setdefault("solar_bonus", {})
-        sb_tracker = solar_bonus_map.get(entry.entry_id)
-        contract_start_date = price_settings.get("contract_start_date", "")
-        if sb_tracker is None:
-            sb_tracker = await SolarBonusTracker.async_create(
-                hass,
-                entry.entry_id,
-                contract_start_date,
-                price_settings.get(
-                    "solar_bonus_limit_period", SOLAR_BONUS_LIMIT_CALENDAR_YEAR
-                ),
-            )
-            solar_bonus_map[entry.entry_id] = sb_tracker
-        solar_bonus_tracker = sb_tracker
+    if price_settings.get("solar_bonus_enabled"):
+        solar_bonus_tracker = await async_get_solar_bonus_tracker(
+            hass, entry.entry_id, price_settings
+        )
+
+    contract_year = _ContractYearReset(
+        hass, entry.entry_id, price_settings, netting_tracker, solar_bonus_tracker
+    )
+    missed_reset = await contract_year.async_catch_up()
 
     # Per-entry list of DynamicEnergySensors (for TotalCostSensor aggregation)
     source_sensors: list[DynamicEnergySensor] = []
+    current_unique_ids: set[str] = set()
+    current_base_ids: set[str] = set()
+    dev_reg = dr.async_get(hass)
 
     # Register source entities grouped per sub-entry so HA associates them correctly
     for subentry in entry.subentries.values():
@@ -1549,6 +1770,7 @@ async def async_setup_entry(
 
         for sensor in sources:
             base_id = sensor.replace(".", "_")
+            current_base_ids.add(base_id)
             state = hass.states.get(sensor)
             friendly_name = state.attributes.get("friendly_name") if state else sensor
             device_info = DeviceInfo(
@@ -1564,6 +1786,7 @@ async def async_setup_entry(
                 if not selected_price_sensor and mode not in ("kwh_total", "m3_total"):
                     continue
                 uid = f"{DOMAIN}_{base_id}_{mode}"
+                current_unique_ids.add(uid)
                 tracker_arg = (
                     netting_tracker
                     if netting_tracker
@@ -1594,33 +1817,35 @@ async def async_setup_entry(
                 subentry_entities.append(sensor_entity)
                 source_sensors.append(sensor_entity)
 
-        # Remove any stale None-subentry device associations left over from pre-subentry
-        # installs. This must happen before async_add_entities so the device already has
-        # the real subentry association when HA processes the entities.
-        dev_reg = dr.async_get(hass)
-        # async_get_device is deprecated (identifiers are no longer unique
-        # across config entries); the per-entry lookup exists from HA 2026.10.
-        get_by_identifier = getattr(dev_reg, "async_get_device_by_identifier", None)
+        # Give each source device the subentry it is configured in now. This
+        # covers devices from pre-subentry installs (owned by the main entry)
+        # and sources moved to another subentry by a reconfigure. It must
+        # happen before async_add_entities so the device already has the
+        # right subentry when HA processes the entities.
         for sensor in sources:
             base_id = sensor.replace(".", "_")
-            if get_by_identifier is not None:
-                existing = get_by_identifier((DOMAIN, base_id), entry.entry_id)
-            else:
-                existing = dev_reg.async_get_device(identifiers={(DOMAIN, base_id)})
-            if existing is not None and device_in_main_entry(existing, entry.entry_id):
+            existing = find_entry_device(dev_reg, (DOMAIN, base_id), entry.entry_id)
+            if existing is None:
+                continue
+            owners = device_subentry_ids(existing, entry.entry_id)
+            if owners and owners != {subentry.subentry_id}:
                 move_device_to_subentry(
                     dev_reg, existing, entry.entry_id, subentry.subentry_id
                 )
 
+        _mark_missed_reset(subentry_entities, missed_reset)
         async_add_entities(
             subentry_entities, True, config_subentry_id=subentry.subentry_id
         )
         entities.extend(subentry_entities)
 
-    base_id = "daily_electricity_cost"
-    unique_id = f"{DOMAIN}_{base_id}"
+    _async_remove_stale_sources(
+        hass, entry.entry_id, current_unique_ids, current_base_ids
+    )
+
+    unique_id = f"{DOMAIN}_{SUMMARY_DEVICE_ID}"
     device_info = DeviceInfo(
-        identifiers={(DOMAIN, base_id)},
+        identifiers={(DOMAIN, SUMMARY_DEVICE_ID)},
         name=f"{DOMAIN_ABBREVIATION}: Summary Sensors",
         entry_type=DeviceEntryType.SERVICE,
         manufacturer="DynamicEnergyCalc",
@@ -1712,6 +1937,7 @@ async def async_setup_entry(
                 price_settings=price_settings,
                 icon="mdi:transmission-tower-import",
                 device=device_info,
+                solar_bonus_tracker=solar_bonus_tracker,
             )
         )
 
@@ -1730,6 +1956,7 @@ async def async_setup_entry(
         )
 
     # Summary sensors belong to the main config entry (no sub-entry)
+    _mark_missed_reset(summary_entities, missed_reset)
     async_add_entities(summary_entities, True)
     entities.extend(summary_entities)
 
@@ -1738,28 +1965,144 @@ async def async_setup_entry(
     typed_entry.runtime_data.netting_tracker = netting_tracker
     typed_entry.runtime_data.solar_bonus_tracker = solar_bonus_tracker
 
-    # Schedule contract anniversary reset if enabled
-    reset_on_anniversary = bool(price_settings.get("reset_on_contract_anniversary"))
-    contract_start_date = price_settings.get("contract_start_date", "")
-    if reset_on_anniversary and contract_start_date:
+    daily_sensors: list[_DailyCostSensor] = [daily_electricity, daily_gas]
 
-        async def check_contract_anniversary(now: datetime) -> None:
-            """Check if today is the contract anniversary and reset if needed."""
-            if _is_contract_anniversary(contract_start_date, now.date()):
-                _LOGGER.info("Contract anniversary reached, resetting all meters")
-                # Reset solar bonus tracker if present
-                if solar_bonus_tracker:
-                    await solar_bonus_tracker.async_reset_year()
-                # Reset netting tracker if present
-                if netting_tracker:
-                    await netting_tracker.async_reset_all()
-                # Reset all utility entities for this entry
-                for entity in entities:
-                    await entity.async_reset()
+    async def handle_midnight(now: datetime) -> None:
+        """Run the contract-year reset first, then add the new day's fixed costs.
 
-        # Run at midnight every day; unsubscribe when entry is unloaded
-        entry.async_on_unload(
-            async_track_time_change(
-                hass, check_contract_anniversary, hour=0, minute=0, second=0
+        Both happen at 00:00. A single handler fixes their order, so the fixed
+        costs of the first day of a contract year are not wiped by its reset.
+        """
+        await contract_year.async_handle_midnight(now.date(), entities)
+        for daily_sensor in daily_sensors:
+            await daily_sensor._handle_daily_addition(now)
+
+    # Run at midnight every day; unsubscribe when entry is unloaded
+    entry.async_on_unload(
+        async_track_time_change(hass, handle_midnight, hour=0, minute=0, second=0)
+    )
+
+
+def _mark_missed_reset(
+    entities: list[BaseUtilitySensor], missed_reset: date | None
+) -> None:
+    """Make the entities restore as zero when a contract-year reset was missed."""
+    if missed_reset is None:
+        return
+    for entity in entities:
+        if entity._resets_with_contract_year:
+            entity._reset_on_restore = missed_reset
+
+
+class _ContractYearReset:
+    """Reset meters and trackers on each contract anniversary.
+
+    The date of the last reset is stored so an anniversary that passed while
+    Home Assistant was not running is still applied at the next start.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry_id: str,
+        price_settings: dict[str, Any],
+        netting_tracker: NettingTracker | None,
+        solar_bonus_tracker: SolarBonusTracker | None,
+    ) -> None:
+        self._start: date | None = None
+        if price_settings.get("reset_on_contract_anniversary"):
+            self._start = parse_contract_date(
+                price_settings.get("contract_start_date", "")
             )
+        self._netting_tracker = netting_tracker
+        self._solar_bonus_tracker = solar_bonus_tracker
+        self._store: Store[dict[str, Any]] = Store(
+            hass,
+            CONTRACT_STORAGE_VERSION,
+            f"{CONTRACT_STORAGE_KEY_PREFIX}_{entry_id}",
+            private=True,
         )
+
+    async def _async_reset_trackers(self) -> None:
+        if self._netting_tracker is not None:
+            await self._netting_tracker.async_reset_all()
+        # The solar bonus limit follows its own period. A calendar-year limit
+        # must not restart on the contract anniversary, and a contract-year
+        # limit already rolls over by itself; resetting it here keeps it in
+        # step with the meters.
+        if (
+            self._solar_bonus_tracker is not None
+            and self._solar_bonus_tracker.limit_period
+            == SOLAR_BONUS_LIMIT_CONTRACT_YEAR
+        ):
+            await self._solar_bonus_tracker.async_reset_year()
+
+    async def async_catch_up(self) -> date | None:
+        """Apply a reset missed while not running; return its anniversary.
+
+        Entities are not restored yet at this point, so the caller marks them
+        to restore as zero instead.
+        """
+        if self._start is None:
+            return None
+        anniversary = latest_anniversary(self._start, dt_util.now().date())
+        stored = await self._store.async_load() or {}
+        last_reset = parse_contract_date(stored.get("last_reset"))
+        missed = last_reset is not None and last_reset < anniversary
+        if missed:
+            _LOGGER.info(
+                "Contract anniversary %s passed while not running, resetting meters",
+                anniversary,
+            )
+            await self._async_reset_trackers()
+        if last_reset is None or missed:
+            # Without a stored date (first run, or an upgrade) there is no
+            # way to tell whether a reset was missed, so assume it was not.
+            await self._store.async_save({"last_reset": anniversary.isoformat()})
+        return anniversary if missed else None
+
+    async def async_handle_midnight(
+        self, today: date, entities: list[BaseUtilitySensor]
+    ) -> None:
+        if self._start is None or not is_anniversary(self._start, today):
+            return
+        _LOGGER.info("Contract anniversary reached, resetting all meters")
+        await self._async_reset_trackers()
+        for entity in entities:
+            if entity._resets_with_contract_year:
+                await entity.async_reset()
+        await self._store.async_save({"last_reset": today.isoformat()})
+
+
+@callback
+def _async_remove_stale_sources(
+    hass: HomeAssistant,
+    entry_id: str,
+    current_unique_ids: set[str],
+    current_base_ids: set[str],
+) -> None:
+    """Remove source entities and devices that are no longer configured.
+
+    Reconfiguring a subentry can drop a source sensor, or drop the price
+    sensor so that only the kWh modes remain. Their old entities would
+    otherwise stay in the registry as unavailable forever.
+    """
+    ent_reg = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(ent_reg, entry_id):
+        if (
+            entity_entry.domain == "sensor"
+            and entity_entry.config_subentry_id is not None
+            and entity_entry.unique_id not in current_unique_ids
+        ):
+            _LOGGER.info("Removing stale entity %s", entity_entry.entity_id)
+            ent_reg.async_remove(entity_entry.entity_id)
+
+    dev_reg = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(dev_reg, entry_id):
+        identifiers = {
+            identifier for domain, identifier in device.identifiers if domain == DOMAIN
+        }
+        if not identifiers or identifiers & (current_base_ids | {SUMMARY_DEVICE_ID}):
+            continue
+        _LOGGER.info("Removing stale device %s", device.name)
+        remove_device_from_entry(dev_reg, device, entry_id)

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, EventStateChangedData, HomeAssistant
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+)
 
 from .const import (
     CONF_PRICE_SENSOR,
@@ -19,14 +23,23 @@ from .const import (
     DOMAIN_ABBREVIATION,
     SOLAR_BONUS_BASE_MARKET_ONLY,
     SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
-    SOLAR_BONUS_LIMIT_CALENDAR_YEAR,
+    SOLAR_BONUS_WINDOW_FIXED_HOURS,
     SOLAR_BONUS_WINDOW_SUNRISE_SUNSET,
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
-from .solar_bonus import SolarBonusTracker
+from .entity import read_price_sum
+from .solar_bonus import SolarBonusTracker, async_get_solar_bonus_tracker
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _as_sensor_list(price_sensor: str | list[str] | None) -> list[str]:
+    if price_sensor is None:
+        return []
+    if isinstance(price_sensor, str):
+        return [price_sensor]
+    return list(price_sensor)
 
 
 async def async_setup_entry(
@@ -42,10 +55,11 @@ async def async_setup_entry(
     )
 
     # Get the price sensor from entry data (used for production price calculations)
-    price_sensor_list = entry.options.get(
-        CONF_PRICE_SENSOR, entry.data.get(CONF_PRICE_SENSOR, [])
+    # The configured price is the sum of all price sensors, as in the
+    # cost sensors, so every binary sensor uses all of them.
+    price_sensor_list = _as_sensor_list(
+        entry.options.get(CONF_PRICE_SENSOR, entry.data.get(CONF_PRICE_SENSOR, []))
     )
-    production_price_sensor = price_sensor_list[0] if price_sensor_list else None
 
     # Check if production is configured via sub-entries
     has_production = any(
@@ -67,22 +81,10 @@ async def async_setup_entry(
     # Check if solar bonus is enabled
     solar_bonus_enabled = bool(price_settings.get("solar_bonus_enabled"))
     if solar_bonus_enabled and has_production:
-        # Get or create the solar bonus tracker
-        solar_bonus_map = hass.data.setdefault(DOMAIN, {}).setdefault("solar_bonus", {})
-        solar_bonus_tracker = solar_bonus_map.get(entry.entry_id)
-
-        # Create tracker if it doesn't exist yet
-        if solar_bonus_tracker is None:
-            contract_start_date = price_settings.get("contract_start_date", "")
-            solar_bonus_tracker = await SolarBonusTracker.async_create(
-                hass,
-                entry.entry_id,
-                contract_start_date,
-                price_settings.get(
-                    "solar_bonus_limit_period", SOLAR_BONUS_LIMIT_CALENDAR_YEAR
-                ),
-            )
-            solar_bonus_map[entry.entry_id] = solar_bonus_tracker
+        # Shared with the sensor platform, which is set up concurrently
+        solar_bonus_tracker = await async_get_solar_bonus_tracker(
+            hass, entry.entry_id, price_settings
+        )
 
         entities.append(
             SolarBonusActiveBinarySensor(
@@ -90,19 +92,19 @@ async def async_setup_entry(
                 unique_id=f"{entry.entry_id}_solar_bonus_active",
                 entry_id=entry.entry_id,
                 solar_bonus_tracker=solar_bonus_tracker,
-                price_sensor=production_price_sensor,
+                price_sensor=price_sensor_list,
                 price_settings=price_settings,
                 device_info=device_info,
             )
         )
 
-    if has_production and production_price_sensor:
+    if has_production and price_sensor_list:
         entities.append(
             ProductionPricePositiveBinarySensor(
                 hass=hass,
                 unique_id=f"{entry.entry_id}_production_price_positive",
                 entry_id=entry.entry_id,
-                price_sensor=production_price_sensor,
+                price_sensor=price_sensor_list,
                 price_settings=price_settings,
                 device_info=device_info,
             )
@@ -133,7 +135,7 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         unique_id: str,
         entry_id: str,
         solar_bonus_tracker: SolarBonusTracker,
-        price_sensor: str | None,
+        price_sensor: str | list[str] | None,
         price_settings: dict[str, Any],
         device_info: DeviceInfo,
     ):
@@ -144,20 +146,34 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         self._attr_translation_key = "solar_bonus_active"
         self._attr_device_info = device_info
         self._solar_bonus_tracker = solar_bonus_tracker
-        self._price_sensor = price_sensor
+        self._price_sensors = _as_sensor_list(price_sensor)
         self._price_settings = price_settings
         self._attr_is_on = False
 
     async def async_added_to_hass(self) -> None:
-        """Register state change listener."""
-        if self._price_sensor:
+        """Re-evaluate on price changes, window edges and limit changes."""
+        # sun.sun drives the sunrise-to-sunset window
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass,
+                [*self._price_sensors, "sun.sun"],
+                self._handle_price_change,
+            )
+        )
+        # Fixed windows start and end on whole hours
+        if (
+            self._price_settings.get("solar_bonus_window_mode")
+            == SOLAR_BONUS_WINDOW_FIXED_HOURS
+        ):
             self.async_on_remove(
-                async_track_state_change_event(
-                    self.hass,
-                    [self._price_sensor],
-                    self._handle_price_change,
+                async_track_time_change(
+                    self.hass, self._handle_time_change, minute=0, second=0
                 )
             )
+        # Reaching the annual limit, a new period, or a reset
+        self.async_on_remove(
+            self._solar_bonus_tracker.async_add_listener(self._handle_tracker_update)
+        )
         # Initial update
         await self._async_update_state()
 
@@ -165,53 +181,55 @@ class SolarBonusActiveBinarySensor(BinarySensorEntity):
         """Handle price sensor state change."""
         await self._async_update_state()
 
-    async def _async_update_state(self) -> None:
-        """Update the binary sensor state."""
-        # Check if solar bonus conditions are met
-        is_active = False
+    async def _handle_time_change(self, now: datetime) -> None:
+        await self._async_update_state(only_if_changed=True)
 
-        # Check if we are inside the supplier's bonus window
-        if self._solar_bonus_tracker.is_in_bonus_window(
+    @callback
+    def _handle_tracker_update(self) -> None:
+        # The tracker reports every bonus booking; only write on a change.
+        if self._is_active() != self._attr_is_on:
+            self._attr_is_on = not self._attr_is_on
+            if self.entity_id:
+                self.async_write_ha_state()
+
+    def _is_active(self) -> bool:
+        """Return whether a kWh fed in right now would earn the bonus."""
+        if not self._solar_bonus_tracker.is_in_bonus_window(
             self._price_settings.get(
                 "solar_bonus_window_mode", SOLAR_BONUS_WINDOW_SUNRISE_SUNSET
             ),
             self._price_settings.get("solar_bonus_start_hour", 6.0),
             self._price_settings.get("solar_bonus_end_hour", 22.0),
         ):
-            # Check if under annual limit
-            annual_limit = self._price_settings.get(
-                "solar_bonus_annual_kwh_limit", 7500.0
+            return False
+        if self._solar_bonus_tracker.limit_reached(
+            self._price_settings.get("solar_bonus_annual_kwh_limit", 7500.0)
+        ):
+            return False
+        base_price, _problems = read_price_sum(self.hass, self._price_sensors)
+        if base_price is None:
+            return False
+        # Mirror the tracker: a market-only bonus ignores the production
+        # markup for this condition too.
+        if (
+            self._price_settings.get(
+                "solar_bonus_base", SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP
             )
-            if self._solar_bonus_tracker.year_production_kwh < annual_limit:
-                # Check if price is positive
-                if self._price_sensor:
-                    price_state = self.hass.states.get(self._price_sensor)
-                    if price_state and price_state.state not in (
-                        "unknown",
-                        "unavailable",
-                    ):
-                        try:
-                            base_price = float(price_state.state)
-                            production_markup = self._price_settings.get(
-                                "per_unit_supplier_electricity_production_markup", 0.0
-                            )
-                            # Mirror the tracker: a market-only bonus ignores
-                            # the production markup for this condition too.
-                            if (
-                                self._price_settings.get(
-                                    "solar_bonus_base",
-                                    SOLAR_BONUS_BASE_MARKET_PLUS_MARKUP,
-                                )
-                                == SOLAR_BONUS_BASE_MARKET_ONLY
-                            ):
-                                total_price = base_price
-                            else:
-                                total_price = base_price + production_markup
-                            if total_price > 0:
-                                is_active = True
-                        except (ValueError, TypeError):
-                            pass
+            == SOLAR_BONUS_BASE_MARKET_ONLY
+        ):
+            return base_price > 0
+        production_markup = float(
+            self._price_settings.get(
+                "per_unit_supplier_electricity_production_markup", 0.0
+            )
+        )
+        return base_price + production_markup > 0
 
+    async def _async_update_state(self, only_if_changed: bool = False) -> None:
+        """Update the binary sensor state."""
+        is_active = self._is_active()
+        if only_if_changed and is_active == self._attr_is_on:
+            return
         self._attr_is_on = is_active
         if self.entity_id:  # Only write state if entity is registered
             self.async_write_ha_state()
@@ -225,7 +243,7 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):
         hass: HomeAssistant,
         unique_id: str,
         entry_id: str,
-        price_sensor: str | None,
+        price_sensor: str | list[str] | None,
         price_settings: dict[str, Any],
         device_info: DeviceInfo,
     ):
@@ -235,17 +253,17 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):
         self._attr_has_entity_name = True
         self._attr_translation_key = "production_price_positive"
         self._attr_device_info = device_info
-        self._price_sensor = price_sensor
+        self._price_sensors = _as_sensor_list(price_sensor)
         self._price_settings = price_settings
         self._attr_is_on = False
 
     async def async_added_to_hass(self) -> None:
         """Register state change listener."""
-        if self._price_sensor:
+        if self._price_sensors:
             self.async_on_remove(
                 async_track_state_change_event(
                     self.hass,
-                    [self._price_sensor],
+                    self._price_sensors,
                     self._handle_price_change,
                 )
             )
@@ -259,19 +277,12 @@ class ProductionPricePositiveBinarySensor(BinarySensorEntity):
     async def _async_update_state(self) -> None:
         """Update the binary sensor state."""
         is_positive = False
-
-        if self._price_sensor:
-            price_state = self.hass.states.get(self._price_sensor)
-            if price_state and price_state.state not in ("unknown", "unavailable"):
-                try:
-                    base_price = float(price_state.state)
-                    production_markup = self._price_settings.get(
-                        "per_unit_supplier_electricity_production_markup", 0.0
-                    )
-                    total_price = base_price + production_markup
-                    is_positive = total_price > 0
-                except (ValueError, TypeError):
-                    pass
+        base_price, _problems = read_price_sum(self.hass, self._price_sensors)
+        if base_price is not None:
+            production_markup = self._price_settings.get(
+                "per_unit_supplier_electricity_production_markup", 0.0
+            )
+            is_positive = base_price + production_markup > 0
 
         self._attr_is_on = is_positive
         if self.entity_id:  # Only write state if entity is registered
@@ -320,25 +331,13 @@ class DeliveryPricePositiveBinarySensor(BinarySensorEntity):
         """Update the binary sensor state."""
         is_positive = False
 
-        if self._price_sensors:
-            total_price = 0.0
-            all_valid = False
-            for sensor_id in self._price_sensors:
-                price_state = self.hass.states.get(sensor_id)
-                if price_state and price_state.state not in ("unknown", "unavailable"):
-                    try:
-                        total_price += float(price_state.state)
-                        all_valid = True
-                    except (ValueError, TypeError):
-                        pass
-            if all_valid:
-                markup = self._price_settings.get(
-                    "per_unit_supplier_electricity_markup", 0.0
-                )
-                tax = self._price_settings.get(
-                    "per_unit_government_electricity_tax", 0.0
-                )
-                is_positive = (total_price + markup + tax) > 0
+        total_price, _problems = read_price_sum(self.hass, self._price_sensors)
+        if total_price is not None:
+            markup = self._price_settings.get(
+                "per_unit_supplier_electricity_markup", 0.0
+            )
+            tax = self._price_settings.get("per_unit_government_electricity_tax", 0.0)
+            is_positive = (total_price + markup + tax) > 0
 
         self._attr_is_on = is_positive
         if self.entity_id:  # Only write state if entity is registered

@@ -19,6 +19,8 @@ Home Assistant custom integration (HACS) that calculates electricity and gas cos
   - `entity.py` — base entity with state restoration
   - `const.py` — constants, price keys, supplier presets
   - `netting.py` — Dutch saldering (netting) logic
+  - `contract.py` — contract-year date helpers (anniversaries, leap days)
+  - `device_compat.py` — device registry helpers across HA releases
   - `solar_bonus.py` — zonnebonus calculation
   - `services.py` — reset_all_meters, reset_selected_meters, set_meter_value
   - `repair.py` — HA repair issues

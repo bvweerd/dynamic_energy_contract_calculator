@@ -1,28 +1,29 @@
-import pytest
 from unittest.mock import AsyncMock
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.config_entries import ConfigEntryState
 
-from custom_components.dynamic_energy_contract_calculator.services import (
-    _handle_reset_all,
-    _handle_reset_sensors,
-    _handle_set_netting,
-    _handle_set_netting_value,
-    _handle_set_value,
-)
-from custom_components.dynamic_energy_contract_calculator.const import (
-    CONF_PRICE_SETTINGS,
-    DOMAIN,
-)
+import pytest
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant, ServiceCall
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
 from custom_components.dynamic_energy_contract_calculator import (
     RuntimeData,
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from custom_components.dynamic_energy_contract_calculator.const import (
+    CONF_PRICE_SETTINGS,
+    DOMAIN,
+)
 from custom_components.dynamic_energy_contract_calculator.entity import (
     BaseUtilitySensor,
+)
+from custom_components.dynamic_energy_contract_calculator.services import (
+    _handle_reset_all,
+    _handle_reset_sensors,
+    _handle_set_netting,
+    _handle_set_netting_value,
+    _handle_set_value,
 )
 
 
@@ -214,7 +215,8 @@ async def test_service_set_netting_updates_loaded_entries(hass: HomeAssistant):
             {CONF_PRICE_SETTINGS: {"vat_percentage": 9.0, "netting_enabled": True}},
         ),
     ]
-    assert reloads == ["netting-options", "netting-data"]
+    # The entry's update listener reloads it; a second explicit reload is not done
+    assert reloads == []
 
 
 async def test_service_set_netting_value_uses_tracker_when_present(hass: HomeAssistant):
@@ -293,3 +295,14 @@ async def test_services_removed_after_unload(hass: HomeAssistant):
         assert await async_unload_entry(hass, entry)
 
     assert not hass.services.has_service(DOMAIN, "reset_all_meters")
+
+
+async def test_service_reset_all_resets_solar_bonus_tracker(hass: HomeAssistant):
+    """Without it the bonus total jumps back and the limit stays used up."""
+    tracker = type("Tracker", (), {"async_reset_year": AsyncMock()})()
+    entry = _make_loaded_entry_with_entities(hass, {})
+    entry.runtime_data.solar_bonus_tracker = tracker
+
+    await _handle_reset_all(ServiceCall(hass, DOMAIN, "reset_all_meters", {}))
+
+    tracker.async_reset_year.assert_awaited_once()

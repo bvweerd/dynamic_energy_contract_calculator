@@ -1,10 +1,8 @@
 # custom_components/dynamic_energy_contract_calculator/services.py
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import logging
-
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -106,6 +104,10 @@ async def _handle_reset_all(call: ServiceCall) -> None:
                 await ent.async_reset()
         if runtime.netting_tracker is not None:
             await runtime.netting_tracker.async_reset_all()
+        # Without this the bonus total would jump back to the tracker's value
+        # and the annual limit would stay used up.
+        if runtime.solar_bonus_tracker is not None:
+            await runtime.solar_bonus_tracker.async_reset_year()
 
 
 async def _handle_reset_sensors(call: ServiceCall) -> None:
@@ -158,10 +160,10 @@ async def _handle_set_netting(call: ServiceCall) -> None:
         price_settings["netting_enabled"] = enabled
         current_options[CONF_PRICE_SETTINGS] = price_settings
 
+        # The entry's update listener reloads it when the options change, so
+        # an explicit reload here would reload it a second time.
         call.hass.config_entries.async_update_entry(entry, options=current_options)
         _LOGGER.info("Netting set to %s for entry %s", enabled, entry.entry_id)
-
-        await call.hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _handle_set_netting_value(call: ServiceCall) -> None:

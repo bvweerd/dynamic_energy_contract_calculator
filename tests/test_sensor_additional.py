@@ -1,23 +1,15 @@
-import pytest
-from unittest.mock import AsyncMock
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
+
+import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
-from custom_components.dynamic_energy_contract_calculator.entity import (
-    DynamicEnergySensor,
-)
-from custom_components.dynamic_energy_contract_calculator.sensor import (
-    TotalCostSensor,
-    DailyElectricityCostSensor,
-    DailyGasCostSensor,
-    TotalEnergyCostSensor,
-    CurrentElectricityPriceSensor,
-    SolarBonusStatusSensor,
-    async_setup_entry as sensor_async_setup_entry,
-)
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import DeviceInfo
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.dynamic_energy_contract_calculator import sensor as sensor_module
 from custom_components.dynamic_energy_contract_calculator.const import (
     CONF_PRICE_SENSOR,
     CONF_PRICE_SENSOR_GAS,
@@ -32,8 +24,20 @@ from custom_components.dynamic_energy_contract_calculator.const import (
     SOURCE_TYPE_PRODUCTION,
     SUBENTRY_TYPE_SOURCE,
 )
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from custom_components.dynamic_energy_contract_calculator import sensor as sensor_module
+from custom_components.dynamic_energy_contract_calculator.entity import (
+    DynamicEnergySensor,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import (
+    CurrentElectricityPriceSensor,
+    DailyElectricityCostSensor,
+    DailyGasCostSensor,
+    SolarBonusStatusSensor,
+    TotalCostSensor,
+    TotalEnergyCostSensor,
+)
+from custom_components.dynamic_energy_contract_calculator.sensor import (
+    async_setup_entry as sensor_async_setup_entry,
+)
 
 
 async def test_dynamic_energy_sensor_modes(hass: HomeAssistant):
@@ -188,8 +192,10 @@ async def test_daily_cost_sensors(hass: HomeAssistant):
 
     await e.async_update()
     await g.async_update()
-    await e._handle_daily_addition(datetime.now())
-    await g._handle_daily_addition(datetime.now())
+    # The day the sensors start is not charged; the next midnight is
+    next_midnight = datetime.now() + timedelta(days=1)
+    await e._handle_daily_addition(next_midnight)
+    await g._handle_daily_addition(next_midnight)
     assert e.native_value > 0
     assert g.native_value > 0
 
@@ -304,10 +310,10 @@ async def test_current_price_sensor_update_branches(hass: HomeAssistant):
 
 
 async def test_async_setup_entry_gas(hass: HomeAssistant):
+    from custom_components.dynamic_energy_contract_calculator import async_setup
     from custom_components.dynamic_energy_contract_calculator.sensor import (
         async_setup_entry,
     )
-    from custom_components.dynamic_energy_contract_calculator import async_setup
 
     await async_setup(hass, {})
     hass.states.async_set("sensor.gas", 0)
@@ -340,6 +346,9 @@ async def test_async_setup_entry_gas(hass: HomeAssistant):
     await async_setup_entry(hass, entry, add_entities)
     await hass.async_block_till_done()
     assert isinstance(added, list)
+
+    # Run the unload callbacks, as unloading the entry would
+    await entry._async_process_on_unload(hass)
 
 
 async def test_additional_branches(hass: HomeAssistant):
@@ -883,14 +892,7 @@ async def test_current_price_more_helper_branches(hass: HomeAssistant):
             {"time": object(), "price": 2.0},
             {"time": datetime(2026, 1, 1, 10, 30), "price": 3.0},
             {"time": datetime(2026, 1, 1, 10, 45), "foo": 1},
-            {
-                "time": type(
-                    "FakeTime",
-                    (),
-                    {"year": 2026, "month": 1, "day": 1, "hour": 11},
-                )(),
-                "value": 4.0,
-            },
+            {"time": datetime(2026, 1, 1, 11, 0), "value": 4.0},
         ]
     )
     assert avg[0]["time"].startswith("2026-01-01T10:00:00")
@@ -980,7 +982,16 @@ async def test_current_price_update_current_price_fallback_and_tomorrow(
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(sensor_module.dt_util, "now", lambda: now)
         sensor._update_current_price()
-    assert sensor.native_value == pytest.approx(1.2)
+    # A partial sum is not a price: keep the old value, mark unavailable
+    assert sensor.native_value == pytest.approx(4.2)
+    assert sensor.available is False
+
+    hass.states.async_set("sensor.a", 0.3)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(sensor_module.dt_util, "now", lambda: now)
+        sensor._update_current_price()
+    assert sensor.native_value == pytest.approx(1.5)
+    assert sensor.available is True
 
 
 async def test_current_price_schedule_next_change_no_future_event(hass: HomeAssistant):
@@ -1292,7 +1303,14 @@ async def test_sensor_async_setup_entry_creates_new_trackers(hass: HomeAssistant
             "async_create",
             AsyncMock(
                 return_value=type(
-                    "Solar", (), {"year_production_kwh": 0.0, "total_bonus_euro": 0.0}
+                    "Solar",
+                    (),
+                    {
+                        "year_production_kwh": 0.0,
+                        "total_bonus_euro": 0.0,
+                        "limit_period": "calendar_year",
+                        "limit_reached": lambda self, limit: False,
+                    },
                 )()
             ),
         )
@@ -1300,6 +1318,9 @@ async def test_sensor_async_setup_entry_creates_new_trackers(hass: HomeAssistant
 
     assert "entry-create" in hass.data[DOMAIN]["netting"]
     assert "entry-create" in hass.data[DOMAIN]["solar_bonus"]
+
+    # Run the unload callbacks, as unloading the entry would
+    await entry._async_process_on_unload(hass)
 
 
 async def test_current_price_handle_sunrise_sunset_callback_invalid_float(
@@ -1369,6 +1390,11 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
 
         def get_next_anniversary_date(self):
             return self.next_anniversary
+
+        limit_period = "calendar_year"
+
+        def limit_reached(self, annual_limit_kwh):
+            return False
 
     existing_netting = DummyTracker()
     existing_solar = DummyTracker()
@@ -1457,9 +1483,22 @@ async def test_sensor_async_setup_entry_reuses_trackers_and_anniversary_callback
 
     for entity in added:
         entity.async_reset = AsyncMock()
+        entity.async_write_ha_state = lambda *a, **k: None
 
     await scheduled["callback"](datetime(2026, 1, 2, 0, 0, tzinfo=timezone.utc))
-    assert existing_solar.reset == 1
+    assert existing_netting.reset == 1
+    # The bonus limit is counted per calendar year here, so the contract
+    # anniversary must leave it alone.
+    assert existing_solar.reset == 0
+    # Meters reset, prices and the tracker-backed bonus total do not
+    resettable = [e for e in added if e._resets_with_contract_year]
+    assert resettable
+    assert all(e.async_reset.await_count == 1 for e in resettable)
+    assert all(
+        e.async_reset.await_count == 0
+        for e in added
+        if not e._resets_with_contract_year
+    )
 
 
 async def test_get_sunrise_sunset_times_astral_failure_returns_none(
@@ -1492,7 +1531,8 @@ async def test_split_entry_at_sunrise_sunset_bad_timestamps_returns_original(
     hass: HomeAssistant,
 ):
     """_split_entry_at_sunrise_sunset returns [entry] for unparsable timestamps."""
-    from datetime import datetime as dt, timezone as tz
+    from datetime import datetime as dt
+    from datetime import timezone as tz
 
     sensor = CurrentElectricityPriceSensor(
         hass,
@@ -1511,25 +1551,6 @@ async def test_split_entry_at_sunrise_sunset_bad_timestamps_returns_original(
         entry, sentinel_sunrise, sentinel_sunset
     )
     assert result == [entry]
-
-
-async def test_is_contract_anniversary_helper():
-    """_is_contract_anniversary returns True only on exact anniversary month/day."""
-    from datetime import date
-    from custom_components.dynamic_energy_contract_calculator.sensor import (
-        _is_contract_anniversary,
-    )
-
-    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 15)) is True
-    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 16)) is False
-    assert _is_contract_anniversary("2025-03-15", date(2026, 3, 14)) is False
-    assert _is_contract_anniversary("", date(2026, 3, 15)) is False
-    assert _is_contract_anniversary("not-a-date", date(2026, 3, 15)) is False
-    # Feb 29 on non-leap year falls back to Feb 28
-    assert _is_contract_anniversary("2020-02-29", date(2025, 2, 28)) is True
-    assert _is_contract_anniversary("2020-02-29", date(2025, 3, 1)) is False
-    # Feb 29 on actual leap year matches exactly
-    assert _is_contract_anniversary("2020-02-29", date(2024, 2, 29)) is True
 
 
 async def test_current_price_state_includes_solar_bonus_without_averaging(

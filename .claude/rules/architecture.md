@@ -10,6 +10,8 @@ custom_components/dynamic_energy_contract_calculator/
   entity.py         — base entity with state restoration logic
   const.py          — all constants, config keys, supplier presets
   netting.py        — Dutch saldering (netting) calculation
+  contract.py       — contract-year date helpers (anniversaries, leap days)
+  device_compat.py  — device registry helpers across HA releases
   solar_bonus.py    — zonnebonus calculation (sunrise-to-sunset, annual limits)
   services.py       — reset_all_meters, reset_selected_meters, set_meter_value
   repair.py         — HA issue repair handlers

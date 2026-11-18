@@ -1,16 +1,17 @@
-import pytest
 from unittest.mock import AsyncMock
-from homeassistant.core import HomeAssistant
-from homeassistant.components.sensor import SensorDeviceClass
 
+import pytest
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.core import HomeAssistant
+
+from custom_components.dynamic_energy_contract_calculator.const import (
+    SOURCE_TYPE_CONSUMPTION,
+    SOURCE_TYPE_GAS,
+    SOURCE_TYPE_PRODUCTION,
+)
 from custom_components.dynamic_energy_contract_calculator.entity import (
     BaseUtilitySensor,
     DynamicEnergySensor,
-)
-from custom_components.dynamic_energy_contract_calculator.const import (
-    SOURCE_TYPE_GAS,
-    SOURCE_TYPE_CONSUMPTION,
-    SOURCE_TYPE_PRODUCTION,
 )
 
 
@@ -308,6 +309,7 @@ async def test_consumption_sensor_with_netting_tracker(hass: HomeAssistant):
         (),
         {
             "async_record_consumption": AsyncMock(return_value=(1.0, 0.12)),
+            "async_add_pending_kwh": AsyncMock(),
             "async_register_sensor": AsyncMock(),
             "async_unregister_sensor": AsyncMock(),
         },
@@ -407,3 +409,130 @@ async def test_dynamic_energy_sensor_reset_and_set_value_wrappers(hass: HomeAssi
     assert sensor.native_value == 0.0
     await sensor.async_set_value(3.333333333)
     assert sensor.native_value == pytest.approx(3.33333333)
+
+
+async def test_price_issue_names_each_failing_price_sensor(hass: HomeAssistant):
+    """Every failing price sensor gets its own issue, not only the first one."""
+    sensor = await _make_sensor(
+        hass, price_sensor=["sensor.epex", "sensor.surcharge", "sensor.fee"]
+    )
+    sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.epex", 0.1)
+    hass.states.async_set("sensor.surcharge", "unavailable")
+    hass.states.async_set("sensor.fee", "bad")
+    issued = []
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.UNAVAILABLE_GRACE_SECONDS",
+            0,
+        )
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.async_report_issue",
+            lambda hass_arg, issue_id, *a, **k: issued.append(issue_id),
+        )
+        await sensor.async_update()
+
+    assert issued == [
+        "price_unavailable_sensor.surcharge",
+        "price_invalid_sensor.fee",
+    ]
+    assert not sensor.available
+    assert sensor.native_value == 0.0
+
+
+async def test_last_energy_is_restored(hass: HomeAssistant):
+    """The meter baseline survives a restart, so the next delta is not lost."""
+    sensor = await _make_sensor(hass, mode="kwh_total", price_sensor=None)
+    sensor._last_energy = 7.5
+    stored = sensor.extra_restore_state_data.as_dict()
+    assert stored["last_energy"] == 7.5
+
+    restored = await _make_sensor(hass, mode="kwh_total", price_sensor=None)
+    data = type("Extra", (), {"as_dict": lambda self: stored})()
+    restored.async_get_last_extra_data = AsyncMock(return_value=data)
+    restored.async_on_remove = lambda unsub: None
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.async_track_state_change_event",
+            lambda *a, **k: "unsub",
+        )
+        await restored.async_added_to_hass()
+    assert restored._last_energy == 7.5
+
+    hass.states.async_set("sensor.energy", 10.0)
+    await restored.async_update()
+    assert restored.native_value == pytest.approx(2.5)
+
+
+async def test_invalid_restored_last_energy_is_ignored(hass: HomeAssistant):
+    sensor = await _make_sensor(hass, mode="kwh_total", price_sensor=None)
+    data = type("Extra", (), {"as_dict": lambda self: {"last_energy": "bad"}})()
+    sensor.async_get_last_extra_data = AsyncMock(return_value=data)
+    sensor.async_on_remove = lambda unsub: None
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "custom_components.dynamic_energy_contract_calculator.entity.async_track_state_change_event",
+            lambda *a, **k: "unsub",
+        )
+        await sensor.async_added_to_hass()
+    assert sensor._last_energy is None
+
+
+async def test_missed_reset_restores_meter_as_zero(hass: HomeAssistant):
+    from datetime import date
+
+    sensor = BaseUtilitySensor("Test", "uid-reset", "kWh", None, "mdi:flash", True)
+    sensor._reset_on_restore = date(2026, 1, 1)
+    sensor.async_get_last_state = AsyncMock(
+        return_value=type("State", (), {"state": "12.5"})()
+    )
+    sensor.async_get_last_sensor_data = AsyncMock(return_value=None)
+    await sensor.async_added_to_hass()
+    assert sensor.native_value == 0.0
+
+
+async def test_netting_kwh_split_follows_netted_value(hass: HomeAssistant):
+    """kWh are split by the netted value, like the euro sensors.
+
+    With a negative netting balance the tax is not charged, so a slightly
+    negative market price makes the netted value a payout even though the
+    gross price including tax is positive.
+    """
+    from unittest.mock import MagicMock
+
+    from custom_components.dynamic_energy_contract_calculator.netting import (
+        NettingTracker,
+    )
+
+    store = MagicMock()
+    store.async_save = AsyncMock()
+    settings = {
+        "per_unit_supplier_electricity_markup": 0.0,
+        "per_unit_government_electricity_tax": 0.10,
+        "vat_percentage": 0.0,
+    }
+    tracker = NettingTracker(
+        hass, "split", store, {"net_consumption_kwh": -10.0}, settings
+    )
+    sensors = {
+        mode: await _make_sensor(
+            hass,
+            unique_id=f"split-{mode}",
+            price_settings=settings,
+            mode=mode,
+            netting_tracker=tracker,
+        )
+        for mode in ("cost_total", "kwh_during_cost_total", "kwh_during_profit_total")
+    }
+    for sensor in sensors.values():
+        sensor._last_energy = 0
+    hass.states.async_set("sensor.energy", 1)
+    hass.states.async_set("sensor.price", -0.02)
+
+    # The cost sensor runs first and classifies the delta as a payout
+    for mode in ("cost_total", "kwh_during_cost_total", "kwh_during_profit_total"):
+        await sensors[mode].async_update()
+
+    assert sensors["kwh_during_profit_total"].native_value == pytest.approx(1.0)
+    assert sensors["kwh_during_cost_total"].native_value == 0.0
