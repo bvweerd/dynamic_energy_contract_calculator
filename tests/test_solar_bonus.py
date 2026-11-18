@@ -277,14 +277,14 @@ async def test_solar_bonus_is_daylight_edge_cases(hass: HomeAssistant):
     assert result is True
 
 
-async def test_solar_bonus_is_daylight_fallback_on_exception(hass: HomeAssistant):
+async def test_solar_bonus_is_daylight_fallback_without_sun(hass: HomeAssistant):
     tracker = await SolarBonusTracker.async_create(hass, "test_entry_fallback")
 
-    class BrokenStates:
+    class NoSunStates:
         def get(self, entity_id):
-            raise RuntimeError("boom")
+            return None
 
-    with patch.object(tracker, "_hass", type("Hass", (), {"states": BrokenStates()})()):
+    with patch.object(tracker, "_hass", type("Hass", (), {"states": NoSunStates()})()):
         with patch(
             "custom_components.dynamic_energy_contract_calculator.solar_bonus.dt_util.now",
             return_value=datetime(2025, 7, 25, 12, 0, 0, tzinfo=timezone.utc),

@@ -546,41 +546,32 @@ class DynamicEnergySensor(BaseUtilitySensor):
                 adjusted_value,
             )
 
+            # Consumed energy is a cost at a non-negative value; produced
+            # energy is a cost only at a negative value (paying to feed in).
+            if self.source_type == SOURCE_TYPE_PRODUCTION:
+                energy_is_cost = adjusted_value < 0
+            else:
+                energy_is_cost = adjusted_value >= 0
+
             if netted_kwh is not None:
                 self._attr_native_value += netted_kwh
             elif self.mode == "cost_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value >= 0:
-                        self._attr_native_value += adjusted_value
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value < 0:
-                        self._attr_native_value += abs(adjusted_value)
+                if energy_is_cost:
+                    self._attr_native_value += abs(adjusted_value)
             elif self.mode == "profit_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value < 0:
-                        self._attr_native_value += abs(adjusted_value)
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value >= 0:
-                        self._attr_native_value += adjusted_value
+                if not energy_is_cost:
+                    self._attr_native_value += abs(adjusted_value)
+                if self.source_type == SOURCE_TYPE_PRODUCTION:
                     # Bonus and netting credit are earned regardless of the
                     # sign of the energy value itself. A negative energy value
                     # is already booked on the cost sensor; folding the credit
                     # into it here would double count that negative value.
                     self._attr_native_value += bonus_and_credit
             elif self.mode == "kwh_during_cost_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value >= 0:
-                        self._attr_native_value += delta
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value < 0:
-                        self._attr_native_value += delta
-            elif self.mode == "kwh_during_profit_total":
-                if self.source_type in (SOURCE_TYPE_CONSUMPTION, SOURCE_TYPE_GAS):
-                    if adjusted_value < 0:
-                        self._attr_native_value += delta
-                elif self.source_type == SOURCE_TYPE_PRODUCTION:
-                    if adjusted_value >= 0:
-                        self._attr_native_value += delta
+                if energy_is_cost:
+                    self._attr_native_value += delta
+            elif self.mode == "kwh_during_profit_total" and not energy_is_cost:
+                self._attr_native_value += delta
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

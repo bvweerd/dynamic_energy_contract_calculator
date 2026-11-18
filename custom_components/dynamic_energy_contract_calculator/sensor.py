@@ -104,7 +104,10 @@ def _compute_sun_times(
         )
         s = _astral_sun(location.observer, date=date_obj, tzinfo=timezone)
         return s["sunrise"], s["sunset"]
-    except Exception as exc:
+    # ValueError: the sun never rises or sets that day (polar regions);
+    # KeyError: unknown time zone (ZoneInfoNotFoundError);
+    # TypeError: no coordinates configured
+    except (ValueError, KeyError, TypeError) as exc:
         _LOGGER.debug("Sunrise/sunset calculation failed for %s: %s", date_obj, exc)
         return None, None
 
@@ -420,11 +423,12 @@ class _DailyCostSensor(BaseUtilitySensor):
             last_charged = parse_contract_date(
                 last_extra_data.as_dict().get("last_charged_date")
             )
-        if self._reset_on_restore is not None:
-            # Missed contract-year reset: only the days of the new contract
-            # year are still owed.
-            if last_charged is None or last_charged < self._reset_on_restore:
-                last_charged = self._reset_on_restore - timedelta(days=1)
+        # After a missed contract-year reset only the days of the new
+        # contract year are still owed.
+        if self._reset_on_restore is not None and (
+            last_charged is None or last_charged < self._reset_on_restore
+        ):
+            last_charged = self._reset_on_restore - timedelta(days=1)
         if last_charged is None or last_charged > today:
             # First run (or a clock that went backwards): start counting from
             # today without charging for it, as before.
@@ -863,9 +867,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                     base_val = 0.0
                 new_val = base_val + add_val
                 existing[idx]["value"] = new_val
-                if "price" in existing[idx]:
-                    existing[idx]["price"] = new_val
-                elif "price" in entry:
+                if "price" in existing[idx] or "price" in entry:
                     existing[idx]["price"] = new_val
             else:
                 entry_copy = entry.copy()
@@ -957,13 +959,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if window_mode != SOLAR_BONUS_WINDOW_FIXED_HOURS:
             return self._is_daylight_at(timestamp)
 
-        try:
-            if isinstance(timestamp, str):
-                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            else:
-                dt = timestamp
-        except Exception as e:
-            _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
+        dt = _parse_timestamp(timestamp)
+        if dt is None:
+            _LOGGER.warning("Failed to parse timestamp %s", timestamp)
             return False
 
         # A fixed window is defined in local clock hours, so compare in the
@@ -971,7 +969,7 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if dt.tzinfo is not None:
             try:
                 dt = dt.astimezone(ZoneInfo(str(self.hass.config.time_zone)))
-            except Exception as e:  # pragma: no cover - invalid tz config
+            except KeyError as e:  # pragma: no cover - invalid tz config
                 _LOGGER.debug("Could not convert %s to local time: %s", timestamp, e)
 
         start_hour = int(self.price_settings.get("solar_bonus_start_hour", 6.0))
@@ -985,15 +983,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         exact sunrise/sunset times for the timestamp.
         Falls back to conservative hour-based estimate if calculation unavailable.
         """
-        # Parse timestamp first (outside try-except to use in fallback)
-        try:
-            if isinstance(timestamp, str):
-                dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            else:
-                dt = timestamp
-        except Exception as e:
+        dt = _parse_timestamp(timestamp)
+        if dt is None:
             # Can't parse timestamp, assume not daylight
-            _LOGGER.warning("Failed to parse timestamp %s: %s", timestamp, e)
+            _LOGGER.warning("Failed to parse timestamp %s", timestamp)
             return False
 
         if not _ASTRAL_AVAILABLE:
@@ -1014,7 +1007,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
                 return 7 <= dt.hour < 19
 
             return bool(sunrise <= dt < sunset)
-        except Exception as e:
+        # KeyError: unknown time zone; TypeError: a naive and an aware
+        # datetime compared (e.g. a sun time computed without a time zone)
+        except (KeyError, TypeError) as e:
             _LOGGER.debug("Using hour-based daylight check (astral failed: %s)", e)
             return 7 <= dt.hour < 19
 
@@ -1115,10 +1110,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         (e.g. called before prefetch) we fall back to the blocking computation
         with a debug log so the regression is visible.
         """
-        if not _ASTRAL_AVAILABLE:
+        if not _ASTRAL_AVAILABLE or not isinstance(date_obj, date):
             return None, None
 
-        if isinstance(date_obj, date) and date_obj in self._sun_times_cache:
+        if date_obj in self._sun_times_cache:
             return self._sun_times_cache[date_obj]
 
         # Fallback – should not happen during normal operation because
@@ -1172,21 +1167,10 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
         if not timestamp_start or not timestamp_end:
             return [entry]
 
-        # Parse timestamps
-        try:
-            if isinstance(timestamp_start, str):
-                start_dt = datetime.fromisoformat(
-                    timestamp_start.replace("Z", "+00:00")
-                )
-            else:
-                start_dt = timestamp_start
-
-            if isinstance(timestamp_end, str):
-                end_dt = datetime.fromisoformat(timestamp_end.replace("Z", "+00:00"))
-            else:
-                end_dt = timestamp_end
-        except Exception as e:
-            _LOGGER.debug("Failed to parse timestamps in price entry: %s", e)
+        start_dt = _parse_timestamp(timestamp_start)
+        end_dt = _parse_timestamp(timestamp_end)
+        if start_dt is None or end_dt is None:
+            _LOGGER.debug("Failed to parse timestamps in price entry: %s", entry)
             return [entry]
 
         # Check if sunrise or sunset occur within this period
@@ -1271,18 +1255,9 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             raw_prices = [entry for entry in raw_prices if isinstance(entry, dict)]
             dates_to_check = set()
             for entry in raw_prices:
-                timestamp = entry.get("start") or entry.get("time")
-                if timestamp:
-                    try:
-                        if isinstance(timestamp, str):
-                            dt = datetime.fromisoformat(
-                                timestamp.replace("Z", "+00:00")
-                            )
-                        else:
-                            dt = timestamp
-                        dates_to_check.add(dt.date())
-                    except Exception as e:
-                        _LOGGER.debug("Skipping entry with unparsable timestamp: %s", e)
+                dt = _parse_timestamp(entry.get("start") or entry.get("time"))
+                if dt is not None:
+                    dates_to_check.add(dt.date())
 
             # Get sunrise/sunset for all dates
             sun_times = {}
@@ -1293,27 +1268,18 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             # Split entries at sunrise/sunset
             split_prices = []
             for entry in raw_prices:
-                timestamp = entry.get("start") or entry.get("time")
-                if timestamp:
-                    try:
-                        if isinstance(timestamp, str):
-                            dt = datetime.fromisoformat(
-                                timestamp.replace("Z", "+00:00")
-                            )
-                        else:
-                            dt = timestamp
-                        date_key = dt.date()
-                        sunrise, sunset = sun_times.get(date_key, (None, None))
-
-                        # Split entry if needed
-                        segments = self._split_entry_at_sunrise_sunset(
-                            entry, sunrise, sunset
-                        )
-                        split_prices.extend(segments)
-                    except Exception as e:
-                        _LOGGER.debug("Skipping entry split due to parse error: %s", e)
-                        split_prices.append(entry)
-                else:
+                dt = _parse_timestamp(entry.get("start") or entry.get("time"))
+                if dt is None:
+                    split_prices.append(entry)
+                    continue
+                sunrise, sunset = sun_times.get(dt.date(), (None, None))
+                try:
+                    split_prices.extend(
+                        self._split_entry_at_sunrise_sunset(entry, sunrise, sunset)
+                    )
+                except TypeError as e:
+                    # A naive entry compared with an aware sun time
+                    _LOGGER.debug("Skipping entry split: %s", e)
                     split_prices.append(entry)
 
             raw_prices = split_prices
@@ -1502,49 +1468,31 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             if solar_bonus_enabled:
                 self._schedule_bonus_window_updates()
 
+    @staticmethod
+    def _price_at(entries: list[dict[str, Any]] | None, now: datetime) -> Any:
+        """Return the value of the entry whose span contains *now*, if any."""
+        for entry in entries or []:
+            start_dt = _parse_timestamp(entry.get("start") or entry.get("time"))
+            end_dt = _parse_timestamp(entry.get("end"))
+            if start_dt is None or end_dt is None:
+                continue
+            try:
+                if start_dt <= now < end_dt:
+                    return entry.get("value")
+            except TypeError:
+                _LOGGER.debug("Skipping price entry without time zone: %s", entry)
+        return None
+
     def _update_current_price(self) -> None:
         """Update the current price based on the current time and net_prices."""
         now = dt_util.now()
 
         # Find current price from net_prices_today or net_prices_tomorrow
         current_price = None
-
-        if self._net_today:
-            for entry in self._net_today:
-                start_str = entry.get("start") or entry.get("time")
-                end_str = entry.get("end")
-
-                if not start_str or not end_str:
-                    continue
-
-                try:
-                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-
-                    if start_dt <= now < end_dt:
-                        current_price = entry.get("value")
-                        break
-                except Exception:
-                    continue
-
-        # If not found in today, check tomorrow
-        if current_price is None and self._net_tomorrow:
-            for entry in self._net_tomorrow:
-                start_str = entry.get("start") or entry.get("time")
-                end_str = entry.get("end")
-
-                if not start_str or not end_str:
-                    continue
-
-                try:
-                    start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-
-                    if start_dt <= now < end_dt:
-                        current_price = entry.get("value")
-                        break
-                except Exception:
-                    continue
+        for entries in (self._net_today, self._net_tomorrow):
+            current_price = self._price_at(entries, now)
+            if current_price is not None:
+                break
 
         if current_price is not None:
             self._attr_native_value = current_price
@@ -1570,17 +1518,18 @@ class CurrentElectricityPriceSensor(BaseUtilitySensor):
             all_prices.extend(self._net_tomorrow)
 
         for entry in all_prices:
-            start_str = entry.get("start") or entry.get("time")
-            if not start_str:
+            start_dt = _parse_timestamp(entry.get("start") or entry.get("time"))
+            if start_dt is None:
                 continue
-
             try:
-                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                if start_dt > now:
-                    if next_change is None or start_dt < next_change:
-                        next_change = start_dt
-            except Exception:
+                is_next = start_dt > now and (
+                    next_change is None or start_dt < next_change
+                )
+            except TypeError:
+                _LOGGER.debug("Skipping price entry without time zone: %s", entry)
                 continue
+            if is_next:
+                next_change = start_dt
 
         if next_change:
             _LOGGER.debug(

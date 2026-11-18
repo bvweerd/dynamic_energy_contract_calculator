@@ -150,22 +150,18 @@ class SolarBonusTracker:
 
     def is_daylight(self) -> bool:
         """Check if current time is between sunrise and sunset."""
-        try:
-            # Try to get sun data from Home Assistant
-            sun_state = self._hass.states.get("sun.sun")
-            if sun_state:
-                if sun_state.state == "above_horizon":
-                    return True
-                if sun_state.state == "below_horizon":
-                    return False
-                # Unknown/unavailable sun state — fall through to hour-based fallback
-                _LOGGER.debug(
-                    "sun.sun has unexpected state %r, using hour-based fallback",
-                    sun_state.state,
-                )
-        except Exception as err:
+        sun_state = self._hass.states.get("sun.sun")
+        if sun_state is None:
+            _LOGGER.debug("sun.sun is not available, using hour-based fallback")
+        elif sun_state.state == "above_horizon":
+            return True
+        elif sun_state.state == "below_horizon":
+            return False
+        else:
+            # Unknown/unavailable sun state — fall back to the hour
             _LOGGER.debug(
-                "sun.sun state unavailable, using hour-based fallback: %s", err
+                "sun.sun has unexpected state %r, using hour-based fallback",
+                sun_state.state,
             )
         now = dt_util.now()
         return bool(6 <= now.hour < 20)

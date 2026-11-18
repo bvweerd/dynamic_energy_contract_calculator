@@ -31,7 +31,7 @@ def async_report_issue(
             translation_key=translation_key,
             translation_placeholders=placeholders,
         )
-    except Exception as err:  # pragma: no cover - issue registry may not be loaded
+    except KeyError as err:  # pragma: no cover - issue registry not loaded
         _LOGGER.debug("Failed to create issue %s: %s", issue_id, err)
 
 
@@ -39,5 +39,5 @@ def async_clear_issue(hass: HomeAssistant, issue_id: str) -> None:
     """Delete a repair issue for this integration."""
     try:
         async_delete_issue(hass, DOMAIN, issue_id)
-    except Exception as err:  # pragma: no cover - issue registry may not be loaded
+    except KeyError as err:  # pragma: no cover - issue registry not loaded
         _LOGGER.debug("Failed to delete issue %s: %s", issue_id, err)
